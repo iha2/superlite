@@ -21,6 +21,7 @@ from pathlib import Path  # O(1)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # O(1)
 import plan_tools as pt  # noqa: E402 | O(1)
+import gitignore  # noqa: E402 | O(1)
 
 SUPERLITE = Path(__file__).resolve().parents[3]  # plugin root | O(1)
 MANIFESTS = ("package.json", "pyproject.toml", "go.mod", "Cargo.toml", "Makefile", "pom.xml", "build.gradle", "Gemfile")  # O(1)
@@ -74,11 +75,16 @@ def constraint_lines(plan) -> list[str]:  # O(L)
     return out  # O(1)
 
 
-def language_facts(lines: list[str], plan) -> str:  # O(L)
+def detect_langs(lines: list[str], plan) -> list[str]:  # O(L)
+    """Names from LANGS the plan's stated constraints (else its first 40 lines) mention."""
     stated = " ".join(lines)  # O(L)
     if not stated.strip():  # O(1)
         stated = " ".join(plan.lines[:40])  # O(1)
-    names = [n for n, rx in LANGS if re.search(rx, stated, re.I)]  # O(1)
+    return [n for n, rx in LANGS if re.search(rx, stated, re.I)]  # O(1)
+
+
+def language_facts(lines: list[str], plan) -> str:  # O(L)
+    names = detect_langs(lines, plan)  # O(L)
     if names:  # O(1)
         return ("The plan names: " + ", ".join(names) + ". Use the tooling the plan's constraints name; where they are silent, "
                 "use the project's own declared tooling found in the repo (package.json, go.mod, Cargo.toml, pyproject.toml, "
@@ -170,7 +176,8 @@ Write one stub per `produces` item below (only the signatures another task consu
 1. The project installs (the manifest is valid and dependencies resolve with the project's own tool).
 2. The project's own test command, or its compile/type-check, runs on the stub tree: the tree builds, and any test fails as "not implemented", never as an import, syntax or configuration error.
 3. You write and verify `.superlite/test-cmd.json` on the stub tree: `{{"language","test","test_file","junit","setup"}}` (JSON; `test` runs everything, `test_file` takes `{{files}}`, `junit` is the report path or `{{junit}}` for the one run_tests supplies, `setup` installs dependencies). Verify it by running `bash "$SL" run_tests --full`: it must report the stubs as failing, never "no test command found".
-4. Never run `git add`, `commit`, `switch` or `checkout`; the coordinator runs `bash "$SL" commit_task {tid} --plan PLAN`.
+4. `.gitignore` already exists: the coordinator's script wrote it before you started (dependency, build and cache folders for the plan's languages). Do not rewrite it; extend it only if your own tooling creates another generated folder, adding just that entry.
+5. Never run `git add`, `commit`, `switch` or `checkout`; the coordinator runs `bash "$SL" commit_task {tid} --plan PLAN`.
 
 Reply in at most 200 words: Status (DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT or BLOCKED), files changed (paths only), test or build command and its result line, concerns.
 """  # O(L + q*s)
@@ -192,15 +199,34 @@ def agent_line(brief: Path, tid: str) -> str:  # O(1)
     return f'Agent(subagent_type="superlite:implementer-haiku", description="{tid} Wave 0 skeleton", prompt={json.dumps(prompt)})'  # O(1)
 
 
+def write_gitignore(plan, plan_path: str) -> list[str]:  # O(L + g + e) + file I/O
+    """Append the missing dependency/build/cache entries for the plan's languages, `common` and its `**Ignore:**` line to the repo's .gitignore."""
+    return gitignore.ensure(pt.stable_root(plan_path), detect_langs(constraint_lines(plan), plan), extra=plan.header_ignore(),  # O(L + g + e*o)
+                            owned=[o for t in plan.tasks for o in t.owns])
+
+
+def gitignore_owner(plan_path: str):  # O(1) + file read
+    """Task id of the Wave 0 task when the script touched .gitignore (it commits that file), else None."""
+    f = sl_dir(plan_path) / "briefs" / "wave0.json"  # O(1)
+    try:  # O(1)
+        d = json.loads(f.read_text(encoding="utf-8"))  # O(size)
+    except (OSError, ValueError):  # O(1)
+        return None  # O(1)
+    return d.get("id") if d.get("gitignore") else None  # O(1)
+
+
 def write_brief(plan_path: str, out_path: str | None = None):  # O(L + q*s)
     """Write the brief and its json; (agent line, task id, plan task or None, brief path)."""
     plan = pt.Plan.load(plan_path)  # O(L)
     task = find_wave0(plan)  # O(n)
     tid = task.id if task else "T0"  # O(1)
+    added = write_gitignore(plan, plan_path)  # before any agent runs | O(L + g + e)
     out = Path(out_path) if out_path else sl_dir(plan_path) / "briefs" / "wave0.md"  # O(1)
     out.parent.mkdir(parents=True, exist_ok=True)  # O(1)
     out.write_text(build_brief(plan, plan_path, task, tid), encoding="utf-8", newline="\n")  # O(size)
-    meta = {"id": tid, "synthetic": task is None, "title": "Wave 0 skeleton", "owns": SYNTH_OWNS if task is None else task.owns}  # O(1)
+    prev = gitignore_owner(plan_path)  # an earlier run's edit still sits uncommitted | O(1)
+    meta = {"id": tid, "synthetic": task is None, "title": "Wave 0 skeleton", "owns": SYNTH_OWNS if task is None else task.owns,  # O(1)
+            "gitignore": bool(added) or prev == tid, "gitignore_added": added}
     out.with_suffix(".json").write_text(json.dumps(meta, indent=1), encoding="utf-8")  # O(1)
     return agent_line(out.resolve(), tid), tid, task, out  # O(1)
 

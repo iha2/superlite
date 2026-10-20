@@ -50,7 +50,7 @@ def read_log(path):
 def prime(tmp_path, plan=None, spec=None, sections="1,3,5", out="prime.md", *extra):
     r = run("build_prime", "--plan", plan or PLAN_FIX / "plan.md",
             "--spec", spec or PLAN_FIX / "spec.md", "--sections", sections,
-            "--out", tmp_path / out, *extra)
+            "--out", tmp_path / out, "--prime", "full", *extra)
     return r
 
 
@@ -96,7 +96,7 @@ def test_prime_nested_section_not_duplicated_and_missing_fails(tmp_path):
 
 def test_prime_enforces_size_cap(tmp_path):
     r = run("build_prime", "--plan", PLAN_FIX / "plan.md", "--spec", PLAN_FIX / "spec.md",
-            "--sections", "1", "--out", tmp_path / "p.md", "--max-bytes", "100")
+            "--sections", "1", "--prime", "full", "--out", tmp_path / "p.md", "--max-bytes", "100")
     assert r.returncode == 1 and "cap" in r.stderr
     assert not (tmp_path / "p.md").exists()
 

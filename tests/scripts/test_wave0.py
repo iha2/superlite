@@ -134,7 +134,7 @@ def test_commit_task_t0_takes_its_files_not_other_tasks(tmp_path):
     cp = run(COMMIT, "T0", "--plan", p, cwd=tmp_path)
     assert cp.returncode == 0, cp.both
     files = subprocess.run(["git", "show", "--name-only", "--format=", "HEAD"], cwd=tmp_path, capture_output=True, text=True).stdout.split()
-    assert files == ["package.json"]
+    assert sorted(files) == [".gitignore", "package.json"]  # the .gitignore wave0 wrote is committed by the Wave 0 task
 
 
 def test_lint_stable_prints_t0_agent_line_and_send_before_edit(tmp_path):

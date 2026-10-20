@@ -18,6 +18,9 @@ import sys
 from datetime import date
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import gitignore  # noqa: E402
+
 CONFIG = ".superlite/autocommit.json"
 STATE = ".superlite/checkpoints.json"
 TEMP_INDEX = ".superlite/checkpoint.index"
@@ -111,8 +114,7 @@ def dirty_outside(files):
     for e in r.stdout.split("\0"):
         if len(e) > 3:
             p = e[3:].replace("\\", "/")
-            if not p.startswith(".superlite/") and "__pycache__/" not in p \
-                    and not p.endswith(".pyc") and p not in files:
+            if not p.endswith(".pyc") and p not in files and not gitignore.ignored(p):  # commit_task's never-blocking list
                 bad.append(p)
     return bad
 

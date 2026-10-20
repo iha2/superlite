@@ -51,10 +51,17 @@ from pathlib import Path  # O(1)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # O(1)
 import next_tasks as nt  # noqa: E402 | O(1)
 import autocommit  # noqa: E402 | O(1)
+import gitignore  # noqa: E402 | O(1)
 
 DEFAULT_LEDGER = ".superlite/progress.md"  # O(1)
 DEFAULT_LOG = ".superlite/incidents.jsonl"  # O(1)
-IGNORED_PARTS = (".superlite/", "__pycache__/")  # never staged, never blocking | O(1)
+# Never staged, never blocking: today's entries plus every language's dependency/build/cache path in config/gitignore.json,
+# so a late or missing .gitignore cannot block a task on node_modules, target, .venv ... (the plan's Ignore line joins in main).
+IGNORED_PARTS = tuple(dict.fromkeys((".superlite/", "__pycache__/", *(e for e in gitignore.union_entries() if e.endswith("/") and "*" not in e))))  # O(e)
+PLAN_IGNORE: list[str] = []  # entries of the plan's `**Ignore:**` header line, set once in main | O(1)
+OUT_OF_SCOPE_SHOWN = 20  # paths printed per blocked commit | O(1)
+HINT_DIR_FILES = 20  # more blocked files than this under one top-level directory: print the .gitignore hint | O(1)
+INCIDENT_PATHS = 5  # paths named in each grouped incident | O(1)
 SHARED_OWNS = ("tests/regression/",)  # generated probe regression tests: owned by the committer | O(1)
 COMMIT_LINE = re.compile(r"^\s*[-*+]?\s*commit\s+(T\d+[A-Za-z]?)\s+[0-9a-f]{7,40}")  # O(1)
 TASK_ID = re.compile(r"T\d+[A-Za-z]?")  # O(1)
@@ -104,18 +111,32 @@ def git(*args, check=True):  # O(output) + process spawn
     return r  # O(1)
 
 
-def ignored(path):  # O(len path)
+def hard_ignored(path):  # O(len path)
+    """Run bookkeeping and bytecode: never staged, even when a task's Owns would match."""
     p = "/" + path  # O(1)
-    return any(f"/{part}" in p for part in IGNORED_PARTS) or path.endswith(".pyc")  # O(len path)
+    return path.endswith(".pyc") or "/.superlite/" in p or "/__pycache__/" in p  # O(len path)
 
 
-def changed_files():  # O(m log m) + process spawn
+def ignored(path):  # O(d + entries)
+    return path.endswith(".pyc") or gitignore.ignored(path, PLAN_IGNORE)  # matcher built once per process | O(d + entries)
+
+
+def claims(owns):  # O(f)
+    """Predicate: does one of these Owns patterns name `path` explicitly? Patterns that start with `**` (Wave 0's
+    `**/types.*`, `**/__init__.py`) are too generic to pull files out of dependency folders, so they never do."""
+    explicit = [o for o in owns if not o.startswith("**")]  # O(f)
+    return lambda path: nt.owns_match(path, explicit)  # O(f)
+
+
+def changed_files(keep=None):  # O(m log m) + process spawn
+    """Changed paths minus the never-blocking ones; a path `keep(path)` accepts (the task's own Owns) stays even when
+    ignored, except run bookkeeping. Same single `git status`: no extra spawn."""
     r = git("status", "--porcelain", "-z", "--untracked-files=all", "--no-renames")  # O(m) output + process spawn
     files = []  # O(1)
     for entry in r.stdout.split("\0"):  # O(m) iterations
         if len(entry) > 3:  # O(1)
             path = entry[3:].replace("\\", "/")  # O(len path)
-            if not ignored(path):  # O(1)
+            if not ignored(path) or (keep and not hard_ignored(path) and keep(path)):  # O(d + entries + f)
                 files.append(path)  # O(1)
     return sorted(set(files))  # O(m log m)
 
@@ -295,6 +316,23 @@ def log_incidents(log, task, items):  # O(k) + one append (no spawn in process)
                            for f, line, msg in items])
 
 
+def group_by_top_dir(files):  # O(m)
+    """{top-level directory: [paths]} in first-seen order; a file at the repo root is its own group."""
+    groups = {}  # O(1)
+    for f in files:  # O(m)
+        groups.setdefault(f.split("/", 1)[0] if "/" in f else f, []).append(f)  # O(len path)
+    return groups  # O(1)
+
+
+def incident_row(key, files):  # O(1)
+    """(file, line, message) for one group: the path itself for a lone file, else `dir/` with the count and the first paths."""
+    msg = "change outside Owns blocked by commit_task; nothing committed"  # O(1)
+    if len(files) == 1 and files[0] == key:  # O(1)
+        return key, 0, msg  # O(1)
+    first = ", ".join(files[:INCIDENT_PATHS])  # O(1)
+    return key + "/", 0, f"{msg}: {len(files)} files under {key}/, first {min(len(files), INCIDENT_PATHS)}: {first}"  # O(1)
+
+
 def commit_one(a, tid, info, own_files):  # O(m*o + py size) + git spawns (status, add, commit, rev-parse)
     """Commit one task; (exit code, sha or None). Files other tasks own are left alone."""
     if tid not in info:  # O(1)
@@ -309,8 +347,14 @@ def commit_one(a, tid, info, own_files):  # O(m*o + py size) + git spawns (statu
     other = [o for t, i in info.items() if t != tid for o in i["owns"]  # O(o)
              if o not in SHARED_OWNS]
 
+    if getattr(a, "gitignore_owner", None):  # the coordinator's script edited .gitignore: only the Wave 0 task takes it | O(1)
+        if tid == a.gitignore_owner:  # O(1)
+            owns = owns + [".gitignore"]  # O(f)
+        else:  # O(1)
+            other = other + [".gitignore"]  # O(o)
+
     mine, out_of_scope = [], []  # O(1)
-    for f in changed_files():  # O(m) iterations; changed_files is O(m log m) + git spawn
+    for f in changed_files(claims(owns)):  # O(m) iterations; changed_files is O(m log m) + git spawn
         if f in own_files and not nt.owns_match(f, owns):  # O(f)
             continue  # O(1)
         if tid == "T0" and nt.owns_match(f, other):  # Wave 0 globs never take another task's file | O(f)
@@ -323,10 +367,15 @@ def commit_one(a, tid, info, own_files):  # O(m*o + py size) + git spawns (statu
             out_of_scope.append(f)  # O(1)
 
     if out_of_scope:  # O(1)
-        for f in out_of_scope:  # O(m) iterations
+        for f in out_of_scope[:OUT_OF_SCOPE_SHOWN]:  # O(1) (capped)
             print(f"out-of-scope {f}")  # O(1)
-        log_incidents(a.log, tid, [(f, 0, "change outside Owns blocked by commit_task; "  # O(m) one append
-                                    "nothing committed") for f in out_of_scope])
+        if len(out_of_scope) > OUT_OF_SCOPE_SHOWN:  # O(1)
+            print(f"... and {len(out_of_scope) - OUT_OF_SCOPE_SHOWN} more")  # O(1)
+        groups = group_by_top_dir(out_of_scope)  # O(m)
+        for d, fs in groups.items():  # O(groups)
+            if len(fs) > HINT_DIR_FILES:  # O(1)
+                print(f"hint: {len(fs)} blocked files under {d}/; likely a dependency or build folder; add it to .gitignore")  # O(1)
+        log_incidents(a.log, tid, [incident_row(d, fs) for d, fs in groups.items()])  # one row per top-level directory | O(groups)
         return 1, None  # O(1)
     if not mine:  # O(1)
         print(f"nothing to commit for {tid}", file=sys.stderr)  # O(1)
@@ -388,6 +437,13 @@ def main(argv=None):  # O(L + t*(m*o)) + git spawns per task; one process for al
     if len(a.task) == 1 and not info[a.task[0]]["owns"]:  # O(1)
         nt.die(f"{a.task[0]} has no Owns line")  # O(1)
     setup_exclude()  # O(x) + process spawn, once
+    try:  # the plan's Ignore line joins the never-blocking list | O(L)
+        import plan_tools  # O(1)
+        PLAN_IGNORE[:] = plan_tools.Plan.load(a.plan).header_ignore() or []  # O(L)
+    except Exception:  # noqa: BLE001 | O(1)
+        pass  # O(1)
+    import wave0  # O(1)
+    a.gitignore_owner = wave0.gitignore_owner(a.plan)  # the Wave 0 task commits the .gitignore its script wrote | O(1)
 
     own_files = set()  # bookkeeping files of the run itself, never in scope | O(1)
     for p in (a.plan, a.ledger, a.log):  # O(1) iterations (3 paths)

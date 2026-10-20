@@ -570,11 +570,11 @@ def test_predicted_context_wins_over_stated_when_features_present(tmp_path):
 def test_lint_notes_stated_context_off_by_more_than_25_percent(tmp_path):
     pred = _pred_ctx(tmp_path)
     near = round(pred / 1000)
-    p = make_plan(tmp_path, [dict(id="T1", ctx=near, **SKILL_BIG)], name="near.md")
+    p = make_plan(tmp_path, [dict(id="T1", ctx=near, **SKILL_BIG)], header="**Ignore:** .env", name="near.md")
     cp = pt("lint", "--plan", p)
     assert cp.returncode == 0 and "NOTE" not in cp.out, cp.out
     far = int(pred / 1000 * 0.5)
-    p = make_plan(tmp_path, [dict(id="T1", ctx=far, **SKILL_BIG)], name="far.md")
+    p = make_plan(tmp_path, [dict(id="T1", ctx=far, **SKILL_BIG)], header="**Ignore:** .env", name="far.md")
     cp = pt("lint", "--plan", p)
     assert cp.returncode == 0 and f"NOTE: T1 states Est. context {far}k" in cp.out and "predicted value is used" in cp.out
 

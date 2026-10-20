@@ -338,6 +338,14 @@ class Plan:  # O(1)
         m = re.search(r"^\*\*Target(?:[-\s]*(?:min|minutes|time))?:\*\*\s*~?\s*(\d+(?:\.\d+)?)", self.text, re.M)  # O(C)
         return float(m.group(1)) if m else None  # O(1)
 
+    def header_ignore(self) -> list[str] | None:  # O(L)
+        """Entries of the `**Ignore:** a/, b, *.c` header line (comma-separated paths or globs); None without the line."""
+        for ln, f in zip(self.lines, self.fenced):  # O(L)
+            m = None if f else re.match(r"^\*\*Ignore:\*\*\s*(.*)$", ln)  # O(len line)
+            if m:  # O(1)
+                return [e.strip().strip("`").strip() for e in m.group(1).split(",") if e.strip().strip("`").strip()]  # O(len line)
+        return None  # O(1)
+
     def non_fenced_text(self) -> str:  # O(L)
         return "\n".join(ln for ln, f in zip(self.lines, self.fenced) if not f)  # O(L)
 
@@ -1088,6 +1096,9 @@ def lint_plan(plan: Plan, args) -> tuple[list[str], list[str]]:  # O(n^2*k*s + e
                 owner = [t.id for t in plan.tasks if t.line <= i + 1 <= t.line + t.text.count("\n") + 1]  # O(n)
                 issues.append(Issue(f"placeholder {label} at line {i + 1}", owner, "task" if owner else "plan"))  # O(1)
 
+    if plan.header_ignore() is None:  # O(L)
+        warnings.append("NOTE: no **Ignore:** header line; .gitignore gets only the language defaults "  # O(1)
+                        "(list .env, local databases, .next/, out/ and other generated paths your tooling creates)")
     for t in plan.tasks:  # O(n) iterations
         if not t.has_features and t.stated_time is None:  # O(k*s)
             warnings.append(f"WARNING: {t.id} has no features (Components, LOC owned, Tests) and no Est. time; "  # O(1)

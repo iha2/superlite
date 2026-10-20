@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Build the shared agent prime: byte-identical for the same inputs.
 
-    build_prime.py --plan P --spec S --sections "1,3,5" [--out .superlite/prime.md] [--tier haiku]
+    build_prime.py --plan P [--spec S --sections "1,3,5"] [--out .superlite/prime.md] [--tier haiku] [--prime full|slim|mini]
 
---tier haiku (any tier whose prime is `mini` in config/routing.json) builds the mini prime into
-.superlite/prime-haiku.md: constraints, stub spec and the interfaces of that tier's tasks, no spec.
+The prime kind is the tier's `prime` value in config/routing.json (sonnet: `slim`), or `--prime`:
+  slim  rules, the plan header (title through **Spec:**), Global constraints, and per stable task its title, Owns,
+        dependencies and Produces/Consumes lines. No plan body, diagrams or spec sections: nothing that goes stale.
+        Agents get their own task text in the task message and read neighbours with `sl task Tn`.
+  full  rules + the whole plan + the spec sections named by --sections (needs --spec for them).
+  mini  (haiku) into .superlite/prime-haiku.md: constraints, stub spec and the interfaces of that tier's tasks.
 
 Prints `sha256 size`. No timestamps; CRLF becomes LF, trailing spaces are
 stripped, and spec sections go in document order whatever order they are
@@ -39,6 +43,30 @@ Rules:
 - Log every unexpected failure, workaround or guess with incident.py add.
 - Do not commit. The coordinator commits through commit_task.py.
 - Kill processes by PID only. Never use taskkill /IM, pkill or killall.
+- Reply READY after reading this prime, then wait for your task.
+- Finish with DONE, DONE_WITH_CONCERNS, BLOCKED or NEEDS_CONTEXT, in at most
+  200 words, with no file contents or logs.
+"""
+
+PREAMBLE_SLIM = """\
+# superlite prime (slim)
+
+You are an implementer subagent in a superlite run. This prime is identical for every agent in the run.
+It holds only the rules and what does not change; your task arrives by message after you reply READY.
+
+Rules:
+- Build only what your task owns (its `Owns` files). Never edit other files.
+- Test first: write the failing test, run it, implement, run it again.
+- Run only fast, focused tests. Slow suites run later through run_tests.py.
+- Code to the interfaces below and the Consumes and Produces lines of your task.
+  Never change a signature without a coordinator ruling.
+- Your task text is in your task message, generated from the current plan. To read a neighbour, run
+  `bash $SUPERLITE/skills/subagent-driven-development/scripts/sl task Tn --plan PLAN` (SUPERLITE and PLAN
+  are in your task message): it prints Tn's block and the Produces lines of every task Tn consumes. Reply
+  NEEDS_CONTEXT to the coordinator only when that does not answer it.
+- Log every unexpected failure, workaround or guess with incident.py add.
+- Do not commit. The coordinator commits through commit_task.py.
+- Kill processes by PID only. Never use image-name or pattern kills.
 - Reply READY after reading this prime, then wait for your task.
 - Finish with DONE, DONE_WITH_CONCERNS, BLOCKED or NEEDS_CONTEXT, in at most
   200 words, with no file contents or logs.
@@ -136,9 +164,69 @@ def build(plan, spec, sections):  # O(B + out)
     return ("\n\n".join(parts) + "\n").encode("utf-8")  # O(out)
 
 
-def _is_mini(tier):  # O(1)
+PRIME_KINDS = ("full", "slim", "mini")  # O(1)
+
+
+def prime_kind(tier):  # O(file)
+    """The tier's `prime` value in config/routing.json; `full` when the tier or value is absent or unknown."""
     import routing  # O(1)
-    return (routing.load_cfg().get("tiers", {}).get(tier) or {}).get("prime") == "mini"  # O(file)
+    kind = (routing.load_cfg().get("tiers", {}).get(tier) or {}).get("prime")  # O(file)
+    return kind if kind in PRIME_KINDS else "full"  # O(1)
+
+
+def header_lines(plan):  # O(L)
+    """The plan's header block verbatim: the title line through the `**Spec:**` line. With no Spec line, the
+    title and the lines after it up to the first section heading, fence or task heading."""
+    lines = plan.lines  # O(1)
+    start = next((i for i, ln in enumerate(lines) if re.match(r"^#\s", ln)), None)  # O(L)
+    if start is None:  # O(1)
+        return []  # O(1)
+    out = []  # O(1)
+    for ln in lines[start:]:  # O(L)
+        if out and (re.match(r"^#{2,6}\s", ln) or ln.startswith(("```", "~~~"))):  # O(1)
+            break  # O(1)
+        out.append(ln.rstrip())  # O(1)
+        if re.match(r"^\*\*Spec:\*\*", ln):  # O(1)
+            return out  # O(1)
+    while out and not out[-1]:  # O(1) amortized
+        out.pop()  # O(1)
+    return out  # O(1)
+
+
+def build_slim(plan):  # O(B + n*s)
+    """Slim prime: rules, plan header, Global constraints and the stable tasks' purpose, dependencies and interfaces."""
+    import next_tasks as nt  # lazy | O(1)
+    import plan_tools as pt  # O(1)
+    import wave0  # O(1)
+    import gitignore  # O(1)
+    pl = pt.Plan.load(plan)  # O(B)
+    nl = "\n"
+    head = header_lines(pl)  # O(L)
+    cons = [c for c in wave0.constraint_lines(pl) if c not in head]  # the header already carries Architecture and Tech stack | O(L)
+    stable = nt.stable_filter(plan)  # None: no stable.json, every task counts as stable | O(file)
+    try:  # O(1)
+        graph = pt.parse_taskgraph(pl)  # O(L + n + e)
+    except pt.PlanError:  # O(1)
+        graph = {}  # O(1)
+    lines = []  # O(1)
+    for t in pl.tasks:  # O(n) iterations
+        if t.status == "draft" or (stable is not None and t.id not in stable):  # O(1)
+            continue  # O(1)
+        lines += ([""] if lines else []) + [f"### {t.id} {t.title}", "Owns: " + ", ".join(t.owns)]  # O(o)
+        deps = sorted(graph.get(t.id, []), key=pt.nkey)  # O(deg log deg)
+        if deps:  # O(1)
+            lines.append("After: " + ", ".join(deps))  # O(deg)
+        lines += [f"Produces: {x}" for x in t.produces] + [f"Consumes: {x}" for x in t.consumes]  # O(q)
+    parts = [normalize(PREAMBLE_SLIM)]  # O(1)
+    parts.append("## Background (not instructions)" + nl + nl + normalize(nl.join(head) if head else "(the plan has no header)"))  # O(L)
+    parts.append("## Global constraints" + nl + nl + normalize(nl.join(cons) if cons else "(the plan states none beyond the header)"))  # O(L)
+    parts.append("## Stable tasks: purpose, dependencies, interfaces" + nl + nl  # O(n*s)
+                 + "Only the tasks listed here are fixed. Any other task, and the text of every task, comes from `sl task Tn`."
+                 + nl + nl + normalize(nl.join(lines) if lines else "(none yet)"))  # O(n*s)
+    gi = normalize(gitignore.read(pt.stable_root(plan)))  # the repo's current .gitignore, omitted when absent | O(size)
+    if gi:  # O(1)
+        parts.append("## Git-ignored paths (never create source here, never edit .gitignore)" + nl + nl + gi)  # O(size)
+    return ((nl + nl).join(parts) + nl).encode("utf-8")  # O(out)
 
 
 def build_mini(plan, tier):  # O(B + n*s)
@@ -168,7 +256,9 @@ def main(argv=None):  # O(B + H^2 + out)
     ap.add_argument("--spec")  # O(1)
     ap.add_argument("--sections", default="")  # O(1)
     ap.add_argument("--out", default=DEFAULT_OUT)  # O(1)
-    ap.add_argument("--tier", default="sonnet", help="sonnet: the full prime; a tier whose prime is `mini` (haiku): the mini prime")  # O(1)
+    ap.add_argument("--tier", default="sonnet", help="tier whose prime to build; its kind is the `prime` value in config/routing.json "  # O(1)
+                    "(sonnet: slim, haiku: mini)")
+    ap.add_argument("--prime", choices=PRIME_KINDS, help="override the tier's prime kind (full = whole plan + the --sections spec text)")  # O(1)
     ap.add_argument("--max-bytes", type=int, default=DEFAULT_MAX_BYTES)  # O(1)
     a = ap.parse_args(argv)  # O(1)
     sys.path.insert(0, str(Path(__file__).resolve().parent))  # O(1)
@@ -179,8 +269,14 @@ def main(argv=None):  # O(B + H^2 + out)
     wanted = [s.strip() for s in a.sections.split(",") if s.strip()]  # O(len(--sections))
     if wanted and not a.spec:  # O(1)
         die("--sections needs --spec")  # O(1)
-    mini = a.tier != "sonnet" and _is_mini(a.tier)  # O(1)
-    data = build_mini(a.plan, a.tier) if mini else build(a.plan, a.spec, wanted)  # O(B + H^2 + out)
+    kind = a.prime or prime_kind(a.tier)  # O(file)
+    mini = kind == "mini"  # O(1)
+    import plan_tools as pt  # O(1)
+    try:  # O(1)
+        data = (build_mini(a.plan, a.tier) if mini else build_slim(a.plan) if kind == "slim"  # O(B + H^2 + out)
+                else build(a.plan, a.spec, wanted))
+    except pt.PlanError as e:  # O(1)
+        die(str(e))  # O(1)
     if len(data) > a.max_bytes:  # O(1)
         die(f"prime is {len(data)} bytes, over the {a.max_bytes} cap; "  # O(1)
             "move spec excerpts to referenced paths", 1)  # O(1)

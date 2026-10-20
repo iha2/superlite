@@ -9,7 +9,8 @@ Mechanical steps are scripts, not agents. Every tool runs as `bash <skill-dir>/s
 | `routing` | Maps each task's plan features to a tier (haiku or sonnet) using `routing.json` |
 | `shape` | Build shape: contract examples, removable edges, prune, chain ids |
 | `predict` | Predicts each task's time, context and cost; `--refit` fits the coefficients |
-| `build_prime` | Builds the shared prime that every agent reads first (`--tier haiku` builds the mini prime) |
+| `build_prime` | Builds the shared prime every agent reads first. By tier (`prime` in `routing.json`): `slim` for sonnet (rules, plan header, Global constraints, stable tasks' title, Owns, dependencies and interfaces; about 8 KB where the whole plan is 20 KB), `mini` for haiku (`--tier haiku`), or `--prime full` (whole plan and `--sections` spec text) |
+| `task` | `sl task Tn`: task Tn's block from the current plan plus the Produces lines of every task it consumes; how agents read their task and neighbours |
 | `dispatch` | Ready tasks and who runs each, in one call (`next_tasks` + `assign`) |
 | `next_tasks` | Computes which tasks are ready |
 | `assign` | Scores idle agents and picks the most relevant one |

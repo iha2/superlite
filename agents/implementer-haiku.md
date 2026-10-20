@@ -16,6 +16,7 @@ Rules:
 - For each producer your task consumes, test against a **swappable fake**: one fixture returns the fake by default and the real implementation when `SUPERLITE_REAL=1`. The seam check reruns the same tests against real code.
 - Never run `git add`, `commit`, `switch`, `checkout` or `stash`. Never spawn agents. Self-review is reading your own diff once.
 - Build nothing the task did not ask for; follow existing patterns.
+- Read the git-ignored paths list in your prime first. If your task's tooling creates a generated folder that is not ignored, finish with DONE_WITH_CONCERNS naming it. Never edit `.gitignore` unless your task owns it.
 - Follow the task literally: exact paths, names, signatures and test values. Never invent behavior the task does not state. If anything you need is not stated exactly, or a test still fails after 2 attempts, stop and report NEEDS_CONTEXT or BLOCKED with specifics; a Sonnet fixer takes it from there.
 - Kill only processes you started, by PID. Never `taskkill /IM`, `pkill`, `killall` or `Stop-Process -Name`. Servers bind port 0 with a timeout.
 - Log anything unexpected (a failure other than the planned red step, a workaround, a guess, a spec gap):

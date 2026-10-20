@@ -38,7 +38,7 @@ In both modes, write for the split:
 
 ## Plan shape, in this order
 
-1. **Header:** Goal, Architecture, Tech stack, Spec path, `**Detail:** contracts | tests | full` (default `tests`), `**Target-min:** N` (predicted-total target, default 11), global constraints (exact values copied from the spec: version floors, names, formats). Task briefs point here, so do not repeat constraints per task.
+1. **Header:** Goal, Architecture, Tech stack, Spec path, `**Detail:** contracts | tests | full` (default `tests`), `**Target-min:** N` (predicted-total target, default 11), `**Ignore:** a/, b, *.c` (optional: paths or globs your tooling generates beyond the language defaults, e.g. `.next/`, `.env`, `*.sqlite`), global constraints (exact values copied from the spec: version floors, names, formats). Task briefs point here, so do not repeat constraints per task.
 2. **Main diagram** (always): Mermaid of components and data flow.
 3. **File structure:** every file and its one responsibility. Split by responsibility, not by layer, and follow the repo's patterns.
 4. **Task graph** (always, machine-readable): see below.

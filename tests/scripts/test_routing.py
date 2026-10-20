@@ -208,7 +208,7 @@ def test_mini_prime_is_small_and_hash_stable(tmp_path):
     out_h = tmp_path / "h.md"
     runs = [run(BUILD_PRIME, "--plan", p, "--tier", "haiku", "--out", out_h, cwd=tmp_path).out.split() for _ in range(2)]
     assert runs[0] == runs[1] and runs[0][0] == hashlib.sha256(out_h.read_bytes()).hexdigest()
-    full = run(BUILD_PRIME, "--plan", p, "--spec", spec, "--sections", "1", "--out", tmp_path / "f.md", cwd=tmp_path).out.split()
+    full = run(BUILD_PRIME, "--plan", p, "--spec", spec, "--sections", "1", "--prime", "full", "--out", tmp_path / "f.md", cwd=tmp_path).out.split()
     assert int(runs[0][1]) < int(full[1]) / 2
     text = out_h.read_text(encoding="utf-8")
     assert text.startswith("# superlite prime (mini)") and "## Stub spec" in text and "stdlib only" in text
