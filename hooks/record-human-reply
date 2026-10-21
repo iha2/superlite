@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # UserPromptSubmit hook: while a human-orchestrator run is unapproved (.superlite/orchestrator.json
-# has mode human and approved false), append one line per human prompt to
+# has mode human and approved false), or a feature-flow try-out waits for the human (mode human and
+# .superlite/feature.json has status tryout), append one line per human prompt to
 # <project>/.superlite/human-replies.jsonl:
 #   {"t":<epoch ms>,"approves":true|false,"text":"<first 160 chars of the prompt>"}
 # approves is true when the prompt contains an approval phrase (approve, approved, yes, go ahead,
-# go for it, looks good, lgtm, proceed, ship it, do it) and none of: not, don't, dont, no, wait,
-# stop, but, change, instead (case-insensitive, whole words). Only this hook writes the file.
+# go for it, looks good, lgtm, proceed, ship it, do it, it works, works for me, all good) and none
+# of: not, don't, dont, no, wait, stop, but, change, instead (case-insensitive, whole words). Only this hook writes the file.
 # Bash builtins only (each external process costs ~250 ms on Windows). Never blocks: exit 0 always.
 
 IFS= read -r -d '' input   # builtin; returns 1 at EOF, which is fine
@@ -27,12 +28,18 @@ sd="$proj/.superlite"
 IFS= read -r -d '' oj < "$sd/orchestrator.json"
 re_human='"mode"[[:space:]]*:[[:space:]]*"human"'
 re_unappr='"approved"[[:space:]]*:[[:space:]]*false'
-[[ $oj =~ $re_human && $oj =~ $re_unappr ]] || exit 0
+[[ $oj =~ $re_human ]] || exit 0
+if ! [[ $oj =~ $re_unappr ]]; then
+  [ -f "$sd/feature.json" ] || exit 0
+  IFS= read -r -d '' fj < "$sd/feature.json"
+  re_tryout='"status"[[:space:]]*:[[:space:]]*"tryout"'
+  [[ $fj =~ $re_tryout ]] || exit 0
+fi
 
 jstr prompt; text="$REPLY"
 lc="${text,,}"
 b='(^|[^[:alnum:]_])'; e='([^[:alnum:]_]|$)'
-re_yes="$b(approve|approved|yes|go[[:space:]]+ahead|go[[:space:]]+for[[:space:]]+it|looks[[:space:]]+good|lgtm|proceed|ship[[:space:]]+it|do[[:space:]]+it)$e"
+re_yes="$b(approve|approved|yes|go[[:space:]]+ahead|go[[:space:]]+for[[:space:]]+it|looks[[:space:]]+good|lgtm|proceed|ship[[:space:]]+it|do[[:space:]]+it|it[[:space:]]+works|works[[:space:]]+for[[:space:]]+me|all[[:space:]]+good)$e"
 re_no="$b(not|don't|don’t|dont|no|wait|stop|but|change|instead)$e"
 approves=false
 [[ $lc =~ $re_yes ]] && ! [[ $lc =~ $re_no ]] && approves=true

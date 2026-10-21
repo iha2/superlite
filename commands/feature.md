@@ -1,13 +1,17 @@
 ---
-description: Add or change a feature in an existing codebase. Reads the code first, checks the seams.
+description: Add or change a feature in an existing codebase. Research, a plan you validate, a prototype you try, then the integration build.
 argument-hint: "[the change you want]"
 ---
 
 Superlite feature mode. Request: $ARGUMENTS
 
-If the request is empty, ask for it in one line. Then:
+Design: `docs/feature-flow.md`. If the request is empty, ask for it in one line. Ask the orchestrator choice (human or AI) unless the user already said; run `sl orchestrator set human|ai`. Then six steps:
 
-- Ask the orchestrator choice (human or AI) unless the user already said; run `sl orchestrator set human|ai`.
-- Read before designing: find the files and tests the change touches, and follow the project's own conventions and toolchain. Offer Graphify only if `sl graphify_gate` allows, and never install it without the user's yes.
-- Load `superlite:brainstorming`, then `superlite:subagent-driven-development`.
-- Scope rules for this mode: change only what the request needs. Name the existing interfaces the new code must keep (FROZEN in the plan) and add seam checks between new and existing code. Existing tests must still pass.
+1. **Feature plan.** If the request is thin, ask for the feature in the user's words (at most one batched question, the `superlite:brainstorming` rule). Write `docs/plans/<date>-<topic>.feature.md` in the shape of `superlite:writing-plans` ("Feature plan"): goal and who it is for, what the user will see or do differently (screens, commands, endpoints or outputs, by target kind), `## Acceptance checks` a human can try.
+2. **Research the code.** Read before designing; research is read-only, as parallel Explore agents, one per area, each returning a short summary. Offer Graphify only if `sl graphify_gate` allows, and never install it without the user's yes. Add to the plan the `## Code map` (entry points and how the app is stood up, the files and tests the feature touches and their seams, the interfaces that must not change, the project's own conventions and toolchain), the prototype scope and an outline of the integration build.
+3. **The human validates the plan.** Human mode: show the path and a five-line summary, ask in plain text "Reply approve to start, or tell me what to change", end your turn; after the reply run `sl orchestrator approve --review docs/plans/<date>-<topic>.feature.md`. AI mode: no approval; open choices become `Ruling:` lines.
+4. **Prototype build.** `sl proto start --topic <topic> --run "<run command>" [--level L2]` cuts a worktree on `superlite/<topic>-proto`; the user's checkout is never touched. Load `superlite:feature-prototype` to cut the smallest container of the app (keep the entry point and what the feature touches, stub the rest; L1 stubs by default, L2 only when the plan says real data shapes matter). Write a small agent-format plan in the worktree (`<worktree>/docs/plans/<date>-<topic>.proto.md`, at most 8 tasks, about a quarter of the integration estimate), its tests written against the acceptance checks, then `lint --stable` and `superlite:subagent-driven-development` there. While it builds, draft the integration plan from the code map.
+5. **The human tries it.** `sl proto tryout [--reach "<url, command or example calls>"] [--start]` prints how to run and reach the prototype and the acceptance checks; show it where the harness can (a preview pane for a web app). Human mode: ask the human, in plain text, to reply "it works" or list changes, end your turn; after the reply run `sl proto tryout --approve`. Changes go back to step 4 as a fix round (`sl proto start --topic <topic>` reopens it), not to a new plan unless they change the scope. AI mode: run the acceptance checks against the stood-up prototype and record the result with `sl proto tryout --approve --ruling "<result>"`. Until the try-out is approved, the integration build is blocked in human mode.
+6. **Integration build.** On the user's branch, the integration plan in the agent format with `**Review plan:** docs/plans/<date>-<topic>.feature.md`: one task per touched module, the existing interfaces FROZEN, migration tasks where data changes, seam checks between new and existing code, and the prototype's acceptance tests as the target. Code is ported from the prototype task by task, never merged: its stubs and fakes stay behind. Every existing test must still pass. Then the normal review, final review, tiered fixes and finish; the report shows the prototype and the integration as two parts. At finish run `sl proto discard` (`--keep-branch` if the user asks to keep it).
+
+Scope rule for this mode: change only what the request needs.

@@ -8,19 +8,25 @@
    Any project language works; the superlite tools need Python 3.10+.
 
  ------------------------------------------------------------------------------
- MODES                                    (pick one with /superlite:start)
+ MODES                     (/superlite:start suggests one; you confirm it)
 
    regular   Something new. Opus writes a design and a task-graph plan.
              /superlite:start regular build a markdown site generator
    mvp       Smallest working version first. Opus writes a feature plan and a
              clickable HTML prototype you edit in the browser, then builds
              what you kept.          /superlite:mvp a habit tracker
-   feature   A change to existing code. Reads the code and its seams first.
+   feature   A change to existing code. Opus researches the code and writes
+             a feature plan you validate. A small prototype is built in its
+             own worktree and you try it (a second stop, feature mode only).
+             Then it is ported into your code: frozen interfaces, seam
+             checks, the prototype's acceptance tests. The report shows both.
              /superlite:feature add CSV export to the report page
    debug     Root cause first, then a fix with a regression test.
              /superlite:debug test_parse_dates fails on Windows
    small     A few files, done inline without the planning flow.
              /superlite:small rename build to render everywhere
+   review    Review and harden an existing branch; reviewers fix findings.
+             /superlite:review my-branch
 
  ------------------------------------------------------------------------------
  WHO DECIDES
@@ -69,7 +75,8 @@
    /superlite:help                  This page.
    /superlite:start [mode] [what]   Menu: mode and who decides, then start.
    /superlite:mvp <what>            MVP mode, prototype first.
-   /superlite:feature <change>      Feature mode on existing code.
+   /superlite:feature <change>      Feature mode: plan, prototype to try,
+                                    then the integration build.
    /superlite:debug <bug>           Debug mode.
    /superlite:small <change>        Small inline change, with a reviewer.
    /superlite:human                 Switch to the human orchestrator.
@@ -107,6 +114,8 @@
                                                   record-human-reply
    Raw test runs become background runs           rewrite-test-runs
    No killing processes by name                   block-unsafe-kill
+   No integration before your try-out (feature)   block-coordinator-edits,
+                                                  sl proto tryout --approve
    A plan must lint before work starts            lint --stable
    Same plan, same model tiers                    routing.json
    Every run is measured                          capture hooks, history
@@ -115,7 +124,10 @@
  WHERE THINGS ARE
 
    docs/plans/<date>-<topic>.md          the plan (.review.md in human mode,
-                                         .mvp.md in MVP mode)
+                                         .mvp.md in MVP mode, .feature.md in
+                                         feature mode)
+   .superlite/feature.json               feature mode: the prototype's
+                                         worktree, run command, try-out
    <plan>.report.md                      the build report
    .superlite/                           run state: ledger, metrics, tests,
                                          incidents (never committed)
@@ -132,6 +144,9 @@
  TIPS
 
    - Say it in plain words if you prefer; the commands are shortcuts.
+   - Tools the flows use (bash <skill-dir>/scripts/sl <tool>):
+     sl suggest_flow --text "<request>"   the suggested flow, one line
+     sl proto start|tryout|status|discard the feature-mode prototype
    - Do not enable superpowers in the same project: both inject session
      context and share skill names. /superlite:setup checks this.
    - Tell superlite you are away and it runs as the AI orchestrator.

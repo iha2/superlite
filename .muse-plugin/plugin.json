@@ -15,6 +15,10 @@
         "path": "skills/brainstorming/SKILL.md"
       },
       {
+        "id": "feature-prototype",
+        "path": "skills/feature-prototype/SKILL.md"
+      },
+      {
         "id": "finishing-a-development-branch",
         "path": "skills/finishing-a-development-branch/SKILL.md"
       },

@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
 # PreToolUse hook (Edit, Write, NotebookEdit, Bash, PowerShell, Agent): guards the COORDINATOR, i.e.
 # the main session, whose calls carry no agent_id. Subagent calls always pass. Three rules, in order:
-#  1. Protected files, in every state: .superlite/orchestrator.json (changed only by `sl orchestrator`)
-#     and .superlite/human-replies.jsonl (written only by hooks/record-human-reply) are never written
-#     by the model.
+#  1. Protected files, in every state: .superlite/orchestrator.json (changed only by `sl orchestrator`),
+#     .superlite/feature.json (changed only by `sl proto`) and .superlite/human-replies.jsonl (written
+#     only by hooks/record-human-reply) are never written by the model.
 #  2. HUMAN-UNAPPROVED (.superlite/orchestrator.json has mode human and approved false): nothing is
 #     orchestrated until the human approves the review plan. Agent calls of superlite:* and
 #     general-purpose and sl dispatch/assign/wave0/commit_task/finish/build_prime are denied. File
 #     writes are not: small inline work needs only the human's yes in chat, not a review plan.
+#     TRYOUT-PENDING (feature flow: mode human and .superlite/feature.json has status tryout) is the
+#     same denial, for the integration build, until `sl proto tryout --approve` records the try-out.
 #  3. Active run (.superlite/stable.json, prime.md or pool.json exists): project code is not written
-#     by the coordinator; allowed targets are docs/plans/**, SPEC*.md, docs/**/*.md and .superlite/**.
+#     by the coordinator; allowed targets are docs/plans/**, SPEC*.md, docs/**/*.md and .superlite/**
+#     except .superlite/sandboxes/** (the feature prototype's worktree is project code too).
 # Bash/PowerShell write detection is best-effort; when unsure, allow. Sessions without a .superlite
 # directory are never touched. Bash builtins only (no external process is spawned: each spawn costs
 # ~250 ms on Windows), cheap exits first. Exit 2 blocks (message on stderr); anything else,
@@ -48,21 +51,28 @@ sd="$proj/.superlite"
 
 active=0
 { [ -f "$sd/stable.json" ] || [ -f "$sd/prime.md" ] || [ -f "$sd/pool.json" ]; } && active=1
-human=0
+human=0; tryout=0
 if [ -f "$sd/orchestrator.json" ]; then
   IFS= read -r -d '' oj < "$sd/orchestrator.json"
   re_human='"mode"[[:space:]]*:[[:space:]]*"human"'
   re_unappr='"approved"[[:space:]]*:[[:space:]]*false'
   [[ $oj =~ $re_human && $oj =~ $re_unappr ]] && human=1
+  if [ "$human" = 0 ] && [[ $oj =~ $re_human ]] && [ -f "$sd/feature.json" ]; then
+    IFS= read -r -d '' fj < "$sd/feature.json"
+    re_tryout='"status"[[:space:]]*:[[:space:]]*"tryout"'
+    [[ $fj =~ $re_tryout ]] && tryout=1
+  fi
 fi
+gated=0; gatehit=0
+{ [ "$human" = 1 ] || [ "$tryout" = 1 ]; } && gated=1
 enforce=0
 [ "$active" = 1 ] && enforce=1   # human-unapproved alone blocks orchestration, not file writes
 
 if [ "$tool" = Agent ] || [ "$tool" = Task ]; then
-  [ "$human" = 1 ] || exit 0
+  [ "$gated" = 1 ] || exit 0
   jstr subagent_type
   case "$REPLY" in Explore|Plan|claude-code-guide) exit 0 ;; esac
-  hit="Agent ${REPLY:-general-purpose}"
+  hit="Agent ${REPLY:-general-purpose}"; gatehit=1
 fi
 
 norm "$proj"; projn="$NORM"; projl="${projn,,}"
@@ -80,9 +90,10 @@ project_code() {
   esac
   case "$rel" in ''|.|..|../*) return 1 ;; esac
   pl="${rel,,}"
-  case "$pl" in .superlite/human-replies.jsonl|.superlite/orchestrator.json) prot=1; return 0 ;; esac
+  case "$pl" in .superlite/human-replies.jsonl|.superlite/orchestrator.json|.superlite/feature.json) prot=1; return 0 ;; esac
   [ "$active" = 1 ] || return 1
   case "$rel" in
+    .superlite/sandboxes/*) return 0 ;;
     docs/plans/*|docs/*.md|SPEC*.md|*/SPEC*.md|.superlite/*) return 1 ;;
   esac
   return 0
@@ -99,10 +110,10 @@ elif [ -z "$hit" ]; then
   cmd="${cmd//\\\"/\"}"; cmd="${cmd//\\t/ }"; cmd="${cmd//\\r/}"; cmd="${cmd//\\n/$'\n'}"
   lc="${cmd,,}"
   mentions=0
-  [[ $lc == *human-replies.jsonl* || $lc == *orchestrator.json* ]] && mentions=1
+  [[ $lc == *human-replies.jsonl* || $lc == *orchestrator.json* || $lc == *.superlite/feature.json* ]] && mentions=1
   # sl tools that start a build are denied until the plan is approved.
   re_sl='(sl|\$SL|\$\{SL\}|scripts/sl)"?[[:space:]]+(dispatch|assign|wave0|commit_task|finish|build_prime)([[:space:]]|$)'
-  if [ "$human" = 1 ] && [[ $cmd =~ $re_sl ]]; then hit="sl ${BASH_REMATCH[2]}"; fi
+  if [ "$gated" = 1 ] && [[ $cmd =~ $re_sl ]]; then hit="sl ${BASH_REMATCH[2]}"; gatehit=1; fi
   # Inline interpreter writers (checked on the full text, heredoc bodies included).
   re_interp='(^|[^[:alnum:]_])(python[0-9.]*|node|ruby|php)([[:space:]]|$)'
   re_writer="open\([^)]*,[[:space:]]*['\"][wax]b?\+?['\"]|\.(write_text|write_bytes)\(|writeFileSync|writeFile\(|appendFile(Sync)?\(|fs\.write"
@@ -164,10 +175,13 @@ printf '{"kind":"rule-block","agent":"coordinator","tool":"%s","target":"%s"}\n'
 
 if [ "$prot" = 1 ]; then
   printf '%s\n' \
-    'Blocked: .superlite/orchestrator.json and .superlite/human-replies.jsonl are never written directly. Change the orchestrator state only with `sl orchestrator ...` (for example `sl orchestrator approve --review <path>`); human-replies.jsonl is written only by the hook that records the human'"'"'s replies.' >&2
+    'Blocked: .superlite/orchestrator.json, .superlite/feature.json and .superlite/human-replies.jsonl are never written directly. Change the orchestrator state only with `sl orchestrator ...` (for example `sl orchestrator approve --review <path>`) and the prototype state only with `sl proto ...`; human-replies.jsonl is written only by the hook that records the human'"'"'s replies.' >&2
 elif [ "$human" = 1 ]; then
   printf '%s\n' \
     'Human orchestrator: no build is orchestrated until the human approves the plan. Write the review plan docs/plans/<date>-<topic>.review.md (see skills/writing-plans/review-plan.md), show its path with a five-line summary, ask the human to reply approve, end your turn, then run sl orchestrator approve --review <path>. Small inline work without a plan needs only the human'"'"'s yes in chat.' >&2
+elif [ "$tryout" = 1 ] && [ "$gatehit" = 1 ]; then
+  printf '%s\n' \
+    'Feature flow: the integration build waits for the human'"'"'s try-out of the prototype. Show how to try it (`sl proto tryout`), ask the human to reply "it works" or list changes, end your turn, then run `sl proto tryout --approve`. Changes go back to the prototype: `sl proto start --topic <topic>` reopens it for a fix round.' >&2
 else
   printf '%s\n' \
     'Blocked: the superlite coordinator must not write project code. Dispatch it instead:' \

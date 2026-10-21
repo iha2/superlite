@@ -50,6 +50,13 @@ build tools while the mode is human and unapproved, and always denies the model 
 In MVP mode the MVP plan (`docs/plans/<date>-<topic>.mvp.md`) and its prototype are the review plan: `approve --review` takes the
 `.mvp.md` path.
 
+In feature mode the feature plan (`docs/plans/<date>-<topic>.feature.md`) is the review plan. The try-out of the prototype is the one
+exception to "not asked again after approval": a second planned gate, feature mode only, because trying the prototype is the point of the
+flow. Ask it in plain text ("reply it works, or list the changes"), end the turn, then `sl proto tryout --approve`, which needs an
+approving reply in `human-replies.jsonl` newer than the prototype's last checkpoint (exit 3 otherwise). While `.superlite/feature.json`
+says `tryout`, the hook denies integration dispatch and `lint --stable`, `dispatch`, `wave0`, `build_prime` exit 4, as before plan
+approval. AI mode: the acceptance checks decide, as a `Ruling: [tryout]`.
+
 Small inline work (trivial or bounded, no plan) is not orchestrated: it needs only the human's yes in chat, and no review plan.
 
 After the approval the run decides on its own, like the AI orchestrator. The human is not asked about scope or interface changes: each
