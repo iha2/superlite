@@ -332,3 +332,18 @@ def test_budget_shows_the_cost_split_and_the_coordinator_hint(tmp_path):
     assert "HINT: the coordinator is" in out and "40 turns, median context 80k" in out
     small = _session_run(tmp_path / "s2" if (tmp_path / "s2").mkdir() is None else tmp_path, turns=3, ctx=1000)
     assert "HINT" not in run(BUDGET, "--plan", p, "--dir", small, cwd=tmp_path).out
+
+
+def test_report_of_reads_the_handback_when_the_stop_text_is_empty(tmp_path):
+    import sys
+    sys.path.insert(0, str(SCRIPTS))
+    import metrics
+    tr = tmp_path / "agent.jsonl"
+    tr.write_text("\n".join(json.dumps(x) for x in [
+        {"type": "assistant", "message": {"content": [{"type": "text", "text": "working"}]}},
+        {"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "SubagentHandback",
+                                                       "input": {"message": "Status: DONE. 4 tests pass"}}]}},
+    ]) + "\n", encoding="utf-8")
+    assert metrics.report_of({"last": "", "transcript": str(tr)}) == "Status: DONE. 4 tests pass"
+    assert metrics.report_of({"last": "Status: BLOCKED", "transcript": str(tr)}) == "Status: BLOCKED"  # the stop text wins
+    assert metrics.report_of({"last": "", "transcript": str(tmp_path / "missing.jsonl")}) == ""  # no transcript: no crash

@@ -82,6 +82,8 @@ for rel in files:
         parts = parts[1:]
     if parts and parts[-1] == "__init__":
         parts = parts[:-1]
+    if parts and parts[-1] == "__main__":
+        continue  # importing it runs the program (SPECs often require an unguarded sys.exit(main())); the syntax check covers it
     try:
         if parts and all(p.isidentifier() for p in parts):
             importlib.import_module(".".join(parts))
