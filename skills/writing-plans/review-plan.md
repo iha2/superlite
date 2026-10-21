@@ -24,13 +24,6 @@ reply recorded by the hook; records the path and its sha256 in `.superlite/orche
 9. `## How we will know it works`: acceptance checks a human can verify.
 10. `## Rough time and cost`: a range from the sizes, labelled rough until the machine plan is linted.
 
-## One-page form (small requests)
-
-A small request also gets a review plan before any code: one page with `## Summary`, `## What will be built` (parts table), `## How it
-fits together` (one mermaid diagram of at most 12 nodes), `## Decisions you can change` (with defaults), `## How we will know it works`
-(acceptance checks) and `## Rough time and cost` (a rough estimate). Everything else in the required list may be left out when it has
-nothing to say.
-
 ## Example (shortened)
 
 ````markdown
@@ -96,8 +89,8 @@ About 3 to 6 minutes and $1 to $2 (rough, until linted).
 - Keep each diagram at 12 nodes or fewer, with labels in plain words.
 - Quote every `subgraph` title and any label with spaces or punctuation (`subgraph W1["Wave 1, in parallel"]`), so the diagram renders.
 - Say what you assumed; keep decisions as `default | alternative`. Always list the Commits decision; if the human picks per-task commits, run `sl autocommit on` after approval.
-- Keep scope and parts exactly what the machine plan will contain: any change to scope or to an interface the human saw goes
-  back to the human as one question.
+- Keep scope and parts exactly what the machine plan will contain. After the approval the human is not asked again: a later change
+  to scope or to an interface the human saw becomes a `Ruling: [scope] ...`, listed at finish under "Changed from the approved plan".
 
 ## Do not
 - No code, no `%% taskgraph`, no `Produces`/`Consumes` lines, no `e.g.` examples, no file paths, no agent or model names.

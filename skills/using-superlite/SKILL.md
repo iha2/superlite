@@ -8,7 +8,7 @@ Superlite: parallel work, short reports.
 **Start menu.** First message, no mode named, not trivial: follow `/superlite:start`.
 
 **Size the request first.**
-- Trivial: just do it (human orchestrator: only after an approved review plan).
+- Trivial: just do it (human orchestrator: after a yes in chat).
 - Bounded (change to an existing flow): short design in chat, build.
 - Architectural: batched questions (one AskUserQuestion, up to 4), one combined design+plan doc.
 

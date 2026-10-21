@@ -37,11 +37,17 @@ unattended signal (all mean AI). When no human can answer (a headless `claude -p
   approval question may precede `approve`.
 
 ## The hard rule (human mode)
-No build starts until the human approves the first plan, small requests included. Nothing is built, dispatched or written (except the
-review plan) before the human's approving reply. The approval is asked in PLAIN TEXT, never with AskUserQuestion, because the typed reply
-is what the hook verifies: show the review plan path, a five-line summary and "Reply approve to start, or tell me what to change", then end
-the turn. Only after the reply run `approve --review`. `set human` writes `approved: false`. The hooks (coord-guard) deny code writes and
-superlite agent dispatch while the mode is human and unapproved, and deny the model writing `orchestrator.json` or `human-replies.jsonl`.
+No orchestrated build starts until the human approves the plan: nothing is linted, dispatched or sent to an agent before the human's
+approving reply. The approval is asked in PLAIN TEXT, never with AskUserQuestion, because the typed reply is what the hook verifies: show
+the review plan path, a five-line summary and "Reply approve to start, or tell me what to change", then end the turn. Only after the reply
+run `approve --review`. `set human` writes `approved: false`. The hook (`block-coordinator-edits`) denies superlite agent dispatch and the
+build tools while the mode is human and unapproved, and always denies the model writing `orchestrator.json` or `human-replies.jsonl`.
+
+Small inline work (trivial or bounded, no plan) is not orchestrated: it needs only the human's yes in chat, and no review plan.
+
+After the approval the run decides on its own, like the AI orchestrator. The human is not asked about scope or interface changes: each
+one is recorded as `Ruling: [scope] <decision> - <why> - <cost if wrong>`, and `sl finish` lists them under "Changed from the approved
+plan". Destructive, outward and security-sensitive actions still follow the SDD "Stop conditions".
 
 ## Benchmarks
 Every prompt file under `bench/` (`prompt*.md`, `tasks/*/prompt*.md`) ends with `Orchestrator: AI, do not ask me to choose or to approve.`

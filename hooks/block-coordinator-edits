@@ -4,10 +4,10 @@
 #  1. Protected files, in every state: .superlite/orchestrator.json (changed only by `sl orchestrator`)
 #     and .superlite/human-replies.jsonl (written only by hooks/record-human-reply) are never written
 #     by the model.
-#  2. HUMAN-UNAPPROVED (.superlite/orchestrator.json has mode human and approved false): nothing
-#     builds until the human approves the plan. Allowed writes: docs/plans/*.review.md and
-#     .superlite/** (minus the protected files); Agent calls of superlite:* and general-purpose and
-#     sl dispatch/assign/wave0/commit_task/finish/build_prime/run_tests are denied.
+#  2. HUMAN-UNAPPROVED (.superlite/orchestrator.json has mode human and approved false): nothing is
+#     orchestrated until the human approves the review plan. Agent calls of superlite:* and
+#     general-purpose and sl dispatch/assign/wave0/commit_task/finish/build_prime are denied. File
+#     writes are not: small inline work needs only the human's yes in chat, not a review plan.
 #  3. Active run (.superlite/stable.json, prime.md or pool.json exists): project code is not written
 #     by the coordinator; allowed targets are docs/plans/**, SPEC*.md, docs/**/*.md and .superlite/**.
 # Bash/PowerShell write detection is best-effort; when unsure, allow. Sessions without a .superlite
@@ -56,7 +56,7 @@ if [ -f "$sd/orchestrator.json" ]; then
   [[ $oj =~ $re_human && $oj =~ $re_unappr ]] && human=1
 fi
 enforce=0
-{ [ "$active" = 1 ] || [ "$human" = 1 ]; } && enforce=1
+[ "$active" = 1 ] && enforce=1   # human-unapproved alone blocks orchestration, not file writes
 
 if [ "$tool" = Agent ] || [ "$tool" = Task ]; then
   [ "$human" = 1 ] || exit 0
@@ -81,10 +81,6 @@ project_code() {
   case "$rel" in ''|.|..|../*) return 1 ;; esac
   pl="${rel,,}"
   case "$pl" in .superlite/human-replies.jsonl|.superlite/orchestrator.json) prot=1; return 0 ;; esac
-  if [ "$human" = 1 ]; then
-    case "$rel" in docs/plans/*.review.md|.superlite/*) return 1 ;; esac
-    return 0
-  fi
   [ "$active" = 1 ] || return 1
   case "$rel" in
     docs/plans/*|docs/*.md|SPEC*.md|*/SPEC*.md|.superlite/*) return 1 ;;
@@ -105,7 +101,7 @@ elif [ -z "$hit" ]; then
   mentions=0
   [[ $lc == *human-replies.jsonl* || $lc == *orchestrator.json* ]] && mentions=1
   # sl tools that start a build are denied until the plan is approved.
-  re_sl='(sl|\$SL|\$\{SL\}|scripts/sl)"?[[:space:]]+(dispatch|assign|wave0|commit_task|finish|build_prime|run_tests)([[:space:]]|$)'
+  re_sl='(sl|\$SL|\$\{SL\}|scripts/sl)"?[[:space:]]+(dispatch|assign|wave0|commit_task|finish|build_prime)([[:space:]]|$)'
   if [ "$human" = 1 ] && [[ $cmd =~ $re_sl ]]; then hit="sl ${BASH_REMATCH[2]}"; fi
   # Inline interpreter writers (checked on the full text, heredoc bodies included).
   re_interp='(^|[^[:alnum:]_])(python[0-9.]*|node|ruby|php)([[:space:]]|$)'
@@ -171,7 +167,7 @@ if [ "$prot" = 1 ]; then
     'Blocked: .superlite/orchestrator.json and .superlite/human-replies.jsonl are never written directly. Change the orchestrator state only with `sl orchestrator ...` (for example `sl orchestrator approve --review <path>`); human-replies.jsonl is written only by the hook that records the human'"'"'s replies.' >&2
 elif [ "$human" = 1 ]; then
   printf '%s\n' \
-    'Human orchestrator: no build starts until the human approves the plan. Write the review plan docs/plans/<date>-<topic>.review.md (see skills/writing-plans/review-plan.md), show its path with a five-line summary, ask the human to reply approve, end your turn, then run sl orchestrator approve --review <path>.' >&2
+    'Human orchestrator: no build is orchestrated until the human approves the plan. Write the review plan docs/plans/<date>-<topic>.review.md (see skills/writing-plans/review-plan.md), show its path with a five-line summary, ask the human to reply approve, end your turn, then run sl orchestrator approve --review <path>. Small inline work without a plan needs only the human'"'"'s yes in chat.' >&2
 else
   printf '%s\n' \
     'Blocked: the superlite coordinator must not write project code. Dispatch it instead:' \

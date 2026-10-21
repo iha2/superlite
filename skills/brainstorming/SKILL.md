@@ -11,7 +11,7 @@ Turn a request into an approved design with as little ceremony as the request al
 
 Announce it: "This looks bounded, so I'll ask one batch of questions and show a short design here." The user can override.
 
-- **Trivial** (a few tool calls: a typo, a rename, a one-line fix): do it. Exit this skill. With a human orchestrator nothing is built, not even a small request, before the human approves a review plan (a one-page form for small ones).
+- **Trivial** (a few tool calls: a typo, a rename, a one-line fix): do it. Exit this skill. With a human orchestrator, say the change in one line and wait for the human's yes in chat; only an orchestrated build needs a review plan.
 - **Bounded** (a change to a flow that already exists in the repo): short in-chat design, one approval.
 - **Architectural** (a new project or subsystem, or changes to interfaces others depend on): one combined design and plan doc, one approval.
 - **Spike** ("can we...", "is it possible...", throwaway is fine): say what you will try in 2 sentences and try it. The output is an answer, not code you keep.

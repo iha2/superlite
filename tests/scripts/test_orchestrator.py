@@ -295,15 +295,17 @@ def test_texts_state_the_hard_rule_plain_text_approval_and_the_small_form():
     for text in (plans, brain):
         assert "not AskUserQuestion" in text and "END THE TURN" in text
         assert "Reply approve to start, or tell me what to change" in text
-    assert "Nothing is built, dispatched or written except this file" in plans and "small requests too" in plans
-    assert "even a small request" in brain and "approved review plan" in (skills / "using-superlite" / "SKILL.md").read_text(encoding="utf-8")
+    assert "Nothing is built, dispatched or written except this file" in plans and "small requests too" not in plans
+    assert "yes in chat" in brain and "yes in chat" in (skills / "using-superlite" / "SKILL.md").read_text(encoding="utf-8")
+    assert "Ruling: [scope]" in plans and "Changed from the approved plan" in plans and "goes back to the human" not in plans
     assert "before the human's approving reply" in sdd and "plain text" in sdd
     assert "human-replies.jsonl" in ref and "exit 3" in ref and "The hard rule (human mode)" in ref
-    assert "## One-page form (small requests)" in review and "Reply approve to start" in review
+    assert "One-page form" not in review and "Reply approve to start" in review and "Ruling: [scope]" in review
+    assert "Small inline work" in ref and "Changed from the approved" in ref and "coord-guard" not in ref
     assert "the orchestrator-choice" not in brain  # the choice itself stays an AskUserQuestion batch
     assert "ONE `AskUserQuestion` call" in brain and "Human orchestrator: I approve the plan before it runs" in brain
 
 
 def test_readme_has_the_human_mode_sentence():
     readme = (REPO / "README.md").read_text(encoding="utf-8")
-    assert "nothing is built, dispatched or written (except the review plan) until you reply approve" in readme
+    assert "nothing is linted, dispatched or sent to an agent until you reply approve" in readme and "you are not asked again" in readme

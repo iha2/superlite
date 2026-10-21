@@ -145,6 +145,14 @@ def checkpoint_note(ledger):  # O(files) + git spawns; [] unless this run took h
             "to discard the checkpoints: `sl autocommit clean`"]
 
 
+SCOPE_TAG = re.compile(r"^\[scope\]\s*", re.I)  # O(1)
+
+
+def scope_rulings(rulings):  # O(G)
+    """Rulings tagged `[scope]`: a change to scope or to an interface the human approved, made without asking."""
+    return [SCOPE_TAG.sub("", r) for r in rulings if SCOPE_TAG.match(r)]  # O(G)
+
+
 def summary(ledger, log, lint_log=DEFAULT_LINT_LOG, plan=None, sl_dir=None):  # O(R*w + I*w + C + G)
     rulings, commits, tests = read_ledger(ledger)  # O(R*w)
     incidents = open_incidents(log)  # O(I*w)
@@ -157,6 +165,11 @@ def summary(ledger, log, lint_log=DEFAULT_LINT_LOG, plan=None, sl_dir=None):  # 
     out.append(f"rulings: {len(rulings)}")  # O(1)
     out += [f"- {r}" for r in rulings]  # O(G)
     out.append("")  # O(1)
+    changed = scope_rulings(rulings)  # O(G)
+    if changed:  # the human is not asked mid-run, so every scope or interface change is surfaced here | O(1)
+        out.append(f"Changed from the approved plan: {len(changed)}")  # O(1)
+        out += [f"- {r}" for r in changed]  # O(G)
+        out.append("")  # O(1)
     if tests:  # O(1)
         mode, p, f, s, sec = tests  # O(1)
         out.append(f"tests ({mode}): {p} passed, {f} failed, {s} skipped in {sec}s")  # O(1)

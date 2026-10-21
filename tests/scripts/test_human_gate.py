@@ -13,7 +13,7 @@ REPLY = ROOT / "hooks" / "record-human-reply"
 _GIT_BASH = r"C:\Program Files\Git\bin\bash.exe"
 BASH = _GIT_BASH if os.name == "nt" and os.path.exists(_GIT_BASH) else shutil.which("bash")
 
-NEXT = "Human orchestrator: no build starts until the human approves the plan."
+NEXT = "Human orchestrator: no build is orchestrated until the human approves the plan."
 
 
 def make(tmp_path, state):
@@ -43,13 +43,18 @@ def bash(proj, cmd):
     return guard(proj, "Bash", {"command": cmd})
 
 
-def test_human_denies_code_writes(human):
+def test_human_allows_inline_code_writes(human):
+    # Small inline work needs only the human's yes in chat: before approval only orchestration is blocked.
     for tool, ti in (("Write", {"file_path": str(human / "hello.txt")}), ("Edit", {"file_path": "src/a.py"}),
                      ("NotebookEdit", {"notebook_path": "n.ipynb"}), ("Write", {"file_path": "SPEC.md"}),
                      ("Write", {"file_path": "docs/guide.md"}), ("Write", {"file_path": "docs/plans/p.md"})):
-        r = guard(human, tool, ti)
-        assert r.returncode == 2, (tool, ti)
-        assert NEXT in r.stderr and "sl orchestrator approve --review" in r.stderr
+        assert guard(human, tool, ti).returncode == 0, (tool, ti)
+
+
+def test_human_denial_names_the_review_plan_and_the_inline_path(human):
+    r = bash(human, 'bash "$SL" dispatch implementer t1')
+    assert r.returncode == 2
+    assert NEXT in r.stderr and "sl orchestrator approve --review" in r.stderr and "yes in chat" in r.stderr
 
 
 def test_human_allows_review_plan_and_state_files(human):
@@ -60,9 +65,8 @@ def test_human_allows_review_plan_and_state_files(human):
 
 
 @pytest.mark.parametrize("cmd", [
-    "echo hi > hello.txt", "sed -i s/a/b/ src/a.py", "echo x | tee hello.txt", "touch x; echo a >> y.py",
-    "python3 -c \"open('hello.txt','w').write('hi')\"", "git apply p.patch", "rm src/a.py",
-    'bash "$SL" dispatch implementer t1', "sl assign t1", 'bash "$SL" wave0', 'bash "$SL" run_tests --full',
+    'bash "$SL" dispatch implementer t1', "sl assign t1", 'bash "$SL" wave0', 'bash "$SL" build_prime --plan p.md',
+    'bash "$SL" commit_task T1', 'bash "$SL" finish --plan p.md',
 ])
 def test_human_denies_bash_builds(human, cmd):
     r = bash(human, cmd)
@@ -71,7 +75,9 @@ def test_human_denies_bash_builds(human, cmd):
 
 
 @pytest.mark.parametrize("cmd", [
-    "ls", "git status", "cat README.md", "grep -rn x .", "python3 -m pytest -q",
+    "ls", "git status", "cat README.md", "grep -rn x .", "python3 -m pytest -q", 'bash "$SL" run_tests --full',
+    "echo hi > hello.txt", "sed -i s/a/b/ src/a.py", "echo x | tee hello.txt", "touch x; echo a >> y.py",
+    "python3 -c \"open('hello.txt','w').write('hi')\"", "git apply p.patch", "rm src/a.py",
     'bash "$SL" orchestrator approve --review docs/plans/a.review.md', "sl orchestrator status",
     'bash "$SL" next_tasks', "echo hi > .superlite/progress.md",
 ])

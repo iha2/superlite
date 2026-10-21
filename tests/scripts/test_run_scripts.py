@@ -471,6 +471,29 @@ def test_finish_collects_rulings(tmp_path):
     assert run("finish", "--ledger", ledger, "--log", log).stdout == out   # deterministic
 
 
+def test_finish_lists_scope_rulings_as_changes_from_the_approved_plan(tmp_path):
+    ledger = tmp_path / "progress.md"
+    ledger.write_text(
+        "Ruling: keep the CLI flag names\n"
+        "Ruling: [scope] drop CSV export - spec section 4 conflicts with 2 - cost if wrong: one task\n"
+        "- **Ruling:** [SCOPE] rename parse() to parse_text() - clashes with stdlib - cost if wrong: re-run\n",
+        encoding="utf-8")
+    r = run("finish", "--ledger", ledger, "--log", tmp_path / "none.jsonl")
+    assert r.returncode == 0, r.stderr
+    out = r.stdout
+    assert "rulings: 3" in out and "Changed from the approved plan: 2" in out
+    block = out.split("Changed from the approved plan: 2", 1)[1].split("\n\n", 1)[0]
+    assert "- drop CSV export" in block and "- rename parse() to parse_text()" in block
+    assert "CLI flag names" not in block
+
+
+def test_finish_without_scope_rulings_prints_no_change_block(tmp_path):
+    ledger = tmp_path / "progress.md"
+    ledger.write_text("Ruling: keep the CLI flag names\n", encoding="utf-8")
+    out = run("finish", "--ledger", ledger, "--log", tmp_path / "none.jsonl").stdout
+    assert "Changed from the approved plan" not in out
+
+
 def test_finish_with_nothing_recorded(tmp_path):
     r = run("finish", "--ledger", tmp_path / "none.md", "--log", tmp_path / "none.jsonl")
     assert r.returncode == 0
