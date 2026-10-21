@@ -1,4 +1,4 @@
-"""`sl wave0`: the Wave 0 brief built from the plan alone, language-neutral; T0 in dispatch and commit_task."""
+"""`sl wave0`: the Wave 0 brief built from the plan alone, language-neutral; T0 in dispatch and checkpoint."""
 from __future__ import annotations
 
 import json
@@ -8,7 +8,7 @@ from test_plan_tools import SCRIPTS, run
 from test_stable_split import DISPATCH
 
 WAVE0 = SCRIPTS / "wave0.py"
-COMMIT = SCRIPTS / "commit_task.py"
+COMMIT = SCRIPTS / "checkpoint.py"
 
 HEAD = """# Plan
 **Goal:** build it.
@@ -120,7 +120,7 @@ def test_dispatch_lists_t0_first_until_committed(tmp_path):
     assert "T0" not in run(DISPATCH, "--plan", p, "--pool", tmp_path / "pool.json", "--ledger", tmp_path / "l.md", cwd=tmp_path).out
 
 
-def test_commit_task_t0_takes_its_files_not_other_tasks(tmp_path):
+def test_checkpoint_t0_takes_its_files_not_other_tasks(tmp_path):
     def git(*a):
         subprocess.run(["git", *a], cwd=tmp_path, check=True, capture_output=True)
     git("init", "-q")

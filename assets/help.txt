@@ -139,6 +139,9 @@
    superlite never commits on its own. Finished tasks are hidden checkpoints
    under refs/superlite/*. Run /superlite:commit to turn them into one commit
    per task, or `sl autocommit on` before a build for real commits as it goes.
+   A checkpoint is a hidden save of one task under refs/superlite/*; a commit
+   is a real git commit on your branch, made only by /superlite:commit or
+   `sl autocommit on`.
 
  ------------------------------------------------------------------------------
  TIPS

@@ -487,7 +487,7 @@ def flow_metrics(events: list[dict], t0: float, last_t: float | None, coordinato
     predictions) come back as None or 0 and never raise.
 
     `incident_log` is the run's .superlite/incidents.jsonl (what incident.py, pt_review contract,
-    probe_run and commit_task wrote); `prime_bytes` is .superlite/prime.md (what build_prime.py
+    probe_run and checkpoint wrote); `prime_bytes` is .superlite/prime.md (what build_prime.py
     wrote). When given they are the source for incident counts, seam checks and the prime hash;
     otherwise those come from the commands and prompts in the stream."""
     stamped = any(_ts(e) is not None for e in events)

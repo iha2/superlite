@@ -45,7 +45,7 @@ def write(repo, rel, text):
 
 
 def checkpoint(repo, *tasks):
-    return run("commit_task", *tasks, "--plan", "plan.md", cwd=repo)
+    return run("checkpoint", *tasks, "--plan", "plan.md", cwd=repo)
 
 
 def snapshot(repo):
@@ -86,7 +86,7 @@ def test_checkpoint_leaves_branch_index_and_tree_alone(tmp_path):
     refs = git(repo, "for-each-ref", "--format=%(refname) %(objectname)", "refs/superlite").split("\n")
     assert len(refs) == 1 and refs[0].endswith(f"/T1 {sha}")
     ledger = (repo / ".superlite" / "progress.md").read_text(encoding="utf-8")
-    assert f"commit T1 {sha[:10]} parser" in ledger
+    assert f"- checkpoint T1 {sha[:10]} parser" in ledger
     assert git(repo, "rev-list", "--count", "HEAD") == "1"
 
 
@@ -157,7 +157,7 @@ def test_autocommit_on_makes_a_real_commit_and_no_refs(tmp_path):
     repo = make_repo(tmp_path)
     write(repo, "src/a.py", "def parse(t):\n    return t.split()\n")
     write(repo, "tests/test_a.py", "def test_p():\n    assert 1\n")
-    r = run("commit_task", "T1", "--plan", "plan.md", cwd=repo, env={**ENV, "SUPERLITE_AUTOCOMMIT": "1"})
+    r = run("checkpoint", "T1", "--plan", "plan.md", cwd=repo, env={**ENV, "SUPERLITE_AUTOCOMMIT": "1"})
     assert r.returncode == 0, r.stdout + r.stderr
     assert r.stdout.strip() == git(repo, "rev-parse", "HEAD")
     assert git(repo, "for-each-ref", "refs/superlite") == ""

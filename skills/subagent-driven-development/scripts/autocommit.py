@@ -5,10 +5,10 @@
     autocommit.py apply      make real commits on the current branch from the checkpoints
     autocommit.py clean      delete refs/superlite/* and the checkpoint state
 
-Default is OFF: commit_task then records a shadow checkpoint commit (never on HEAD, the
+Default is OFF: `sl checkpoint` then records a hidden checkpoint (never on HEAD, the
 branch or the user's index) under refs/superlite/<run>/<Tn> and the work stays uncommitted
-in the tree. `on` (or SUPERLITE_AUTOCOMMIT=1, which overrides the file) makes commit_task
-commit on the current branch as before. State: .superlite/autocommit.json and
+in the tree. `on` (or SUPERLITE_AUTOCOMMIT=1, which overrides the file) makes `sl checkpoint`
+make a real commit on the current branch. State: .superlite/autocommit.json and
 .superlite/checkpoints.json. Stdlib only; commits use the user's git identity, no trailers.
 """
 import json
@@ -114,7 +114,7 @@ def dirty_outside(files):
     for e in r.stdout.split("\0"):
         if len(e) > 3:
             p = e[3:].replace("\\", "/")
-            if not p.endswith(".pyc") and p not in files and not gitignore.ignored(p):  # commit_task's never-blocking list
+            if not p.endswith(".pyc") and p not in files and not gitignore.ignored(p):  # checkpoint's never-blocking list
                 bad.append(p)
     return bad
 

@@ -66,7 +66,7 @@ def test_human_allows_review_plan_and_state_files(human):
 
 @pytest.mark.parametrize("cmd", [
     'bash "$SL" dispatch implementer t1', "sl assign t1", 'bash "$SL" wave0', 'bash "$SL" build_prime --plan p.md',
-    'bash "$SL" commit_task T1', 'bash "$SL" finish --plan p.md',
+    'bash "$SL" checkpoint T1', 'bash "$SL" commit_task T1', 'bash "$SL" finish --plan p.md',
 ])
 def test_human_denies_bash_builds(human, cmd):
     r = bash(human, cmd)

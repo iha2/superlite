@@ -51,7 +51,7 @@ from pathlib import Path  # O(1)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # O(path list)
 import _pyrun as pyrun  # noqa: E402  # O(1) module load
 import testcmd  # noqa: E402  # O(1) module load
-import commit_task as ct  # noqa: E402  # O(1) module load
+import checkpoint as ct  # noqa: E402  # O(1) module load
 import next_tasks as nt  # noqa: E402  # O(1) module load
 import testprobe as tp  # noqa: E402  # O(1) module load
 

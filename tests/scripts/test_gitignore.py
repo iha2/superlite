@@ -1,5 +1,5 @@
 """Generated-folder handling: config/gitignore.json, the .gitignore wave0 writes, the never-blocking list in
-commit_task, the grouped out-of-scope incidents, the plan's `**Ignore:**` line, and the slim prime's ignored-paths list."""
+checkpoint, the grouped out-of-scope incidents, the plan's `**Ignore:**` line, and the slim prime's ignored-paths list."""
 from __future__ import annotations
 
 import json
@@ -127,7 +127,7 @@ def test_lint_notes_a_missing_ignore_line_and_never_fails(tmp_path):
     assert "**Ignore:**" not in pt("lint", "--plan", q).out
 
 
-# ------------------------------------------------------------------ commit_task
+# ------------------------------------------------------------------- checkpoint
 
 def ts_repo(tmp_path, plan_stack="**Tech stack:** TypeScript"):
     init_repo(tmp_path)
@@ -137,7 +137,7 @@ def ts_repo(tmp_path, plan_stack="**Tech stack:** TypeScript"):
     return p
 
 
-def test_commit_task_ignores_untracked_dependency_folders_without_a_gitignore(tmp_path):
+def test_checkpoint_ignores_untracked_dependency_folders_without_a_gitignore(tmp_path):
     p = ts_repo(tmp_path)
     for i in range(60):
         write(tmp_path, f"node_modules/pkg{i % 6}/file{i}.js")
@@ -150,7 +150,7 @@ def test_commit_task_ignores_untracked_dependency_folders_without_a_gitignore(tm
     assert not (tmp_path / ".superlite" / "incidents.jsonl").exists()
 
 
-def test_commit_task_never_blocks_on_the_plans_ignore_entries(tmp_path):
+def test_checkpoint_never_blocks_on_the_plans_ignore_entries(tmp_path):
     p = ts_repo(tmp_path, "**Tech stack:** TypeScript\n**Ignore:** local-db/, .env, *.sqlite")
     write(tmp_path, "local-db/a.dat")
     write(tmp_path, ".env")
@@ -164,13 +164,13 @@ def test_commit_task_never_blocks_on_the_plans_ignore_entries(tmp_path):
 
 
 def test_ignored_matches_every_language_but_not_source():
-    import commit_task
+    import checkpoint
     for path in ("node_modules/a/b.js", "pkg/node_modules/x.js", "target/debug/x", ".venv/lib/x.py", "a/__pycache__/m.pyc",
                  "obj/Debug/x.dll", "bin/x", ".gradle/x", "vendor/bundle/gems/x.rb", ".superlite/progress.md", "x/.DS_Store", "lib.pyc"):
-        assert commit_task.ignored(path), path
+        assert checkpoint.ignored(path), path
     for path in ("src/slug.ts", "vendor/lib/x.go", "binary/x", "docs/dist.md", "src/node_modules_notes.md"):
-        assert not commit_task.ignored(path), path
-    assert {".superlite/", "__pycache__/", "node_modules/", "target/"} <= set(commit_task.IGNORED_PARTS)
+        assert not checkpoint.ignored(path), path
+    assert {".superlite/", "__pycache__/", "node_modules/", "target/"} <= set(checkpoint.IGNORED_PARTS)
 
 
 def test_out_of_scope_incidents_are_one_row_per_top_level_directory(tmp_path):
@@ -264,10 +264,10 @@ def test_unowned_files_in_ignored_folders_do_not_block_even_when_neighbours_are_
 
 
 def test_run_bookkeeping_is_never_staged_even_if_a_task_owns_its_folder(tmp_path):
-    import commit_task
-    keep = commit_task.claims([".superlite/", "dist/"])
-    assert keep(".superlite/progress.md") and keep("dist/a.js") and commit_task.hard_ignored(".superlite/progress.md")
-    assert not commit_task.hard_ignored("dist/a.js") and not commit_task.claims(["**/types.*"])("node_modules/x/types.d.ts")
+    import checkpoint
+    keep = checkpoint.claims([".superlite/", "dist/"])
+    assert keep(".superlite/progress.md") and keep("dist/a.js") and checkpoint.hard_ignored(".superlite/progress.md")
+    assert not checkpoint.hard_ignored("dist/a.js") and not checkpoint.claims(["**/types.*"])("node_modules/x/types.d.ts")
 
 
 def test_wave0_does_not_ignore_what_a_task_owns(tmp_path):

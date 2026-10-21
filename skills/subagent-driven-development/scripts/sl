@@ -4,7 +4,7 @@
 # superlite tool launcher: bash on every platform (Git Bash on Windows), no .cmd wrappers.
 #   bash <skill-dir>/scripts/sl <tool> [args...]
 # <tool> is a script name without extension: incident, plan_tools, predict, pt_review,
-# next_tasks, assign, dispatch, task, wave0, routing, metrics, history, report, budget, run_tests, commit_task, build_prime, finish, graphify_gate,
+# next_tasks, assign, dispatch, task, wave0, routing, metrics, history, report, budget, run_tests, checkpoint (old name commit_task), build_prime, finish, graphify_gate,
 # orchestrator, autocommit, testcmd, testprobe, shape, gitignore, tail, suggest_flow, proto, mvp_check,
 # or probe_run (in ../probes). A tool with a .sh file runs under bash; a .py tool runs
 # under one Python start:

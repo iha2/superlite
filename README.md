@@ -56,7 +56,7 @@ Plain words work just as well; the commands are shortcuts.
 - **Human orchestrator.** You get a plain-language review plan with diagrams (a `.review.md`, about two pages, with a rough time and cost), and nothing is linted, dispatched or sent to an agent until you reply approve. After that you are not asked again: any change to scope is recorded as a ruling and listed at the end under "Changed from the approved plan". Small inline work needs only your yes in chat.
 - **AI orchestrator.** It plans, lints, dispatches and rules on open choices itself, with no review plan and no questions.
 
-Both stop for destructive, outward (push, merge, publish) or security-sensitive actions, and nothing is committed unless you ask: finished tasks are kept as hidden checkpoints until you run `/superlite:commit`.
+Both stop for destructive, outward (push, merge, publish) or security-sensitive actions, and nothing is committed unless you ask: finished tasks are kept as hidden checkpoints until you run `/superlite:commit`. A checkpoint is a hidden save of one task under `refs/superlite/*`; a commit is a real git commit on your branch, made only by `/superlite:commit` or `sl autocommit on`.
 
 ### Watch a run
 
