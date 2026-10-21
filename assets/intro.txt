@@ -1,0 +1,43 @@
+                        o
+                      o/|
+                    o/ o|           s u p e r l i t e
+                  o/ o/ |           parallel builds, short reports
+                o/ o/ o |           v1.1.0
+              o/ o/ o/  |
+             / o/ o/   /            A Claude Code plugin: Opus plans,
+            | o/ o/   /             Sonnet and Haiku build in parallel,
+            |o/ o/   /              scripts and hooks hold the rules.
+            |/ o/  /
+            | o/ /
+            |/ /
+            //
+           /
+ ------------------------------------------------------------------------------
+  HOW A BUILD RUNS
+
+   you ask --> Opus plans --> [you approve] --> lint --> parallel build --+
+                              (human mode)    (gate)   Haiku first,       |
+                                                       Sonnet the rest    |
+   report <-- fixes by tier <-- final review <-- background tests <-------+
+   (time, cost,                 (one fresh        (never block the
+    projected vs actual)         reviewer)         coordinator)
+
+   Nothing is committed unless you ask: work is kept as hidden checkpoints.
+ ------------------------------------------------------------------------------
+  START                                     WHO DECIDES
+   /superlite:start [mode] [what]  menu       /superlite:human   you approve the
+   /superlite:mvp <what>   prototype first                       plan first
+   /superlite:feature <change>  existing code /superlite:ai      hands off
+   /superlite:debug <bug>  root cause first   /superlite:approve [plan]  go
+   /superlite:small <change>  inline, quick
+
+  DURING A BUILD                            AFTER
+   /superlite:status   where it stands        /superlite:review [branch]
+   /superlite:stop     stop dispatching       /superlite:report [plan] [full]
+   /superlite:resume   pick up again          /superlite:commit  checkpoints
+                                                                 -> commits
+  SETUP                                       /superlite:finish  merge or PR,
+   /superlite:setup    first-run check                           never pushes
+ ------------------------------------------------------------------------------
+  Or just say it: "build X", "I will approve the plan", "fix this bug".
+  This screen again: /superlite:intro      Every detail: /superlite:help

@@ -1,0 +1,133 @@
+ superlite help                                                         v1.1.0
+ ==============================================================================
+
+ WHAT IT IS
+   A Claude Code plugin for hand-off builds. Opus plans. Sonnet and Haiku
+   agents build the tasks in parallel. Scripts and hooks enforce the rules,
+   so a build runs the same way every time and is measured when it ends.
+   Any project language works; the superlite tools need Python 3.10+.
+
+ ------------------------------------------------------------------------------
+ MODES                                    (pick one with /superlite:start)
+
+   regular   Something new. Opus writes a design and a task-graph plan.
+             /superlite:start regular build a markdown site generator
+   mvp       Smallest working version first. Opus writes a feature plan and a
+             clickable HTML prototype you edit in the browser, then builds
+             what you kept.          /superlite:mvp a habit tracker
+   feature   A change to existing code. Reads the code and its seams first.
+             /superlite:feature add CSV export to the report page
+   debug     Root cause first, then a fix with a regression test.
+             /superlite:debug test_parse_dates fails on Windows
+   small     A few files, done inline without the planning flow.
+             /superlite:small rename build to render everywhere
+
+ ------------------------------------------------------------------------------
+ WHO DECIDES
+
+   Human orchestrator  (/superlite:human)
+     You get a plain-language review plan with diagrams, a rough time and
+     cost. Nothing is linted, dispatched or sent to an agent until you reply
+     "approve" (then /superlite:approve runs, or superlite runs it). After
+     that you are not asked again: any change to scope is recorded as a
+     ruling and listed at the end under "Changed from the approved plan".
+     Small inline work needs only your "yes" in chat.
+
+   AI orchestrator  (/superlite:ai, or say "decide yourself")
+     No review plan and no questions. Open choices become recorded rulings.
+
+   Both modes stop for destructive, outward (push, merge, publish) or
+   security-sensitive actions: AI mode defers them and lists them.
+
+ ------------------------------------------------------------------------------
+ HOW A BUILD RUNS
+
+   1. Plan        Opus writes the design and the task graph: tasks, the files
+                  each owns, interfaces, examples, sizes.
+   2. Approve     Human mode only: you approve the review plan.
+   3. Lint        `lint --stable` checks the plan. Stable tasks go out at
+                  once; tasks marked FIX are patched and sent when stable.
+   4. Wave 0      Haiku builds the skeleton and stubs first.
+   5. Build       Every ready task starts at once: Haiku for small mechanical
+                  tasks off the critical path, Sonnet for the rest. Each agent
+                  reads a small prime, then its own task text.
+   6. Checkpoint  A finished task is saved as a hidden checkpoint, and probes
+                  and seam checks start in the background.
+   7. Tests       Always in the background. A hung test is reported as
+                  SUSPECT HANG, never left to look like a slow run.
+   8. Review      Package reviewers fix what they find. One fresh final
+                  reviewer reads a review packet and lists findings by tier.
+   9. Fix         Fixers by tier: Sonnet, Sonnet high effort, then Opus. A
+                  tier that fails twice escalates.
+  10. Finish      A report: time and cost, projected against actual, the
+                  rulings made, and the tests. Nothing is pushed.
+
+ ------------------------------------------------------------------------------
+ COMMANDS
+
+   /superlite:intro                 The short intro screen.
+   /superlite:help                  This page.
+   /superlite:start [mode] [what]   Menu: mode and who decides, then start.
+   /superlite:mvp <what>            MVP mode, prototype first.
+   /superlite:feature <change>      Feature mode on existing code.
+   /superlite:debug <bug>           Debug mode.
+   /superlite:small <change>        Small inline change, with a reviewer.
+   /superlite:human                 Switch to the human orchestrator.
+   /superlite:ai                    Switch to the AI orchestrator.
+   /superlite:approve [plan]        Approve the review plan so the build runs.
+   /superlite:status                Mode, approval, task progress, budget.
+   /superlite:stop                  Stop dispatching new tasks, report state.
+   /superlite:resume [plan]         Resume an interrupted build.
+   /superlite:review [branch]       Review and harden an existing branch.
+   /superlite:report [plan] [full]  Build reports: summary, full, history.
+   /superlite:commit                Turn hidden checkpoints into commits,
+                                    one per task, after you confirm.
+   /superlite:finish                Verify, then offer merge or PR options.
+   /superlite:setup                 First-run check: toolchain, test command,
+                                    model tiers, plugin conflicts.
+
+ ------------------------------------------------------------------------------
+ WHO RUNS ON WHICH MODEL
+
+   Coordinator and planning      Opus
+   Implementers                  Sonnet; Haiku for mechanical tasks
+   Package reviewers             Sonnet, fix their own findings
+   Final reviewer                Opus, findings only, never edits
+   Fixers                        Sonnet, Sonnet high, Opus by tier
+
+ ------------------------------------------------------------------------------
+ RULES HELD BY CODE, NOT BY PROMPTS
+
+   The coordinator never writes project code     block-coordinator-edits
+   No build before you approve (human mode)       block-coordinator-edits,
+                                                  record-human-reply
+   Raw test runs become background runs           rewrite-test-runs
+   No killing processes by name                   block-unsafe-kill
+   A plan must lint before work starts            lint --stable
+   Same plan, same model tiers                    routing.json
+   Every run is measured                          capture hooks, history
+
+ ------------------------------------------------------------------------------
+ WHERE THINGS ARE
+
+   docs/plans/<date>-<topic>.md          the plan (.review.md in human mode,
+                                         .mvp.md in MVP mode)
+   <plan>.report.md                      the build report
+   .superlite/                           run state: ledger, metrics, tests,
+                                         incidents (never committed)
+   ~/.superlite/history.jsonl            every run, used to tune predictions
+
+ ------------------------------------------------------------------------------
+ COMMITS
+
+   superlite never commits on its own. Finished tasks are hidden checkpoints
+   under refs/superlite/*. Run /superlite:commit to turn them into one commit
+   per task, or `sl autocommit on` before a build for real commits as it goes.
+
+ ------------------------------------------------------------------------------
+ TIPS
+
+   - Say it in plain words if you prefer; the commands are shortcuts.
+   - Do not enable superpowers in the same project: both inject session
+     context and share skill names. /superlite:setup checks this.
+   - Tell superlite you are away and it runs as the AI orchestrator.
