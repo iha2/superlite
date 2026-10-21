@@ -14,3 +14,7 @@ The README covers what superlite is, the results, and how to install and use it.
 | [Example review plan](example-review-plan.md) | What a human orchestrator is shown before approving a build |
 | [MVP flow](mvp-flow.md) | Design of MVP mode: feature plan, clickable prototype, then the normal build |
 | [Benchmark report](benchmark-report.md) | The full comparison table and observations |
+| [Current architecture](specs/2026-10-19-superlite-architecture-current.md) | The whole system on one page, with the model for each role and what is still being built |
+| [superlite vs superpowers](specs/2026-10-19-superlite-vs-superpowers.md) | Detailed comparison with diagrams and the benchmark numbers |
+| [Specs](specs/) | Design documents: architecture, flows, language adapters, the cost baseline, the coordinator-model decision |
+| [Plans](plans/) | Implementation plans, including the cost-parity and coordinator-health plans |

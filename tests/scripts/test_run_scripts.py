@@ -634,3 +634,14 @@ def test_finish_flags_stable_task_held_across_a_patch(tmp_path):
 def test_finish_unblocked_without_lint_log(tmp_path):
     r = run("finish", "--ledger", tmp_path / "none.md", "--log", tmp_path / "none.jsonl")
     assert "unblocked: no lint log recorded" in r.stdout
+
+
+def test_import_check_skips_main_modules_it_would_run(tmp_path, monkeypatch):
+    import commit_task as ct
+    (tmp_path / "src" / "pkg").mkdir(parents=True)
+    (tmp_path / "src" / "pkg" / "__init__.py").write_text("", encoding="utf-8")
+    (tmp_path / "src" / "pkg" / "__main__.py").write_text("import sys\nsys.exit(2)\n", encoding="utf-8")  # an unguarded entry point
+    (tmp_path / "src" / "pkg" / "bad.py").write_text("raise RuntimeError('boom')\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    errs = ct.import_errors(["src/pkg/__main__.py", "src/pkg/bad.py"])
+    assert [e[0] for e in errs] == ["src/pkg/bad.py"]  # the real import failure still blocks; __main__ is not run

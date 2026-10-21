@@ -34,6 +34,26 @@ content="${content}"$'
 
 '"Project state: ${state}."  # O(s)
 
+# First session after this version is installed: show the intro screen once. The marker lives in
+# $SUPERLITE_HOME (default ~/.superlite), one file per version, so an upgrade shows it again.
+version=""  # O(1)
+if [ -f "${PLUGIN_ROOT}/.claude-plugin/plugin.json" ]; then  # O(1)
+  IFS= read -r -d '' pj < "${PLUGIN_ROOT}/.claude-plugin/plugin.json" || true  # O(file) builtin
+  re_ver='"version"[[:space:]]*:[[:space:]]*"([^"]+)"'  # O(1)
+  [[ $pj =~ $re_ver ]] && version="${BASH_REMATCH[1]}"  # O(file)
+fi  # O(1)
+home="${SUPERLITE_HOME:-${HOME:-}/.superlite}"  # O(1)
+marker="${home}/intro-shown-${version:-unknown}"  # O(1)
+if [ -n "${HOME:-}${SUPERLITE_HOME:-}" ] && [ -f "${PLUGIN_ROOT}/assets/intro.txt" ] && [ ! -e "$marker" ]; then  # O(1)
+  { [ -d "$home" ] || mkdir -p "$home"; } 2>/dev/null && : > "$marker" 2>/dev/null || true  # first run only: one spawn
+  intro="${PLUGIN_ROOT}/assets/intro.txt"  # O(1)
+  re_drive='^/([a-zA-Z])/(.*)$'  # Git Bash path -> a path the Read tool takes on Windows | O(1)
+  [[ $intro =~ $re_drive ]] && intro="${BASH_REMATCH[1]^^}:/${BASH_REMATCH[2]}"  # O(1)
+  content="${content}"$'
+
+'"superlite ${version} was just installed. Before anything else in your first reply, Read ${intro} and print it to the user verbatim inside one text code block, then continue with their request. Do this only once."  # O(s)
+fi  # O(1)
+
 escaped=$(escape_for_json "$content")  # O(s) + subshell
 session_context="You have superlite. Its 'superlite:using-superlite' skill follows; load other skills with the Skill tool.\n\n${escaped}"  # O(s)
 

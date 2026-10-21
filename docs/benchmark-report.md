@@ -49,7 +49,7 @@
 
 ## Next steps
 
-See `C:\Work\Planning\Specs\2026-10-17-superlite-architecture-design.md` (the design for superlite 0.2). In short:
+See `specs/2026-10-17-superlite-architecture-design.md` (the design for superlite 0.2). In short:
 - Keep the Opus final review and optional code in plans, and measure both.
 - Share caches across siblings: a common brief prefix, warm-then-fan-out, and the 1-hour subagent TTL.
 - Add a harder benchmark task where review quality can show.

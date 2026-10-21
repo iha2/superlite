@@ -191,9 +191,37 @@ def agent_records(sl_dir: Path) -> list:  # O(M + B)
                 break  # O(1)
         out.append({"agent": aid, "type": la.get("type") or (sts[0].get("type") if sts else ""), "model": la.get("model") or "",
                     "desc": desc, "start_ms": la.get("t"), "stop_ms": max((s.get("t") or 0 for s in sts), default=None) if sts else None,
-                    "last": (sts[-1].get("last") or "") if sts else "", "segments": segs, "hint": hint, "complete": bool(sts),
+                    "last": report_of(sts[-1]) if sts else "", "segments": segs, "hint": hint, "complete": bool(sts),
                     "first_abs": min((x["first"] for x in segs if x["first"] is not None), default=None)})  # O(1)
     return out  # O(A)
+
+
+def report_of(stop_event, limit=400) -> str:  # O(transcript)
+    """What an agent last told its caller. A subagent reports through the `SubagentHandback` tool, so the stop event's `last` is often
+    empty: then read the end of the agent's transcript for the handback message (else its last text). At most `limit` characters."""
+    t = ((stop_event or {}).get("last") or "").strip()  # O(1)
+    if t:  # O(1)
+        return t[:limit]  # O(1)
+    try:  # O(1)
+        lines = Path((stop_event or {}).get("transcript") or "").read_text(encoding="utf-8", errors="replace").splitlines()  # O(transcript)
+    except OSError:  # O(1)
+        return ""  # O(1)
+    for ln in reversed(lines):  # O(lines)
+        if '"assistant"' not in ln:  # O(len)
+            continue  # O(1)
+        try:  # O(1)
+            e = json.loads(ln)  # O(len)
+        except ValueError:  # O(1)
+            continue  # O(1)
+        content = (e.get("message") or {}).get("content") if isinstance(e, dict) and e.get("type") == "assistant" else None  # O(1)
+        for b in (content if isinstance(content, list) else [])[::-1]:  # O(blocks)
+            if not isinstance(b, dict):  # O(1)
+                continue  # O(1)
+            if b.get("type") == "tool_use" and b.get("name") == "SubagentHandback":  # O(1)
+                return str((b.get("input") or {}).get("message") or "")[:limit]  # O(1)
+            if b.get("type") == "text" and (b.get("text") or "").strip():  # O(1)
+                return b["text"].strip()[:limit]  # O(1)
+    return ""  # O(1)
 
 
 def session_transcript(sl_dir: Path) -> str | None:  # O(M)

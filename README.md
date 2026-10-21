@@ -17,6 +17,85 @@
 
 ---
 
+## Use it
+
+Install it ([below](#install)), open a session in your project, and say what you want. superlite shows a one-screen intro the first time; `/superlite:intro` brings it back and `/superlite:help` has every detail.
+
+### Say what you want
+
+| Situation | Say something like | What happens |
+|---|---|---|
+| **MVP, a new project** | "Build me a static site generator from this spec" | One batch of questions, a plan, then parallel tasks on Sonnet and Haiku, package reviews and one fresh final review |
+| **A feature on existing code** | "Add CSV export with column widths to the existing app" | The same flow, with seam checks between the new and the existing code. On a large codebase it offers to install Graphify (never without your yes) |
+| **Debug** | "This test fails on leap days: find the root cause and fix it" | `systematic-debugging` finds the cause first; fixes go to fix-only agents by tier, each leaving a note, and escalate after two failed rounds |
+| **A small change** | "Rename `build` to `render` everywhere" | Small work stays inline, with a reviewer always |
+| **Review and harden** | "Review this branch and fix what you find" | Package reviewers fix their own findings; the final reviewer reports findings with tiers and never edits |
+| **You approve first** | "Build X. I will approve the plan" | A human orchestrator: you get a plain-language review plan with diagrams; nothing runs until you say yes |
+| **Hands off** | "Build X. I am away, decide yourself" | The AI orchestrator plans, lints, dispatches and rules on open choices without stopping |
+| **Ship it** | "We are done: finish the branch" | Verification first, then merge or PR options. It never pushes without you |
+
+### Or use a command
+
+| Command | What it does |
+|---|---|
+| `/superlite:start [mode] [what]` | A menu: pick the mode (regular, MVP, feature, debug) and who orchestrates |
+| `/superlite:mvp <what>` | Plan the smallest working version on a clickable HTML prototype, then build it |
+| `/superlite:feature <change>` | Change existing code, with seam checks against what is there |
+| `/superlite:debug <bug>` | Root cause first, then a fix with a regression test |
+| `/superlite:small <change>` | A small change inline, without the planning flow |
+| `/superlite:human`, `/superlite:ai`, `/superlite:approve` | Choose who orchestrates; approve the review plan |
+| `/superlite:status`, `/superlite:stop`, `/superlite:resume` | Watch, stop or resume a build |
+| `/superlite:agents`, `/superlite:tail` | Watch a run: the agent map pane, or the same run as a terminal feed without the mod |
+| `/superlite:review`, `/superlite:report`, `/superlite:commit`, `/superlite:finish` | Review a branch, read build reports, turn checkpoints into commits, finish the branch |
+| `/superlite:setup`, `/superlite:intro`, `/superlite:help [section]` | First-run check, the intro screen, the detailed help |
+
+Plain words work just as well; the commands are shortcuts.
+
+### Who orchestrates
+
+- **Human orchestrator.** You get a plain-language review plan with diagrams (a `.review.md`, about two pages, with a rough time and cost), and nothing is linted, dispatched or sent to an agent until you reply approve. After that you are not asked again: any change to scope is recorded as a ruling and listed at the end under "Changed from the approved plan". Small inline work needs only your yes in chat.
+- **AI orchestrator.** It plans, lints, dispatches and rules on open choices itself, with no review plan and no questions.
+
+Both stop for destructive, outward (push, merge, publish) or security-sensitive actions, and nothing is committed unless you ask: finished tasks are kept as hidden checkpoints until you run `/superlite:commit`.
+
+### Watch a run
+
+**Let it run.** Watch `.superlite/` in your project: `progress.md` has the rulings and the log, `test-summary.json` the latest test result, `metrics.jsonl` and the run history the time and cost per agent.
+
+```mermaid
+flowchart LR
+  A([Your request]) --> B[Plan]
+  B --> C[Build in parallel]
+  C --> D[Review and fix]
+  D --> E([Done])
+```
+
+<p align="center">
+  <img src="assets/agent-map.webp" width="720" alt="The agent map pane: the main session at the top, the coordinator under it, each implementer, reviewer and fixer under the agent that spawned it, with tier, time, tokens and tasks; a blocked agent in red. Below it, the live feed of agent starts, finishes and ledger lines.">
+</p>
+
+A read-only view, offered when you approve the plan (reply `approve map`), or opened any time:
+
+- `/superlite:agents` opens the **agent map** in Claude Desktop: a tree from the main session down, each agent under the one that spawned it, green while it runs, red if it was aborted or blocked, grey when done. Each node shows its tier, time, tokens and tasks (✓ once checkpointed); click a row for its details and its ledger lines. It needs the `superlite-agents` mod: `/plugin install superlite-agents@superlite-dev`.
+- Without the mod (a terminal session, another harness), `/superlite:tail` prints the same run as a **live feed**: every agent start and finish from `metrics.jsonl` and every ledger line from `progress.md` (`sl tail --dir .superlite`).
+
+---
+
+## Install
+
+You need Claude Code, git, Python 3.10 or newer (the tools are Python; the project you build can be in any language), and `bash` (Git Bash on Windows). `uv` is optional.
+
+```
+/plugin marketplace add iha2/superlite
+/plugin install superlite@superlite-dev
+```
+
+Or load a local checkout for one session: `claude --plugin-dir <path-to-superlite>`
+
+Open a fresh session: the superlite intro appears once. Then send `Let's make a react todo list`; a working install starts `brainstorming` before any code is written. Installs for Codex, Cursor, Gemini CLI, OpenCode and the other harnesses are in [Installation](#installation) below.
+
+---
+
 ## What it is
 
 superlite plans a build, splits it into tasks that can run side by side, hands each task to the cheapest agent that can do it well, checks the seams, and reviews the result. You decide **who orchestrates**: you, or the AI.
@@ -50,65 +129,6 @@ And it is not tied to one language. A TypeScript site generator went from spec t
 
 ---
 
-## Pick how to use it
-
-| Situation | Say something like | What happens |
-|---|---|---|
-| **MVP, a new project** | "Build me a static site generator from this spec" | One batch of questions, a plan, then parallel tasks on Sonnet and Haiku, package reviews and one fresh final review |
-| **A feature on existing code** | "Add CSV export with column widths to the existing app" | The same flow, with seam checks between the new and the existing code. On a large codebase it offers to install Graphify (never without your yes) |
-| **Debug** | "This test fails on leap days: find the root cause and fix it" | `systematic-debugging` finds the cause first; fixes go to fix-only agents by tier, each leaving a note, and escalate after two failed rounds |
-| **A small change** | "Rename `build` to `render` everywhere" | Small work stays inline, with a reviewer always |
-| **Review and harden** | "Review this branch and fix what you find" | Package reviewers fix their own findings; the final reviewer reports findings with tiers and never edits |
-| **You approve first** | "Build X. I will approve the plan" | A human orchestrator: you get a plain-language review plan with diagrams; nothing runs until you say yes |
-| **Hands off** | "Build X. I am away, decide yourself" | The AI orchestrator plans, lints, dispatches and rules on open choices without stopping |
-| **Ship it** | "We are done: finish the branch" | Verification first, then merge or PR options. It never pushes without you |
-
-**Start commands.** `/superlite:start` asks for the mode and who orchestrates; `/superlite:mvp <what>`, `/superlite:feature <change>` and `/superlite:debug <bug>` go straight to a mode. Say it in plain words instead if you prefer; the commands are shortcuts. Also: `/superlite:status`, `resume`, `stop`, `report`, `setup`, `human`, `ai`, `approve`, `review`, `small`, `commit` and `finish`.
-
-**Who orchestrates.** With a human orchestrator nothing is linted, dispatched or sent to an agent until you reply approve, and after that you are not asked again: changes to scope are listed at finish; small inline work needs only your yes in chat; you review a plain-language plan with diagrams (a `.review.md`, about two pages, with a rough time and cost) **before** anything is linted or sent off; after your yes the coordinator rewrites it in the agent format (task graph, interfaces, examples, sizes) and runs it. With the AI orchestrator it does everything itself, with no review plan and no questions.
-
----
-
-## Install
-
-You need Claude Code, git, Python 3.10 or newer (the tools are Python; the project you build can be in any language), and `bash` (Git Bash on Windows). `uv` is optional.
-
-```
-/plugin marketplace add iha2/superlite
-/plugin install superlite@superlite-dev
-```
-
-Or load a local checkout for one session: `claude --plugin-dir <path-to-superlite>`
-
-Open a fresh session and send `Let's make a react todo list`. A working install starts `brainstorming` before any code is written. Installs for Codex, Cursor, Gemini CLI, OpenCode and the other harnesses are in [Installation](#installation) below.
-
-## Use it
-
-1. **Describe what you want.** A paragraph or a spec file is enough.
-2. **Choose the orchestrator** when asked: you validate the plan, or the AI does everything.
-3. **Let it run.** Watch `.superlite/` in your project: `progress.md` has the rulings and the log, `test-summary.json` the latest test result, `metrics.jsonl` and the run history the time and cost per agent.
-
-```mermaid
-flowchart LR
-  A([Your request]) --> B[Plan]
-  B --> C[Build in parallel]
-  C --> D[Review and fix]
-  D --> E([Done])
-```
-
-### Watch a run
-
-<p align="center">
-  <img src="assets/agent-map.webp" width="720" alt="The agent map pane: the main session at the top, the coordinator under it, each implementer, reviewer and fixer under the agent that spawned it, with tier, time, tokens and tasks; a blocked agent in red. Below it, the live feed of agent starts, finishes and ledger lines.">
-</p>
-
-A read-only view, offered when you approve the plan (reply `approve map`), or opened any time:
-
-- `/superlite:agents` opens the **agent map** in Claude Desktop: a tree from the main session down, each agent under the one that spawned it, green while it runs, red if it was aborted or blocked, grey when done. Each node shows its tier, time, tokens and tasks (✓ once checkpointed); click a row for its details and its ledger lines. It needs the `superlite-agents` mod: `/plugin install superlite-agents@superlite-dev`.
-- Without the mod (a terminal session, another harness), `/superlite:tail` prints the same run as a **live feed**: every agent start and finish from `metrics.jsonl` and every ledger line from `progress.md` (`sl tail --dir .superlite`).
-
----
-
 ## More
 
 How it works, in [docs/](docs/): [how a run works](docs/how-a-run-works.md) · [skills and agents](docs/skills-and-agents.md) · [hooks](docs/hooks.md) · [tools](docs/tools.md) · [config](docs/config.md) · [language support](docs/language.md) · [how the rules are enforced](docs/gates.md) · [an example review plan](docs/example-review-plan.md). Installation for other harnesses, the benchmark harness and the task list follow below.
@@ -119,7 +139,7 @@ How it works, in [docs/](docs/): [how a run works](docs/how-a-run-works.md) · [
 
 - **`detail` (plan switch).** `writing-plans` records `**Detail:** contracts | tests | full` in the plan header, and a task can override it. `contracts` gives files, signatures and named tests with exact values. `tests` (the default) adds the test code verbatim and leaves the implementation to the implementer. `full` includes implementation code too, for tricky algorithms. `brainstorming` asks for it in its single batched question, and picks the default itself when unattended.
 - **Final review.** The coordinator runs at medium effort. The final review is a fresh Opus `final-reviewer` at high effort: one turn, findings only, reading a review packet built from the logs, with a target under 30 s. It is not a fork, so `CLAUDE_CODE_FORK_SUBAGENT` is not needed.
-- **Implementer cache TTL.** The implementer's frontmatter sets a 1-hour prompt cache TTL, so its history is still cached when fix rounds arrive waves later. Setting `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL=1h` in the environment does the same.
+- **Implementer cache TTL.** Set `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL=1h` in the environment to keep an implementer's history cached when fix rounds arrive waves later. The agent files no longer set it: a nested `experimental:` block in agent frontmatter made Claude Code ignore `model:`.
 - **Context-budgeted sizing.** Each task in a plan carries an `Est. context` line, predicted from the lines it writes, the lines it reads and the docs it is handed, on top of the implementer's fixed ~18k prefix. Tasks predicted above 80k are split, tasks whose variable part is smaller than the prefix are flagged by lint with a NOTE to merge, tasks sit in a 1.5 to 6 minute band (`predictor.json`), there is no fixed wave size (the task graph sets the parallel width), and the whole plan stays under 15k chars because it doubles as the shared prime. The coefficients are fit on one project, so treat them as a guide.
 
 ## Installation
@@ -417,7 +437,7 @@ Analysis scripts:
 
 ## Tasks
 
-- [ ] **The task-graph flow (planned as 0.3, shipped in 1.0): reach half of superpowers' time.** The design is in `C:\Work\Planning\Specs\2026-10-17-superlite-architecture-design.md` (D10-D18, G1, R1). Steps:
+- [ ] **The task-graph flow (planned as 0.3, shipped in 1.0): reach half of superpowers' time.** The design is in `docs/specs/2026-10-17-superlite-architecture-design.md` (D10-D18, G1, R1). Steps:
   - Smoke-test the 0.3 tools and agents.
   - Combined task (`bench/tasks/combo`), 3 reps, arms in parallel.
   - E12: planted defects (`bench/tasks/combo-planted`), 3 reps with and without the incident log.
