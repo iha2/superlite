@@ -4,7 +4,7 @@ Instructions for any agent (or human) changing this repository.
 
 ## What this repo is
 
-A lean build-lifecycle plugin: 8 skills in `skills/`, 3 agents in `agents/`, and one manifest or extension per supported harness. Keep it lean; process is the cost superlite exists to remove.
+A lean build-lifecycle plugin: 9 skills in `skills/`, 3 agents in `agents/`, and one manifest or extension per supported harness. Keep it lean; process is the cost superlite exists to remove.
 
 ## Rules
 

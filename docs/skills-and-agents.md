@@ -8,6 +8,7 @@
 - `systematic-debugging`
 - `verification-before-completion`
 - `finishing-a-development-branch`
+- `mvp-prototype` (MVP mode: the clickable prototype and its feedback)
 
 Agents (`agents/`):
 

@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="sl-prototype-sha" content="">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MVP prototype</title>
+<style>
+  body { margin: 0; font: 14px/1.4 system-ui, sans-serif; color: #1d1d1f; background: #f4f4f6; }
+  #sl-app { display: flex; min-height: calc(100vh - 52px); }
+  #sl-mock { flex: 1; padding: 20px; overflow: auto; }
+  #sl-panel { width: 340px; padding: 16px; background: #fff; border-left: 1px solid #ddd; overflow: auto; }
+  #sl-panel h2 { margin: 0 0 4px; font-size: 16px; }
+  #sl-features { padding-left: 18px; }
+  #sl-features li { margin: 6px 0; }
+  #sl-features li.sl-out > span { text-decoration: line-through; color: #888; }
+  #sl-features input[type=text] { width: 100%; box-sizing: border-box; margin-top: 2px; }
+  #sl-panel textarea, #sl-out { width: 100%; box-sizing: border-box; min-height: 60px; }
+  #sl-footer { position: sticky; bottom: 0; height: 52px; display: flex; gap: 8px; align-items: center; padding: 0 16px;
+               background: #fff; border-top: 1px solid #ddd; }
+  #sl-out { position: fixed; bottom: 60px; right: 16px; width: 420px; height: 240px; }
+  [data-screen].sl-off, [hidden] { display: none !important; }
+  [data-edit] { outline: 1px dashed transparent; }
+  [data-edit]:hover { outline-color: #99c; }
+  [data-go] { cursor: pointer; }
+  .sl-term { background: #111; color: #ddd; font: 13px/1.5 ui-monospace, monospace; padding: 12px; border-radius: 6px; white-space: pre-wrap; }
+  .sl-call { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 10px; margin: 0 0 10px; }
+  .sl-call pre { margin: 6px 0 0; background: #f7f7f9; padding: 8px; overflow: auto; }
+</style>
+</head>
+<body>
+<div id="sl-app">
+<main id="sl-mock">
+<!--SL:MOCK-->
+</main>
+<aside id="sl-panel">
+  <h2 id="sl-title"></h2>
+  <p id="sl-estimate"></p>
+  <p><small>Untick to cut a feature (the mock hides it). Arrows reorder. Click dashed text in the mock to edit it.</small></p>
+  <ol id="sl-features"></ol>
+  <h3>Add a feature</h3>
+  <input type="text" id="sl-add-title" placeholder="Title">
+  <input type="text" id="sl-add-note" placeholder="Why">
+  <button id="sl-add">Add</button>
+  <ul id="sl-added"></ul>
+  <p id="sl-keep-row"><label><input type="checkbox" id="sl-keep"> Keep this page as the frontend's starting file</label></p>
+  <p><label><input type="checkbox" id="sl-approved"> I am happy with this scope</label></p>
+  <textarea id="sl-notes" placeholder="Notes"></textarea>
+</aside>
+</div>
+<footer id="sl-footer">
+  <button id="sl-save">Save feedback</button>
+  <button id="sl-copy">Copy feedback</button>
+  <span id="sl-status"></span>
+  <textarea id="sl-out" hidden readonly></textarea>
+</footer>
+<script id="sl-data" type="application/json">/*SL:DATA*/</script>
+<script>
+(function () {
+  var D = JSON.parse(document.getElementById('sl-data').textContent);
+  var $ = function (id) { return document.getElementById(id); };
+  var W = {S: 1, M: 2, L: 4};
+  var isWeb = /\bweb\b/.test(D.target || '');
+  var state = D.features.map(function (f, i) {
+    return {id: f.id, title: f.title, size: f.size || 'M', priority: f.priority || '', in: f.in !== false, order: i + 1, note: ''};
+  });
+  var added = [];
+  var each = function (sel, fn) { Array.prototype.forEach.call(document.querySelectorAll(sel), fn); };
+  function sorted() { return state.slice().sort(function (a, b) { return a.order - b.order; }); }
+  function btn(label, fn) { var b = document.createElement('button'); b.textContent = label; b.onclick = fn; return b; }
+  function status(t) { $('sl-status').textContent = t; }
+
+  function apply() {
+    var on = {}, rank = {};
+    state.forEach(function (f) { on[f.id] = f.in; rank[f.id] = f.order; });
+    each('[data-feature]', function (el) {
+      var ids = el.getAttribute('data-feature').split(/\s+/);
+      el.hidden = !ids.every(function (id) { return on[id] !== false; });
+    });
+    each('[data-sl-order]', function (box) {
+      var kids = Array.prototype.filter.call(box.children, function (c) { return c.hasAttribute('data-feature'); });
+      kids.sort(function (a, b) {
+        return (rank[a.getAttribute('data-feature').split(/\s+/)[0]] || 0) - (rank[b.getAttribute('data-feature').split(/\s+/)[0]] || 0);
+      }).forEach(function (c) { box.appendChild(c); });
+    });
+    estimate();
+  }
+
+  function estimate() {
+    var e = D.estimate, tot = 0, kept = 0;
+    if (!e) { $('sl-estimate').textContent = ''; return; }
+    state.forEach(function (f) { var w = W[f.size] || 2; tot += w; if (f.in) kept += w; });
+    var k = tot ? kept / tot : 1;
+    function r(lo, hi, pre, post) {
+      if (lo == null) return '';
+      var a = Math.round(lo * k * 10) / 10, b = Math.round((hi == null ? lo : hi) * k * 10) / 10;
+      return pre + a + (b !== a ? '-' + b : '') + post;
+    }
+    $('sl-estimate').textContent = 'Rough time and cost: ' +
+      [r(e.min_lo, e.min_hi, '', ' min'), r(e.usd_lo, e.usd_hi, '$', '')].filter(Boolean).join(', ') + ' (scales as you cut)';
+  }
+
+  function render() {
+    var ol = $('sl-features');
+    ol.innerHTML = '';
+    var list = sorted();
+    list.forEach(function (f, i) {
+      var li = document.createElement('li');
+      li.className = f.in ? '' : 'sl-out';
+      var cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.checked = f.in;
+      cb.onchange = function () { f.in = cb.checked; render(); };
+      var name = document.createElement('span');
+      name.textContent = f.title; name.contentEditable = 'true'; name.title = 'Click to rename';
+      name.oninput = function () { f.title = name.textContent.trim(); };
+      var meta = document.createElement('small');
+      meta.textContent = ' ' + f.id + ' ' + [f.priority, f.size].filter(Boolean).join(', ') + ' ';
+      var up = btn('↑', function () { swap(list, i, i - 1); }); up.disabled = i === 0;
+      var down = btn('↓', function () { swap(list, i, i + 1); }); down.disabled = i === list.length - 1;
+      var note = document.createElement('input');
+      note.type = 'text'; note.placeholder = 'note'; note.value = f.note;
+      note.oninput = function () { f.note = note.value; };
+      [cb, document.createTextNode(' '), name, meta, up, down, note].forEach(function (n) { li.appendChild(n); });
+      ol.appendChild(li);
+    });
+    var ul = $('sl-added');
+    ul.innerHTML = '';
+    added.forEach(function (a, i) {
+      var li = document.createElement('li');
+      li.textContent = a.title + (a.note ? ' - ' + a.note : '') + ' ';
+      li.appendChild(btn('x', function () { added.splice(i, 1); render(); }));
+      ul.appendChild(li);
+    });
+    apply();
+  }
+  function swap(list, i, j) { var t = list[i].order; list[i].order = list[j].order; list[j].order = t; render(); }
+
+  function show(id) {
+    each('[data-screen]', function (s) { s.classList.toggle('sl-off', s.getAttribute('data-screen') !== id); });
+  }
+
+  function feedback() {
+    var screens = [];
+    each('[data-screen]', function (s) {
+      var edits = [];
+      Array.prototype.forEach.call(s.querySelectorAll('[data-edit]'), function (el) {
+        var to = el.textContent.trim(), from = el.getAttribute('data-orig');
+        if (to !== from) edits.push({label: from, to: to});
+      });
+      screens.push({id: s.getAttribute('data-screen'), title: s.getAttribute('data-title') || '', edits: edits});
+    });
+    return {
+      schema: 1, source: 'human', plan: D.plan,
+      prototype_sha: document.querySelector('meta[name="sl-prototype-sha"]').getAttribute('content'),
+      approved: $('sl-approved').checked, target: D.target, keep_as_frontend: isWeb && $('sl-keep').checked,
+      features: sorted().map(function (f) { return {id: f.id, title: f.title, in: f.in, order: f.order, note: f.note}; }),
+      screens: screens, added: added.slice(), notes: $('sl-notes').value
+    };
+  }
+
+  function download(text) {
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], {type: 'application/json'}));
+    a.download = 'mvp-feedback.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    status('Downloaded mvp-feedback.json. Reply approve in chat, or say what to change.');
+  }
+
+  $('sl-save').onclick = function () {
+    var text = JSON.stringify(feedback(), null, 2) + '\n';
+    if (!window.showSaveFilePicker) { download(text); return; }
+    window.showSaveFilePicker({suggestedName: 'mvp-feedback.json', types: [{description: 'JSON', accept: {'application/json': ['.json']}}]})
+      .then(function (h) { return h.createWritable(); })
+      .then(function (w) { return w.write(text).then(function () { return w.close(); }); })
+      .then(function () { status('Saved. Reply approve in chat, or say what to change.'); },
+            function (e) { if (!e || e.name !== 'AbortError') download(text); });
+  };
+  $('sl-copy').onclick = function () {
+    var text = JSON.stringify(feedback(), null, 2) + '\n', out = $('sl-out');
+    function manual() { out.hidden = false; out.value = text; out.select(); try { document.execCommand('copy'); } catch (e) {} status('Copy the block and paste it in chat.'); }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { status('Copied. Paste it in chat.'); }, manual);
+    } else manual();
+  };
+  $('sl-add').onclick = function () {
+    var t = $('sl-add-title').value.trim();
+    if (!t) return;
+    added.push({title: t, note: $('sl-add-note').value.trim()});
+    $('sl-add-title').value = ''; $('sl-add-note').value = '';
+    render();
+  };
+
+  document.addEventListener('click', function (ev) {
+    var go = ev.target.closest && ev.target.closest('[data-go]');
+    if (go && !go.isContentEditable) show(go.getAttribute('data-go'));
+  });
+  each('[data-edit]', function (el) { el.setAttribute('data-orig', el.textContent.trim()); el.contentEditable = 'true'; });
+  $('sl-title').textContent = D.title || 'MVP prototype';
+  $('sl-keep-row').hidden = !isWeb;
+  var first = document.querySelector('[data-screen]');
+  if (first) show(first.getAttribute('data-screen'));
+  render();
+})();
+</script>
+</body>
+</html>

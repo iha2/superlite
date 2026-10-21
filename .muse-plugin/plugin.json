@@ -19,6 +19,10 @@
         "path": "skills/finishing-a-development-branch/SKILL.md"
       },
       {
+        "id": "mvp-prototype",
+        "path": "skills/mvp-prototype/SKILL.md"
+      },
+      {
         "id": "subagent-driven-development",
         "path": "skills/subagent-driven-development/SKILL.md"
       },
