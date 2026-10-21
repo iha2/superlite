@@ -14,7 +14,8 @@ In human mode `approve` needs `--review PATH` (the plain-language review plan; r
 and evidence of a real human reply: `.superlite/human-replies.jsonl` (written only by the UserPromptSubmit hook, one
 {"t": epoch ms, "approves": bool, "text": ...} per human prompt while unapproved) must hold a line with approves true whose t is
 later than the review file's modification time, else exit 3 with a BLOCKED line. The path and sha256 are recorded. AI mode never
-needs `approve`. `status` and `finish` print the review plan path; `status` also says whether an approving reply exists. Library: gate(plan_or_dir, tool) -> message or None,
+needs `approve`. Feature flow: in human mode, while `.superlite/feature.json` (written by `sl proto`) has status tryout, the same
+tools exit 4 with the try-out BLOCKED line until `sl proto tryout --approve` records the human's try-out reply. `status` and `finish` print the review plan path; `status` also says whether an approving reply exists. Library: gate(plan_or_dir, tool) -> message or None,
 require(plan_or_dir, tool) -> exit code (prints the message), read_state, summary_line. Stdlib only.
 """
 # Complexity notation:
@@ -32,6 +33,9 @@ NO_REPLY = ("BLOCKED: no human approval reply since the review plan was written;
             "end your turn")  # O(1)
 NO_REVIEW = "BLOCKED: write the review plan first, then approve --review <path>"  # O(1)
 EXIT_BLOCKED = 4  # exit 3 already means "no Python" for sl | O(1)
+FEATURE = "feature.json"  # written only by `sl proto` | O(1)
+TRYOUT_BLOCK = ("BLOCKED: the human has not approved the prototype try-out; show it (sl proto tryout), ask the human to reply "
+                "it works or list changes, end your turn, then run sl proto tryout --approve")  # O(1)
 BLOCK = ("BLOCKED: human orchestrator selected, show the plan, ask for approval, then run sl orchestrator approve")  # O(1)
 
 
@@ -72,7 +76,18 @@ def gate(plan_or_dir=None, tool: str = "") -> str | None:  # O(file)
     st = read_state(plan_or_dir)  # O(file)
     if st and st["mode"] == "human" and not st.get("approved"):  # O(1)
         return BLOCK  # O(1)
+    if st and st["mode"] == "human" and feature_status(plan_or_dir) == "tryout":  # the feature flow's second gate | O(file)
+        return TRYOUT_BLOCK  # O(1)
     return None  # O(1)
+
+
+def feature_status(plan_or_dir=None) -> str | None:  # O(file)
+    """The prototype status in `.superlite/feature.json` (written by `sl proto`), or None; unreadable means None (fail open)."""
+    try:  # O(1)
+        d = json.loads((sl_dir(plan_or_dir) / FEATURE).read_text(encoding="utf-8"))  # O(file)
+    except (OSError, ValueError):  # O(1)
+        return None  # O(1)
+    return d.get("status") if isinstance(d, dict) else None  # O(1)
 
 
 def require(plan_or_dir=None, tool: str = "") -> int:  # O(file)

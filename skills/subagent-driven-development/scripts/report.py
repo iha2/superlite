@@ -10,6 +10,9 @@ projection is recomputed from the plan as it is now, and the report says so. Pro
 critical path of the task graph under the predictor's estimates (plan_tools.schedule_report: parse_taskgraph +
 effective_times, unlimited-lane CPM build minutes); the closing test tail is not counted, as actual wall-clock
 runs from the first agent launch to the last finished task or fix. Anything with no projection prints `n/a`.
+Feature flow (`.superlite/feature.json` from `sl proto`): the prototype and the integration show as two parts, each with
+wall-clock and agent cost, projected and actual, plus the prototype's cost as a share of the integration (cap 25%); the
+prototype numbers come from its own build report (saved into feature.json at try-out and discard).
 Prints a short summary (default) or the full text (--full); always writes the full report and json next to the plan (`<plan>.report.md`/`.json`, one pair per build) and a copy of the latest in <dir>. Stdlib only.
 """
 # Complexity notation:
@@ -31,6 +34,7 @@ import predict  # noqa: E402  | O(1)
 
 PROJECTION = "projection.json"  # O(1)
 TOP_MISSES = 5  # O(1)
+PROTO_CAP_PCT = 25  # the prototype's budget: a quarter of the integration estimate | O(1)
 
 
 def _sha(path) -> str:  # O(file)
@@ -106,6 +110,36 @@ def _read_json(p):  # O(file)
         return None  # O(1)
 
 
+def feature_parts(sl_dir, headline) -> dict | None:  # O(file)
+    """Feature flow only: {topic, prototype, integration, prototype_tasks, share_pct, cap_pct}; None without feature.json."""
+    st = _read_json(Path(sl_dir) / "feature.json")  # O(file)
+    if not isinstance(st, dict) or not st.get("topic"):  # O(1)
+        return None  # O(1)
+    import proto  # O(1)
+    rep = proto.proto_report(st) or {}  # O(file)
+    part = lambda h: {k: {"projected": (h.get(src) or {}).get("projected"), "actual": (h.get(src) or {}).get("actual")}  # noqa: E731 | O(1)
+                      for k, src in (("wall_min", "wall_min"), ("cost_usd", "cost_usd_agents"))}
+    pp, ip = part(rep.get("headline") or {}), part(headline)  # O(1)
+    pc = pp["cost_usd"]["actual"] if pp["cost_usd"]["actual"] is not None else pp["cost_usd"]["projected"]  # O(1)
+    ic = ip["cost_usd"]["actual"] or ip["cost_usd"]["projected"]  # O(1)
+    return {"topic": st["topic"], "status": st.get("status"), "prototype": pp, "integration": ip,
+            "prototype_tasks": rep.get("tasks"), "share_pct": round(100.0 * pc / ic, 1) if pc is not None and ic else None,
+            "cap_pct": PROTO_CAP_PCT}  # O(1)
+
+
+def feature_lines(f, indent="") -> list[str]:  # O(1)
+    """Two lines, prototype then integration: time and cost, projected -> actual, and the prototype's share."""
+    out = []  # O(1)
+    for name in ("prototype", "integration"):  # O(1)
+        p = f[name]  # O(1)
+        w, k = p["wall_min"], p["cost_usd"]  # O(1)
+        out.append(f"{indent}{name:12}time {_num(w['projected'], '.1f')} -> {_num(w['actual'], '.1f')} min, "
+                   f"cost ${_num(k['projected'], '.2f')} -> ${_num(k['actual'], '.2f')}")  # O(1)
+    if f["share_pct"] is not None:  # O(1)
+        out[0] += f" ({f['share_pct']:.0f}% of the integration, cap {f['cap_pct']}%)"  # O(1)
+    return out  # O(1)
+
+
 def collect(plan_path, sl_dir) -> dict:  # O(M + B + n*(n + e))
     sl = Path(sl_dir)  # O(1)
     rows = metrics.task_records(sl, plan_path)  # O(M + B)
@@ -134,14 +168,16 @@ def collect(plan_path, sl_dir) -> dict:  # O(M + B + n*(n + e))
                     "delta": delta(p, mins(r)), "cost_usd": round(r["cost_usd"] + (r["rework_cost"] or 0), 6),
                     "first_time_pass": r["first_time_pass"]})  # O(1)
     per.sort(key=lambda x: (x["delta"]["abs"] is None, -abs(x["delta"]["abs"] or 0.0), x["task"]))  # biggest misses first | O(n log n)
+    headline = {
+        "wall_min": {"projected": (proj or {}).get("wall_min"), "actual": wall},
+        "cost_usd_agents": {"projected": (proj or {}).get("cost_usd"), "actual": round(agents_usd + rework_usd, 6)},
+        "task_min": {"projected": (proj or {}).get("sum_task_min"), "actual": round(sum(mins(r) for r in rows), 3)},
+        "agents": {"projected": (proj or {}).get("agents"), "actual": len(metrics.agent_records(sl))},
+    }  # O(1)
     return {
         "projection_note": note,
-        "headline": {
-            "wall_min": {"projected": (proj or {}).get("wall_min"), "actual": wall},
-            "cost_usd_agents": {"projected": (proj or {}).get("cost_usd"), "actual": round(agents_usd + rework_usd, 6)},
-            "task_min": {"projected": (proj or {}).get("sum_task_min"), "actual": round(sum(mins(r) for r in rows), 3)},
-            "agents": {"projected": (proj or {}).get("agents"), "actual": len(metrics.agent_records(sl))},
-        },
+        "headline": headline,
+        "feature": feature_parts(sl, headline),
         "cost_split": {"agents_usd": round(agents_usd, 6), "rework_usd": round(rework_usd, 6), "coordinator_usd": coord_usd,
                        "total_usd": round(agents_usd + rework_usd + (coord_usd or 0.0), 6)},
         "concurrency": {"peak": peak_concurrency(rows), "projected_peak": (proj or {}).get("peak_width")},
@@ -187,6 +223,8 @@ def render(c) -> str:  # O(n)
         v = h[key]  # O(1)
         out.append(f"{label:24}{_num(v['projected'], fmt):>10}{_num(v['actual'], fmt):>10}  "
                    + _delta(delta(v["projected"], v["actual"]), unit, "+.2f" if key == "cost_usd_agents" else "+.1f" if fmt != "d" else "+d"))  # O(1)
+    if c.get("feature"):  # O(1)
+        out += [f"feature flow ({c['feature']['topic']}): two builds"] + feature_lines(c["feature"], "  ")  # O(1)
     out.append(f"cost split: agents ${cs['agents_usd']:.2f}, rework ${cs['rework_usd']:.2f}, coordinator "
                f"{'n/a' if cs['coordinator_usd'] is None else '$%.2f' % cs['coordinator_usd']}, total ${cs['total_usd']:.2f}")  # O(1)
     cp = c["critical_path"]  # O(1)
@@ -211,13 +249,15 @@ def render(c) -> str:  # O(n)
 
 
 def summary(c, path) -> str:  # O(n)
-    """At most 10 lines: headline, tests and first-time pass, the biggest miss, the takeaway and the path of the full report."""
+    """At most 10 lines: headline, the two feature-flow parts when there are any, tests and first-time pass, the biggest miss, the takeaway and the path of the full report."""
     h, q = c["headline"], c["quality"]  # O(1)
     out = ["build report (projected -> actual)"]  # O(1)
     for label, key, fmt, d in (("wall-clock min", "wall_min", ".1f", "+.1f"), ("agent cost USD", "cost_usd_agents", ".2f", "+.2f"),
                                ("agents", "agents", "d", "+d")):  # O(1)
         v = h[key]  # O(1)
         out.append(f"  {label:15}{_num(v['projected'], fmt):>7} -> {_num(v['actual'], fmt):>7}  {_delta(delta(v['projected'], v['actual']), '', d)}")  # O(1)
+    if c.get("feature"):  # O(1)
+        out += feature_lines(c["feature"], "  ")  # O(1)
     t = q["tests"]  # O(1)
     out.append(f"  tests {t.get('passed', '?')} passed, {t.get('failed', '?')} failed" if isinstance(t, dict) else "  tests n/a")  # O(1)
     out[-1] += ("; first-time pass " + (f"{q['first_time_pass']}/{q['first_time_n']}" if q["first_time_n"] else "n/a")

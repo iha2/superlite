@@ -1,23 +1,23 @@
 ---
-description: Start a superlite session. Pick the mode (regular, MVP, feature, debug) and who orchestrates.
-argument-hint: "[regular|mvp|feature|debug] [what you want]"
+description: Start a superlite session. superlite suggests the mode (regular, MVP, feature, debug, small, review) and asks who orchestrates.
+argument-hint: "[regular|mvp|feature|debug|small|review] [what you want]"
 ---
 
 Start a superlite session. Arguments: $ARGUMENTS
 
-1. If the first word of the arguments is `regular`, `mvp`, `feature` or `debug`, that is the mode; the rest is the request. Otherwise the mode is unset.
-2. Ask what is still unset, in ONE AskUserQuestion (up to 2 questions):
-   - Mode, if unset: Regular (size the request, then brainstorm, plan, build, review), MVP (smallest working version first), Feature (a change to existing code), Debug (find the cause, fix with a regression test).
+1. If the first word of the arguments is `regular`, `mvp`, `feature`, `debug`, `small` or `review`, that is the mode and the rest is the request: skip the suggestion. Skip it too when the user typed another `/superlite:` command or named a mode in words. Otherwise the mode is unset.
+2. If there is no request text yet, ask for it in one line.
+3. Mode unset: run `sl suggest_flow --text "<the request>"`. It prints one line, `suggest: <flow> - <reason> | also fits: <flows>`, from the request and the project state. Confirm it, or override it with a one-line reason when the request clearly says otherwise.
+4. Ask what is still unset, in ONE AskUserQuestion (up to 2 questions):
+   - Mode, if unset: the suggested flow first, labelled `(Recommended)` with its reason, then the "also fits" flows, then the rest that fit the project state. Regular (size the request, then brainstorm, plan, build, review), MVP (smallest working version first), Feature (a change to existing code, proved on a prototype you try first), Debug (find the cause, fix with a regression test), Small (a few files, inline), Review (review and harden a branch).
    - Orchestrator, always unless the user already said: Human (you approve a plain-language review plan before anything is built) or AI (hands off). Then run `sl orchestrator set human|ai`.
-3. If there is no request text yet, ask for it in one line.
-4. Load the skill for the mode and follow it:
+5. Load the skill for the mode and follow it:
    - Regular: `superlite:using-superlite` sizing, then `superlite:brainstorming`.
-   - MVP: same as `/superlite:mvp`.
-   - Feature: same as `/superlite:feature`.
-   - Debug: same as `/superlite:debug`.
+   - MVP, Feature, Debug, Small, Review: the same as `/superlite:mvp`, `/superlite:feature`, `/superlite:debug`, `/superlite:small`, `/superlite:review`.
+   - Resume or Status (a run in progress): the same as `/superlite:resume` or `/superlite:status`.
 
 Menu by the "Project state" line in the session context (show only the options that fit):
 - run in progress: Resume, Status, Start something new, Finish.
-- existing code: Feature, Debug, Regular, MVP (a new app beside it), Review.
-- empty folder: MVP (plan, clickable prototype to assess, then build), Regular.
+- existing code: Feature, Debug, Small, Review, Regular, MVP (a new app beside it).
+- empty folder: MVP (plan, clickable prototype to assess, then build), Regular, Small.
 Skip the menu for a clear one-line request you can size as trivial, or when the user already typed a `/superlite:` command.

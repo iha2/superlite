@@ -5,7 +5,7 @@ description: Use when starting any conversation - explains superlite, how to siz
 
 Superlite: parallel work, short reports.
 
-**Start menu.** First message, no mode named, not trivial: follow `/superlite:start`.
+**Start menu.** First message, no mode named, not trivial: `sl suggest_flow`, then `/superlite:start`.
 
 **Size the request first.**
 - Trivial: just do it (human orchestrator: after a yes in chat).
@@ -25,7 +25,7 @@ Superlite: parallel work, short reports.
 
 **Builds with 2+ tasks always run through `superlite:subagent-driven-development`;** load it before writing the plan. No `general-purpose` agents for build or review. Build inline only when small (a few files, one chain); say so.
 
-**Final review always applies.** A non-trivial build ends with a fresh `superlite:final-reviewer` on the review packet before you claim done.
+**Final review always applies.** A non-trivial build ends with a fresh `superlite:final-reviewer` on the review packet before claiming done.
 
 **Tools.** `bash <skill-dir>/../subagent-driven-development/scripts/sl <tool>`, never `python`. Incidents go to `.superlite/incidents.jsonl`; Graphify only if `sl graphify_gate` allows.
 

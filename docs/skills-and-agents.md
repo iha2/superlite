@@ -6,6 +6,7 @@
 - `subagent-driven-development`
 - `test-driven-development`
 - `systematic-debugging`
+- `feature-prototype` (feature mode: how to cut the prototype's container, by target kind)
 - `verification-before-completion`
 - `finishing-a-development-branch`
 

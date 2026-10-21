@@ -27,7 +27,9 @@ Mechanical steps are scripts, not agents. Every tool runs as `bash <skill-dir>/s
 | `history` | Run history: `write` rows to `~/.superlite/history.jsonl`, `read`, `derive` stats, `import` bench scores |
 | `graphify_gate` | Gates Graphify for search in non-trivial codebases |
 | `orchestrator` | Who orchestrates: `set human|ai`, `approve --review <plan>` (needs an approving human reply newer than the plan), `status` |
-| `report` | The end-of-build report: a short summary in the session, the full file next to the plan, projected against actual |
+| `report` | The end-of-build report: a short summary in the session, the full file next to the plan, projected against actual; in feature mode the prototype and the integration as two parts |
+| `suggest_flow` | `--text "<request>"`: one line, the suggested flow (regular, mvp, feature, debug, small, review, resume, status) from the request and the project state, with the other fits; deterministic |
+| `proto` | Feature mode's prototype: `start` (its own worktree on `superlite/<topic>-proto`), `tryout` (how to try it; `--approve` needs the human's reply in human mode), `status`, `discard`; state in `.superlite/feature.json` |
 | `finish` | Collects the finish summary (rulings, commits or checkpoints, test counts, open incidents) |
 
 `_pyrun.py` is a shared helper, not a tool. Probes live in `probes/` with the probe pack in `probes/pack/`.
