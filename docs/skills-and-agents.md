@@ -9,6 +9,7 @@
 - `feature-prototype` (feature mode: how to cut the prototype's container, by target kind)
 - `verification-before-completion`
 - `finishing-a-development-branch`
+- `mvp-prototype` (MVP mode: the clickable prototype and its feedback)
 
 Agents (`agents/`):
 
