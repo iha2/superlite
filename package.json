@@ -1,6 +1,6 @@
 {
   "name": "superlite",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Superlite skills and runtime bootstrap for coding agents",
   "type": "module",
   "main": ".opencode/plugins/superlite.js",
