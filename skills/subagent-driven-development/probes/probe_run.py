@@ -2,7 +2,7 @@
 """Parallel probe runner (no agents). Stdlib only, Python >= 3.12.
 
     probe_run.py --adapter PATH [--root DIR] [--app-type T] [--probes DIR]
-                 [--categories deep,numeric,...] [--files a,b | --commit SHA]
+                 [--categories deep,numeric,...] [--files a,b | --checkpoint SHA]
                  [--timeout 10] [--workers N] [--out .superlite/probes/probe-results.json]
                  [--log .superlite/incidents.jsonl] [--background]
 
@@ -1028,7 +1028,7 @@ def remove_checkout(tree: Path, repo: Path | None) -> None:  # O(tree files) + 2
     shutil.rmtree(tree.parent, ignore_errors=True)  # O(tree files) rmtree
 
 
-def run_main(a) -> int:  # O(checkout + _run_main) total; one git checkout per --commit run
+def run_main(a) -> int:  # O(checkout + _run_main) total; one git checkout per --checkpoint run
     root = Path(a.root or os.getcwd()).resolve()  # O(1)
     adapter = Path(a.adapter).resolve() if a.adapter else root / ".superlite" / "probes" / "adapter.py"  # O(1)
     if not adapter.is_file():  # O(1)
@@ -1036,7 +1036,7 @@ def run_main(a) -> int:  # O(checkout + _run_main) total; one git checkout per -
         return 2  # O(1)
     if not a.commit:  # O(1)
         return _run_main(a, root, root, adapter)  # O(_run_main)
-    # --commit: probe that commit's tree, not the working tree. The adapter is usually untracked
+    # --checkpoint: probe that checkpoint's tree, not the working tree. The adapter is usually untracked
     # (.superlite/), so a copy goes to the same relative place in the checkout for its relative ROOT.
     try:  # O(1)
         tree, repo = checkout_commit(root, a.commit)  # O(tree files) + git spawn
@@ -1058,7 +1058,7 @@ def run_main(a) -> int:  # O(checkout + _run_main) total; one git checkout per -
 
 
 def _run_main(a, root: Path, work: Path, adapter: Path) -> int:  # O(c*p + f*bytes + p log p + g*(t*B + shrink)) total + process spawns and probe I/O
-    """Probe the tree at `work` (== root, or a checkout of --commit); logs, cache, results and
+    """Probe the tree at `work` (== root, or a checkout of --checkpoint); logs, cache, results and
     regression tests always go under `root`."""  # O(1)
     t_start = time.time()  # O(1)
     probes_dir = Path(a.probes).resolve() if a.probes else None  # O(1)
@@ -1289,7 +1289,8 @@ def main(argv: list[str] | None = None) -> int:  # O(argv) + run
     ap.add_argument("--probes", help="directory of project probe modules")  # O(1)
     ap.add_argument("--categories", help="comma list; overrides --app-type")  # O(1)
     ap.add_argument("--files", help="comma list of files under test, relative to --root")  # O(1)
-    ap.add_argument("--commit", help="probe only the files this commit touched")  # O(1)
+    ap.add_argument("--checkpoint", "--commit", dest="commit",  # --commit: old name, kept as an alias | O(1)
+                    help="probe only the files this checkpoint (or commit) touched")  # O(1)
     ap.add_argument("--timeout", type=float, default=10.0, help="cap on per-probe timeouts (s)")  # O(1)
     ap.add_argument("--workers", type=int, default=0, help="default: CPU count")  # O(1)
     ap.add_argument("--out", default=".superlite/probes/probe-results.json",  # O(1)

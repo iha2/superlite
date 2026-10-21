@@ -282,7 +282,7 @@ def test_background_mode_returns_at_once(tmp_path):
 @pytest.mark.skipif(shutil.which("git") is None or shutil.which("bash") is None,
                     reason="git or bash not installed")
 def test_commit_mode_via_sl_launcher_and_default_paths(tmp_path):
-    """`bash sl probe_run --commit SHA` from the repo root, default adapter and --out paths."""
+    """`bash sl probe_run --checkpoint SHA` from the repo root, default adapter and --out paths."""
     proj = make_project(tmp_path)
     (proj / ".superlite" / "probes").mkdir(parents=True)
     shutil.move(str(proj / "adapter.py"), str(proj / ".superlite" / "probes" / "adapter.py"))
@@ -295,7 +295,7 @@ def test_commit_mode_via_sl_launcher_and_default_paths(tmp_path):
     subprocess.run([*git, "add", "-A"], check=True)
     subprocess.run([*git, "commit", "-q", "-m", "second"], check=True)
     sl = REPO / "skills" / "subagent-driven-development" / "scripts" / "sl"
-    p = subprocess.run(["bash", str(sl), "probe_run", "--commit", "HEAD", "--categories", "state"],
+    p = subprocess.run(["bash", str(sl), "probe_run", "--checkpoint", "HEAD", "--categories", "state"],
                        cwd=proj, capture_output=True, text=True, timeout=300)
     assert p.returncode == 0, p.stdout + p.stderr
     res = json.loads((proj / ".superlite" / "probes" / "probe-results.json").read_text())
@@ -314,16 +314,16 @@ def test_commit_mode_probes_the_commit_not_the_working_tree(tmp_path):
     subprocess.run([*git, "commit", "-q", "-m", "good"], check=True)
     parser = proj / "src" / "parser.py"
     parser.write_text(parser.read_text().replace("GUARD = True", "GUARD = False"))
-    res = run(proj, "--commit", "HEAD", "--categories", "deep", "--files", "src/parser.py")
+    res = run(proj, "--checkpoint", "HEAD", "--categories", "deep", "--files", "src/parser.py")
     assert res["categories"]["deep"]["status"] == "pass" and not res["failures"], res
     assert res["commit"] == "HEAD"
     wt = subprocess.run([*git, "worktree", "list", "--porcelain"], capture_output=True, text=True).stdout
     assert wt.count("worktree ") == 1
     assert not list(Path(tempfile.gettempdir()).glob("probe-commit-*/tree/.git"))
-    # Committing the unguarded parser makes --commit HEAD fail, with the incident under the real root.
+    # Committing the unguarded parser makes --checkpoint HEAD fail, with the incident under the real root.
     subprocess.run([*git, "add", "-A"], check=True)
     subprocess.run([*git, "commit", "-q", "-m", "bad"], check=True)
-    res = run(proj, "--commit", "HEAD", "--categories", "deep")
+    res = run(proj, "--checkpoint", "HEAD", "--categories", "deep")
     assert [g["kind"] for g in res["failures"]] == ["crash"] and res["failures"][0]["file"] == "src/parser.py"
     assert any(e["kind"] == "exception" for e in incidents(proj))
     assert (proj / "tests" / "regression").is_dir()

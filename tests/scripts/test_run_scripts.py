@@ -181,7 +181,7 @@ def test_assign_eligibility_and_busy(tmp_path):
     assert assign(tmp_path, "T6", [full, ok])[0] == "agent=ok"
 
 
-# ---------------------------------------------------------------- commit_task
+# ----------------------------------------------------------------- checkpoint
 
 def git(repo, *args):
     r = subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True,
@@ -211,7 +211,7 @@ def write(repo, rel, text):
 
 
 def commit(repo, task="T1", *extra, env=None):
-    return run("commit_task", task, "--plan", "plan.md", *extra, cwd=repo, env=env)
+    return run("checkpoint", task, "--plan", "plan.md", *extra, cwd=repo, env=env)
 
 
 def commits(repo):
@@ -230,7 +230,7 @@ def test_commit_stages_only_owns_and_records_ledger(tmp_path):
     assert sorted(git(repo, "show", "--name-only", "--format=", "HEAD").split()) == [
         "src/a.py", "tests/test_a.py"]
     ledger = (repo / ".superlite" / "progress.md").read_text(encoding="utf-8")
-    assert f"commit T1 {sha[:10]} parser" in ledger
+    assert f"- checkpoint T1 {sha[:10]} parser" in ledger
     assert git(repo, "status", "--porcelain", "--untracked-files=no") == ""
 
 
@@ -248,7 +248,7 @@ def test_commit_blocks_out_of_scope(tmp_path):
     assert git(repo, "diff", "--cached", "--name-only") == ""
     log = read_log(repo / ".superlite" / "incidents.jsonl")
     assert {e["file"] for e in log} == {"stray.txt"}
-    assert all(e["kind"] == "exception" and e["agent"] == "commit_task" for e in log)
+    assert all(e["kind"] == "exception" and e["agent"] == "checkpoint" for e in log)
 
 
 def test_commit_two_tasks_mid_build_leaves_other_tasks_files(tmp_path):
@@ -312,17 +312,17 @@ def test_run_tree_kills_grandchild_on_timeout(tmp_path):
 
 
 def test_launch_probes_passes_review_focus_categories(tmp_path, monkeypatch):
-    import commit_task
+    import checkpoint
     plan = tmp_path / "plan.md"
     plan.write_text("## Review Focus\n\n- pkg: deep, numeric\n- other: state, deep\n",
                     encoding="utf-8")
-    assert commit_task.probe_categories(str(plan)) == "deep,numeric,state"
+    assert checkpoint.probe_categories(str(plan)) == "deep,numeric,state"
     seen = []
     probe = tmp_path / "probe_run.py"
     probe.write_text("")
     monkeypatch.setenv("SUPERLITE_PROBE_RUN", str(probe))
-    monkeypatch.setattr(commit_task, "spawn_background", lambda cmd: seen.append(cmd))
-    commit_task.launch_probes("abc1234", str(plan))
+    monkeypatch.setattr(checkpoint, "spawn_background", lambda cmd: seen.append(cmd))
+    checkpoint.launch_probes("abc1234", str(plan))
     assert seen[0][-2:] == ["--categories", "deep,numeric,state"]
 
 
@@ -359,7 +359,7 @@ def test_commit_rejects_failing_import_and_accepts_package_import(tmp_path):
 def test_commit_nothing_and_unknown_task(tmp_path):
     repo = make_repo(tmp_path)
     r = commit(repo)
-    assert r.returncode == 1 and "nothing to commit" in r.stderr
+    assert r.returncode == 1 and "nothing to checkpoint" in r.stderr
     assert commit(repo, "T99").returncode == 2
 
 
@@ -374,7 +374,7 @@ def test_commit_launches_probe_in_background_only_if_present(tmp_path):
         if marker.exists() and marker.read_text():
             break
         time.sleep(0.1)
-    assert marker.read_text() == f"--commit {r.stdout.strip()}"
+    assert marker.read_text() == f"--checkpoint {r.stdout.strip()}"
     # absent probe file: no launch, still commits
     marker.unlink()
     write(repo, "src/a.py", "X = 2\n")
@@ -462,7 +462,7 @@ def test_finish_collects_rulings(tmp_path):
     assert rulings == ["- keep Workbook.set returning a list",
                        "- accept the sequential T5 -> T6 chain",
                        "- third and last"]
-    assert "rulings: 3" in out and "commits: 2" in out
+    assert "rulings: 3" in out and "commits: 2" in out  # ENV has auto-commit on
     assert "- T1 abcdef1234 parser" in out and "- T2 1234567890 lexer" in out
     assert "tests (full): 9 passed, 0 failed, 2 skipped in 3.2s" in out
     assert "open incidents: 2" in out
@@ -637,7 +637,7 @@ def test_finish_unblocked_without_lint_log(tmp_path):
 
 
 def test_import_check_skips_main_modules_it_would_run(tmp_path, monkeypatch):
-    import commit_task as ct
+    import checkpoint as ct
     (tmp_path / "src" / "pkg").mkdir(parents=True)
     (tmp_path / "src" / "pkg" / "__init__.py").write_text("", encoding="utf-8")
     (tmp_path / "src" / "pkg" / "__main__.py").write_text("import sys\nsys.exit(2)\n", encoding="utf-8")  # an unguarded entry point

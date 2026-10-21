@@ -2,6 +2,8 @@
 
 Mechanical steps are scripts, not agents. Every tool runs as `bash <skill-dir>/scripts/sl <tool> ...`, where `<skill-dir>` is `skills/subagent-driven-development`. The `sl` launcher runs a `.sh` tool under bash and a `.py` tool under the first working Python, and exits 3 when there is none. It caches that interpreter, so each later call is one Python start (`SUPERLITE_PYTHON` skips the probe entirely). Tools that need each other import them in process instead of spawning `sl` again. The tools are Python, but the project can be any language.
 
+A checkpoint is a hidden save of one task under `refs/superlite/*`; a commit is a real git commit on your branch, made only by `/superlite:commit` or `sl autocommit on`.
+
 | Tool | What it does |
 |---|---|
 | `plan_tools` | Plan lint (`--stable` freezes tasks and tiers), task graph, stubs, schedule, prune, and the `adapter`, `packet` and `contract` review subcommands |
@@ -14,7 +16,7 @@ Mechanical steps are scripts, not agents. Every tool runs as `bash <skill-dir>/s
 | `dispatch` | Ready tasks and who runs each, in one call (`next_tasks` + `assign`) |
 | `next_tasks` | Computes which tasks are ready |
 | `assign` | Scores idle agents and picks the most relevant one |
-| `commit_task` | Checks scope, then checkpoints (default: hidden `refs/superlite/*` commits, branch untouched) or commits (autocommit on) one or more tasks' owned files; `--dispatch` also prints the next dispatch |
+| `checkpoint` | Checks scope, then records one or more tasks' owned files as checkpoints (default: hidden `refs/superlite/*`, branch untouched; real commits with autocommit on); `--dispatch` also prints the next dispatch. `commit_task` is its old name and still works |
 | `autocommit` | `on`/`off`/`status` opt-in real commits (`.superlite/autocommit.json`, env `SUPERLITE_AUTOCOMMIT=1`); `apply` turns checkpoints into commits on the current branch; `clean` deletes them |
 | `run_tests` | Runs the project's test command, with `--background`, then `--wait` for the summary; writes `.superlite/test-summary.json` |
 | `testcmd` | Resolves the project's test command: `.superlite/test-cmd.json`, else detection (npm, go, cargo, dotnet, Python) |
@@ -27,6 +29,6 @@ Mechanical steps are scripts, not agents. Every tool runs as `bash <skill-dir>/s
 | `graphify_gate` | Gates Graphify for search in non-trivial codebases |
 | `orchestrator` | Who orchestrates: `set human|ai`, `approve --review <plan>` (needs an approving human reply newer than the plan), `status` |
 | `report` | The end-of-build report: a short summary in the session, the full file next to the plan, projected against actual |
-| `finish` | Collects the finish summary (rulings, commits or checkpoints, test counts, open incidents) |
+| `finish` | Collects the finish summary (rulings, checkpoints, or commits with autocommit on, test counts, open incidents) |
 
 `_pyrun.py` is a shared helper, not a tool. Probes live in `probes/` with the probe pack in `probes/pack/`.

@@ -1,5 +1,5 @@
 """Instantiation optimizations: in-process taskgraph and incidents, dispatch, multi-task
-commit_task, and the sl interpreter cache. These run the real sibling tools (no fake sl);
+checkpoint, and the sl interpreter cache. These run the real sibling tools (no fake sl);
 SUPERLITE_BASH points at a missing binary so any leftover `bash sl` spawn fails loudly."""
 import json
 import os
@@ -120,7 +120,7 @@ def test_dispatch_reads_committed_from_ledger(tmp_path):
     assert all(d == "fresh" for _, d in lines)
 
 
-# ------------------------------------------------------------- multi-task commit_task
+# -------------------------------------------------------------- multi-task checkpoint
 
 def git(repo, *args):
     r = subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, encoding="utf-8")
@@ -152,7 +152,7 @@ def test_commit_several_tasks_in_one_call_then_dispatch(tmp_path):
     repo = make_repo(tmp_path)
     write(repo, "src/a.py", "def parse(text):\n    return text.split()\n")
     write(repo, "src/b.py", "def lex(text):\n    return list(text)\n")
-    r = run("commit_task", "T1", "T2", "--plan", "plan.md", "--dispatch", cwd=repo)
+    r = run("checkpoint", "T1", "T2", "--plan", "plan.md", "--dispatch", cwd=repo)
     assert r.returncode == 0, r.stdout + r.stderr
     out = r.stdout.splitlines()
     assert out[0].startswith("T1 ") and out[1].startswith("T2 ")
@@ -166,19 +166,19 @@ def test_commit_several_reports_each_failure_and_logs_in_process(tmp_path):
     repo = make_repo(tmp_path)
     write(repo, "src/a.py", "def parse(text):\n    return text.split()\n")
     write(repo, "src/c.py", "def broken(:\n")
-    r = run("commit_task", "T1", "T3", "--plan", "plan.md", cwd=repo)
+    r = run("checkpoint", "T1", "T3", "--plan", "plan.md", cwd=repo)
     assert r.returncode == 1
     assert r.stdout.splitlines()[0].startswith("T1 ")
     assert "T3 FAILED" in r.stdout
     rows = read_log(repo / ".superlite" / "incidents.jsonl")
-    assert rows and rows[0]["file"] == "src/c.py" and rows[0]["agent"] == "commit_task"
+    assert rows and rows[0]["file"] == "src/c.py" and rows[0]["agent"] == "checkpoint"
     assert "time" in rows[0]  # written by the real incident module, not a spawn
 
 
 def test_single_task_output_unchanged(tmp_path):
     repo = make_repo(tmp_path)
     write(repo, "src/a.py", "def parse(text):\n    return text.split()\n")
-    r = run("commit_task", "T1", "--plan", "plan.md", cwd=repo)
+    r = run("checkpoint", "T1", "--plan", "plan.md", cwd=repo)
     assert r.returncode == 0, r.stderr
     assert r.stdout.strip() == git(repo, "rev-parse", "HEAD")
 
@@ -248,14 +248,14 @@ def test_commit_releases_pool_agent_and_dispatch_failure_keeps_commit(tmp_path):
     pool_path.parent.mkdir(parents=True, exist_ok=True)
     pool_path.write_text(json.dumps({"agents": [
         {"id": "a1", "tasks": [], "busy": True, "current": "T1"}]}), encoding="utf-8")
-    r = run("commit_task", "T1", "--plan", "plan.md", cwd=repo)
+    r = run("checkpoint", "T1", "--plan", "plan.md", cwd=repo)
     assert r.returncode == 0, r.stderr
     ag = json.loads(pool_path.read_text(encoding="utf-8"))["agents"][0]
     assert ag["busy"] is False and "current" not in ag and ag["tasks"] == ["T1"]
     # a broken pool after the commit: dispatch warns, the commit's exit code stands
     write(repo, "src/b.py", "def lex(text):\n    return list(text)\n")
     pool_path.write_text("{not json", encoding="utf-8")
-    r = run("commit_task", "T2", "--plan", "plan.md", "--dispatch", cwd=repo)
+    r = run("checkpoint", "T2", "--plan", "plan.md", "--dispatch", cwd=repo)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "warning: dispatch failed" in r.stderr and "next:" in r.stdout
     assert git(repo, "log", "--format=%s", "-1") == "T2: lexer"

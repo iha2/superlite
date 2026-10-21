@@ -3,7 +3,7 @@
 
     budget.py --plan P [--dir .superlite] [--changed] [--json]
 
-Reads `.superlite/metrics.jsonl` (via metrics.py), the ledger's commits and the plan header
+Reads `.superlite/metrics.jsonl` (via metrics.py), the ledger's checkpoints and the plan header
 (`**Target-min:** 11`, optional `**Budget-usd:** 3.00`). Projection: elapsed + the longest remaining path
 through unfinished tasks (predicted minutes from `schedule`, history-backed when stats exist, minus time
 already spent on in-flight tasks); cost: spent + mean cost of finished tasks (else the history band mean)
@@ -35,7 +35,8 @@ def committed(sl: Path) -> set:  # O(ledger)
     f = sl / "progress.md"  # O(1)
     if not f.is_file():  # O(1)
         return set()  # O(1)
-    return set(re.findall(r"^- commit (T\d+[A-Za-z]?)\b", f.read_text(encoding="utf-8", errors="replace"), re.M))  # O(ledger)
+    from checkpoint import LEDGER_LINE  # O(1) lazy: the one ledger regex (checkpoint or old commit lines)
+    return {m.group(1) for ln in f.read_text(encoding="utf-8", errors="replace").splitlines() if (m := LEDGER_LINE.match(ln))}  # O(ledger)
 
 
 def compute(plan_path, sl_dir=".superlite", now=None) -> dict:  # O(M + B + n*(n + e))
@@ -123,7 +124,7 @@ def line(b: dict) -> str:  # O(1)
         s += " WARN: 70% of the cap reached"  # O(1)
     if b["state"] == "over":  # O(1)
         s += (" OVER CAP: start no optional work (extra review rounds, fix rounds beyond the first); "  # O(1)
-              "finish the tasks in flight, commit, run finish")
+              "finish the tasks in flight, checkpoint them, run finish")
     if b["late"] and b["late_path"]:  # O(1)
         s += f" LATE: critical path {' -> '.join(b['late_path'])}"  # O(1)
     return s  # O(1)

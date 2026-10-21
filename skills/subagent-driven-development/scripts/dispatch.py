@@ -11,9 +11,9 @@ stdout, one line per ready task, longest predicted first, within the cap:
     T0 wave0             synthesized Wave 0 skeleton still pending (`sl wave0`): its own agent, first line
 stderr: `evict=<id> <reason>` for each idle agent eligible for none of the ready tasks.
 
-Defaults when a flag is omitted: committed tasks come from the ledger's `- commit Tn <sha>`
-lines; running tasks are the pool agents' `current` tasks not yet committed (busy or not:
-a FAILED or BLOCKED task keeps its `current` until commit_task commits it). An agent with
+Defaults when a flag is omitted: done tasks come from the ledger's `- checkpoint Tn <sha>`
+lines (old `- commit` lines too); running tasks are the pool agents' `current` tasks not yet
+checkpointed (busy or not: a FAILED or BLOCKED task keeps its `current` until `checkpoint` records it). An agent with
 a `current` gets no new task, and no agent appears on two lines of one call (`agent=` or
 `poll`). The plan is parsed once, in this process. Stdlib only.
 """
@@ -28,7 +28,7 @@ from pathlib import Path  # O(1)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # O(1)
 import assign as asg  # noqa: E402 | O(1)
-import commit_task as ct  # noqa: E402 | O(1)
+import checkpoint as ct  # noqa: E402 | O(1)
 import routing  # noqa: E402 | O(1)
 import next_tasks as nt  # noqa: E402 | O(1)
 
@@ -136,9 +136,9 @@ def render(lines, evict):  # O(R + a)
 
 
 def run(plan, pool_path, ledger, committed=None, running=None, cap=10):  # O(c + L + n + e + R*a*(F + o))
-    """Library entry for commit_task --dispatch; flags left as None take their defaults."""
+    """Library entry for checkpoint --dispatch; flags left as None take their defaults."""
     pool = load_pool(pool_path)  # O(pool bytes)
-    done = nt.csv(committed) if committed is not None else sorted(ct.committed_tasks(ledger))  # O(c)
+    done = nt.csv(committed) if committed is not None else sorted(ct.checkpointed_tasks(ledger))  # O(c)
     busy = nt.csv(running) if running is not None else running_from_pool(pool, done)  # O(a)
     import wave0  # noqa: E402 | O(1) lazy
     w0 = wave0.synth_info(plan) and "T0" not in done and "T0" not in busy  # synthesized Wave 0 still pending | O(1)
@@ -155,7 +155,7 @@ def main(argv=None):  # O(c + L + n + e + R*a*(F + o))
     ap.add_argument("--plan")  # O(1)
     ap.add_argument("--pool", default=".superlite/pool.json")  # O(1)
     ap.add_argument("--ledger", default=ct.DEFAULT_LEDGER)  # O(1)
-    ap.add_argument("--committed", help="default: the ledger's commit lines")  # O(1)
+    ap.add_argument("--committed", help="default: the ledger's checkpoint lines")  # O(1)
     ap.add_argument("--running", help="default: `current` of each busy pool agent")  # O(1)
     ap.add_argument("--cap", type=int, default=10)  # O(1)
     a = ap.parse_args(argv)  # O(1)

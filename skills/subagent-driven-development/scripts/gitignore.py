@@ -2,7 +2,7 @@
 """Dependency, build and cache paths per language, from config/gitignore.json (data, not code).
 
 Two users: `wave0.py` appends the missing entries of a plan's languages (plus `common`) to the repo's
-.gitignore before any agent runs (`ensure`), and `commit_task.py` never blocks a task on a path that
+.gitignore before any agent runs (`ensure`), and `checkpoint.py` never blocks a task on a path that
 matches the union of every language's list (`ignored`). Existing .gitignore lines are never removed,
 reordered or rewritten; only missing entries are appended. Stdlib only.
 """

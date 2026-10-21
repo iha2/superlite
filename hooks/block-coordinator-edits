@@ -6,8 +6,9 @@
 #     by the model.
 #  2. HUMAN-UNAPPROVED (.superlite/orchestrator.json has mode human and approved false): nothing is
 #     orchestrated until the human approves the review plan. Agent calls of superlite:* and
-#     general-purpose and sl dispatch/assign/wave0/commit_task/finish/build_prime are denied. File
-#     writes are not: small inline work needs only the human's yes in chat, not a review plan.
+#     general-purpose and sl dispatch/assign/wave0/checkpoint (old name commit_task)/finish/build_prime
+#     are denied. File writes are not: small inline work needs only the human's yes in chat, not a
+#     review plan.
 #  3. Active run (.superlite/stable.json, prime.md or pool.json exists): project code is not written
 #     by the coordinator; allowed targets are docs/plans/**, SPEC*.md, docs/**/*.md and .superlite/**.
 # Bash/PowerShell write detection is best-effort; when unsure, allow. Sessions without a .superlite
@@ -101,7 +102,7 @@ elif [ -z "$hit" ]; then
   mentions=0
   [[ $lc == *human-replies.jsonl* || $lc == *orchestrator.json* ]] && mentions=1
   # sl tools that start a build are denied until the plan is approved.
-  re_sl='(sl|\$SL|\$\{SL\}|scripts/sl)"?[[:space:]]+(dispatch|assign|wave0|commit_task|finish|build_prime)([[:space:]]|$)'
+  re_sl='(sl|\$SL|\$\{SL\}|scripts/sl)"?[[:space:]]+(dispatch|assign|wave0|checkpoint|commit_task|finish|build_prime)([[:space:]]|$)'
   if [ "$human" = 1 ] && [[ $cmd =~ $re_sl ]]; then hit="sl ${BASH_REMATCH[2]}"; fi
   # Inline interpreter writers (checked on the full text, heredoc bodies included).
   re_interp='(^|[^[:alnum:]_])(python[0-9.]*|node|ruby|php)([[:space:]]|$)'

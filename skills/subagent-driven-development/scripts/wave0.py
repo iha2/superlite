@@ -31,7 +31,7 @@ LANGS = [("TypeScript", r"typescript|\btsc\b|\.tsx?\b"), ("JavaScript", r"javasc
          ("Python", r"python|pyproject|pytest|\.py\b"), ("Go", r"\bgolang\b|\bgo\.mod\b|\.go\b"),
          ("Rust", r"\brust\b|cargo|\.rs\b"), ("C#", r"c#|\.net\b|csproj|\.cs\b"), ("Java", r"\bjava\b|\.java\b"),
          ("Ruby", r"\bruby\b|\.rb\b")]
-# Root-level and glob paths a synthesized T0 owns (commit_task matches `*` patterns; files another task owns are left alone).
+# Root-level and glob paths a synthesized T0 owns (checkpoint matches `*` patterns; files another task owns are left alone).
 SYNTH_OWNS = ["package.json", "package-lock.json", "tsconfig*.json", "pyproject.toml", "uv.lock", "go.mod", "go.sum", "Cargo.toml",  # O(1)
               "Cargo.lock", "Makefile", "*.csproj", "*.sln", "pom.xml", "build.gradle", "Gemfile", ".gitignore",
               "jest.config.*", "vitest.config.*", "pytest.ini", "tox.ini", "conftest.py", ".eslintrc*",
@@ -177,7 +177,7 @@ Write one stub per `produces` item below (only the signatures another task consu
 2. The project's own test command, or its compile/type-check, runs on the stub tree: the tree builds, and any test fails as "not implemented", never as an import, syntax or configuration error.
 3. You write and verify `.superlite/test-cmd.json` on the stub tree: `{{"language","test","test_file","junit","setup"}}` (JSON; `test` runs everything, `test_file` takes `{{files}}`, `junit` is the report path or `{{junit}}` for the one run_tests supplies, `setup` installs dependencies). Verify it by running `bash "$SL" run_tests --full`: it must report the stubs as failing, never "no test command found".
 4. `.gitignore` already exists: the coordinator's script wrote it before you started (dependency, build and cache folders for the plan's languages). Do not rewrite it; extend it only if your own tooling creates another generated folder, adding just that entry.
-5. Never run `git add`, `commit`, `switch` or `checkout`; the coordinator runs `bash "$SL" commit_task {tid} --plan PLAN`.
+5. Never run `git add`, `commit`, `switch` or `checkout`; the coordinator runs `bash "$SL" checkpoint {tid} --plan PLAN`.
 
 Reply in at most 200 words: Status (DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT or BLOCKED), files changed (paths only), test or build command and its result line, concerns.
 """  # O(L + q*s)
@@ -206,7 +206,7 @@ def write_gitignore(plan, plan_path: str) -> list[str]:  # O(L + g + e) + file I
 
 
 def gitignore_owner(plan_path: str):  # O(1) + file read
-    """Task id of the Wave 0 task when the script touched .gitignore (it commits that file), else None."""
+    """Task id of the Wave 0 task when the script touched .gitignore (it checkpoints that file), else None."""
     f = sl_dir(plan_path) / "briefs" / "wave0.json"  # O(1)
     try:  # O(1)
         d = json.loads(f.read_text(encoding="utf-8"))  # O(size)

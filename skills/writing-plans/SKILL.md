@@ -69,7 +69,7 @@ flowchart LR
   T3 --> T4
 ```
 
-Here T1, T2 and T3 run in parallel; T2 and T3 build against T1's stubs, not its code. Waves are only a planning view: the scheduler dispatches a task the moment its dependencies are committed, with no wave barrier and no wave width cap.
+Here T1, T2 and T3 run in parallel; T2 and T3 build against T1's stubs, not its code. Waves are only a planning view: the scheduler dispatches a task the moment its dependencies are checkpointed, with no wave barrier and no wave width cap.
 
 ## Split by interface
 
@@ -77,7 +77,7 @@ Here T1, T2 and T3 run in parallel; T2 and T3 build against T1's stubs, not its 
 2. **A task waits only when its tests execute another task's code.** Consumers test against stubs with small fakes, never against the real producer. Integration tests that run both sides go in one small integration task per package at the end, so the consumers themselves don't wait. Consumers' own tests still run against the real producer later, through the seam check (`SUPERLITE_REAL=1`). A chain like parser → evaluator → workbook → CLI becomes one wave of four tasks against stubs, plus the integration task.
 2a. **Keep the chain short.** Lint fails with `CHAIN:` when the predicted critical path is over 2.5 times its longest task (with 3 or more tasks on it). Stub more interfaces, or add `Ruling: sequential - <why>` when the order really is forced, such as a migration before its users.
 3. **Keep every task inside the size band.** The only measure is predicted time, held in `config/predictor.json` as `size_band` (low_min 1.5, high_min 6.0). Over high_min lint fails `SIZE:`: split along components, for example a server+UI task becomes server (against the workbook stub) and UI (against the spec's JSON contract). Under low_min it prints `NOTE:` (consider merging with a related task in the same package) and never fails. `predict --refit` moves the band from measured task times. The 80k context ceiling stays.
-4. **Slow tests stay out of the inner loop.** Mark them `Tests: slow`. Implementers run only fast tests during TDD, and slow suites run once in the background after commit.
+4. **Slow tests stay out of the inner loop.** Mark them `Tests: slow`. Implementers run only fast tests during TDD, and slow suites run once in the background after the checkpoint.
 5. **Diagrams show the run.** The graph and schedule show the width and length of the run before anything runs, when a bad split is cheapest to fix.
 
 ## Task template

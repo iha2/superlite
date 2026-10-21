@@ -4,11 +4,11 @@
     finish.py [--ledger .superlite/progress.md] [--log .superlite/incidents.jsonl]
 
 Collects, from the progress ledger, every `Ruling:` line (in order), the
-commits and the last test counts, plus the open incidents from the log.
+checkpoints and the last test counts, plus the open incidents from the log.
 Deterministic: the same files give the same text. Stdlib only.
 """
 # Complexity notation:
-#   R = lines in the progress ledger, I = lines in the incident log, C = commits and G = rulings found,
+#   R = lines in the progress ledger, I = lines in the incident log, C = checkpoints and G = rulings found,
 #   w = width of one line
 import argparse  # O(1)
 import json  # O(1)
@@ -23,7 +23,8 @@ DEFAULT_LINT_LOG = ".superlite/lint-log.jsonl"  # O(1)
 UNBLOCKED = re.compile(r"^\s*[-*+]?\s*unblocked:\s*dispatched\s+((?:T\d+[A-Za-z]?\s*)+?)\s*at\s+(\d\d:\d\d:\d\d)")  # O(1)
 
 RULING = re.compile(r"^\s*(?:[-*+]\s+)?(?:\*\*)?Ruling:(?:\*\*)?\s*(.*?)\s*$")  # O(1)
-COMMIT = re.compile(r"^\s*[-*+]?\s*commit\s+(T\d+[A-Za-z]?)\s+([0-9a-f]{7,40})\s*(.*?)\s*$")  # O(1)
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # O(1)
+from checkpoint import LEDGER_LINE as CHECKPOINT  # noqa: E402 | the one ledger regex: checkpoint or old commit lines | O(1)
 TESTS = re.compile(r"^\s*[-*+]?\s*tests\s+(\w+)\s+passed=(\d+)\s+failed=(\d+)"  # O(1)
                    r"\s+skipped=(\d+)\s+seconds=([\d.]+)")  # O(1)
 
@@ -32,20 +33,20 @@ def read_ledger(path):  # O(R*w)
     p = Path(path)  # O(1)
     if not p.exists():  # O(1) stat
         return [], [], None  # O(1)
-    rulings, commits, tests = [], [], None  # O(1)
+    rulings, checkpoints, tests = [], [], None  # O(1)
     for line in p.read_text(encoding="utf-8").replace("\r\n", "\n").split("\n"):  # O(R) iterations; read + split O(ledger bytes)
         m = RULING.match(line)  # O(w) regex
         if m:  # O(1)
             rulings.append(m.group(1))  # O(1)
             continue  # O(1)
-        m = COMMIT.match(line)  # O(w) regex
+        m = CHECKPOINT.match(line)  # O(w) regex
         if m:  # O(1)
-            commits.append(m.groups())  # O(1)
+            checkpoints.append(m.groups())  # O(1)
             continue  # O(1)
         m = TESTS.match(line)  # O(w) regex
         if m:  # O(1)
             tests = m.groups()  # O(1)
-    return rulings, commits, tests  # O(1)
+    return rulings, checkpoints, tests  # O(1)
 
 
 def open_incidents(path):  # O(I*w)
@@ -154,12 +155,13 @@ def scope_rulings(rulings):  # O(G)
 
 
 def summary(ledger, log, lint_log=DEFAULT_LINT_LOG, plan=None, sl_dir=None):  # O(R*w + I*w + C + G)
-    rulings, commits, tests = read_ledger(ledger)  # O(R*w)
+    rulings, checkpoints, tests = read_ledger(ledger)  # O(R*w)
     incidents = open_incidents(log)  # O(I*w)
     out = ["# superlite run summary", ""]  # O(1)
     cp = checkpoint_note(ledger)  # checkpoint mode: nothing was committed | O(1) + git spawns
-    out.append(f"{'checkpoints' if cp else 'commits'}: {len(commits)}")  # O(1)
-    out += [f"- {t} {sha[:10]} {title}".rstrip() for t, sha, title in commits]  # O(C)
+    import autocommit  # O(1)
+    out.append(f"{'commits' if autocommit.is_on() else 'checkpoints'}: {len(checkpoints)}")  # real commits only with auto-commit on | O(1)
+    out += [f"- {t} {sha[:10]} {title}".rstrip() for t, sha, title in checkpoints]  # O(C)
     out += cp  # O(1)
     out.append("")  # O(1)
     out.append(f"rulings: {len(rulings)}")  # O(1)

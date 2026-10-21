@@ -13,7 +13,7 @@ Agents (`agents/`):
 
 - `implementer` (sonnet, medium): builds one task, then stays idle for reuse.
 - `implementer-haiku` (haiku, high): builds one `Kind: mechanical` task (fully specified, small, fast tests) exactly as written; stops rather than guesses.
-- `package-reviewer` (sonnet, medium): reviews one committed task or one package, then fixes its own findings with regression tests.
+- `package-reviewer` (sonnet, medium): reviews one checkpointed task or one package, then fixes its own findings with regression tests.
 - `final-reviewer` (opus, high): a fresh one-turn reviewer that reads only the review packet (Read, Grep, Glob). It returns findings, each with a fix tier, and never fixes.
 - `fixer-sonnet` (sonnet, medium): tier 1, cause known (including a fully specified change), fix confined to one module.
 - `fixer-sonnet-high` (sonnet, high): tier 2, cause known but the fix spans modules or a seam, or a known probe class.
