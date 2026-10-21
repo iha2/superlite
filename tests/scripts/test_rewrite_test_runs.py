@@ -142,3 +142,111 @@ def test_fast(proj):
         raw = json.dumps({"tool_name": "Bash", "tool_input": {"command": cmd}})
         t = best([BASH, str(HOOK)], raw)
         assert t < max(0.6, base + 0.35), (cmd, t, base)
+
+
+# ------------------------------------------------------------------ hidden test waits are denied
+
+def denied(r):
+    assert r.returncode == 2 and r.stdout == "", (r.returncode, r.stdout, r.stderr)
+    assert "sl run_tests --wait" in r.stderr
+    return r.stderr
+
+
+@pytest.mark.parametrize("cmd", [
+    "until npx vitest run x.test.ts >/dev/null 2>&1; do sleep 20; done",
+    "while ! pytest tests/test_a.py; do sleep 5; done",
+    "until python -m pytest -x; do sleep 1; done",
+    "while true; do go test ./... || break; done",
+    "until cargo test; do sleep 3; done",
+    "until yarn jest src/a.test.ts; do sleep 2; done",
+    "until pnpm exec vitest run; do sleep 2; done",
+    "until npx mocha test/a.js; do sleep 2; done",
+    "while ! dotnet test; do sleep 9; done",
+    "until mvn -q test; do sleep 9; done",
+    "until ./gradlew test; do sleep 9; done",
+    "until bundle exec rspec spec/a_spec.rb; do sleep 9; done",
+    "until npm test; do sleep 9; done",
+    "cd app && until CI=1 npx jest; do sleep 9; done",
+    "npx jest > /dev/null 2>&1",
+    "npx vitest run >/dev/null",
+    "pytest &>/dev/null",
+    "cd app && go test ./... 1>/dev/null",
+    "cargo test > /dev/null 2>&1; echo $?",
+    "pytest >> /dev/null",
+])
+def test_denies_hidden_test_waits(proj, cmd):
+    denied(run(proj, cmd))
+    rec = json.loads((proj / ".superlite" / "incidents.jsonl").read_text().splitlines()[0])
+    assert rec["kind"] == "rule-block" and rec["agent"] == "coordinator" and "hidden test wait" in rec["target"]
+
+
+@pytest.mark.parametrize("cmd", [
+    "until curl -s localhost:3000; do sleep 1; done",
+    "until [ -f node_modules/.bin/vitest ]; do sleep 5; done",
+    "while ! nc -z localhost 5432; do sleep 1; done",
+    "until grep -q pytest requirements.txt; do sleep 1; done",
+    "until npm ls vitest >/dev/null 2>&1; do sleep 1; done",
+    "until docker ps >/dev/null; do sleep 2; done",
+    "while read f; do echo $f; done < files.txt",
+    "bash sl run_tests --wait",
+    "until bash sl run_tests --wait; do sleep 5; done",
+    "pytest 2>/dev/null | tail -3",
+    "echo vitest >/dev/null",
+    "ls > /dev/null",
+])
+def test_harmless_loops_and_redirects_pass(proj, cmd):
+    r = run(proj, cmd)
+    assert r.returncode == 0 and r.stderr == "", (cmd, r.stderr)
+    assert "deny" not in r.stdout
+
+
+def test_plain_runner_is_still_rewritten_not_denied(proj):
+    assert rewritten(run(proj, "npx vitest run")).strip() == SLCMD
+    assert rewritten(run(proj, "pytest 2>/dev/null")).strip() == SLCMD
+
+
+def test_denial_is_coordinator_only_and_needs_a_run(proj, tmp_path):
+    loop = "until npx vitest run >/dev/null 2>&1; do sleep 20; done"
+    r = run(proj, loop, agent_id="a1", agent_type="implementer")
+    assert r.returncode == 0 and r.stdout == "" and r.stderr == ""
+    other = tmp_path / "norun"
+    other.mkdir()
+    r = run(other, loop)
+    assert r.returncode == 0 and r.stderr == ""
+
+
+def test_project_test_command_counts_as_a_known_runner(proj):
+    (proj / ".superlite" / "test-cmd.json").write_text(json.dumps(
+        {"language": "swift", "test": "make check -j4", "test_file": "./run-tests.sh {files}"}), encoding="utf-8")
+    denied(run(proj, "until make check; do sleep 5; done"))
+    denied(run(proj, "make check -j4 >/dev/null 2>&1"))
+    denied(run(proj, "until ./run-tests.sh a b; do sleep 5; done"))
+    for ok in ("until make build; do sleep 5; done", "make check", "until make; do sleep 1; done", "make >/dev/null"):
+        r = run(proj, ok)
+        assert r.returncode == 0 and r.stderr == "", ok
+
+
+def test_generic_one_word_project_command_is_not_a_runner(proj):
+    (proj / ".superlite" / "test-cmd.json").write_text(json.dumps({"test": "python -c \"print(1)\""}), encoding="utf-8")
+    r = run(proj, "until python server_check.py; do sleep 1; done")
+    assert r.returncode == 0 and r.stderr == ""
+
+
+def test_denial_check_stays_fast(proj):
+    def best(cmd):
+        raw = json.dumps({"tool_name": "Bash", "tool_input": {"command": cmd}})
+        env = {**os.environ, "CLAUDE_PROJECT_DIR": str(proj)}
+        times = []
+        for _ in range(3):
+            t = time.perf_counter()
+            subprocess.run([BASH, str(HOOK)], input=raw, capture_output=True, text=True, env=env)
+            times.append(time.perf_counter() - t)
+        return min(times)
+
+    base = best("git status && ls")
+    for cmd in ("until curl -s localhost:3000; do sleep 1; done", "ls > /dev/null", "until npx vitest run >/dev/null; do sleep 2; done"):
+        assert best(cmd) < max(0.7, base + 0.4), cmd
+
+
+def test_redirect_in_a_kept_segment_survives_the_rewrite(proj):
+    assert rewritten(run(proj, "npm run build 2>&1 && npm test")) == f"npm run build 2>&1 && {SLCMD} "

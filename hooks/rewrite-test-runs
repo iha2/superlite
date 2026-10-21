@@ -6,9 +6,14 @@
 # Chained commands keep their other work: only the test segment is replaced, separators stay, and
 # the whole command then runs in the background. Anything ambiguous (odd quotes, heredocs, \u
 # escapes) passes unchanged. Each rewrite is logged to .superlite/incidents.jsonl (rule-rewrite).
+# DENIED instead (exit 2, rule-block incident, message points to `sl run_tests --wait`): a known test
+# runner (the list above plus mocha, rspec, mvn, gradle and the command in .superlite/test-cmd.json)
+# inside an until/while loop, or a test run with stdout sent to /dev/null. Only known runners match, so
+# `until curl ...` and `until [ -f x ]` pass.
 # Bash builtins only (each external process costs ~250 ms on Windows). Exit 0 (fail open), except a denial (exit 2).
 
 IFS= read -r -d '' input   # builtin; returns 1 at EOF, which is fine
+shopt -u patsub_replacement 2>/dev/null   # bash 5.2+: `&` in a ${x//a/&} replacement must stay literal
 
 re_agent='"agent_id"[[:space:]]*:[[:space:]]*"'
 [[ $input =~ $re_agent ]] && exit 0   # subagent call
@@ -55,10 +60,81 @@ re_seg='^([^&|;'$'\n'']*)(&&|\|\||;|\||'$'\n''|&)(.*)$'
 
 ph1=$'\x02'; ph2=$'\x03'
 cmd="${cmd//>&/$ph1}"; cmd="${cmd//&>/$ph2}"   # keep 2>&1 and &> out of the separator split
+
+# Hidden test waits are denied, not rewritten: a known runner inside an until/while loop, or a test run
+# whose stdout goes to /dev/null, makes a hung run look like a slow one. The way is `sl run_tests --wait`.
+# Known runners only, at command position, so `until curl ...` or `until [ -f .../vitest ]` pass.
+sp='[[:space:]]'
+re_env="([A-Za-z_][A-Za-z_0-9]*=[^[:space:]]*$sp+)*"
+re_uv="((uv|poetry|pipenv|pdm|hatch)${sp}+run${sp}+)?"
+re_core="(((python[0-9.]*|py)(${sp}+-[0-9]+)?${sp}+-m${sp}+)?(pytest|py\.test|unittest)|((npx|pnpx|bunx|yarn|pnpm(${sp}+(exec|dlx))?|npm${sp}+exec|bun${sp}+x)${sp}+(-[-A-Za-z]+${sp}+)*)?(vitest|jest|mocha)|(npm|pnpm|yarn|bun)${sp}+(run${sp}+)?test|(go|cargo|dotnet)${sp}+test|(bundle${sp}+exec${sp}+)?rspec|(mvn|mvnw|\./mvnw|gradle|gradlew|\./gradlew)${sp}+(-[^[:space:]]+${sp}+)*(clean${sp}+)?test)"
+re_known="^$sp*(![[:space:]]*)?$re_env$re_uv$re_core($sp|\$|[;&|)])"
+re_loop="(^|[^[:alnum:]_.-])(until|while)$sp"
+re_in_loop="(^|[;&|({]|(^|$sp)(until|while|do|then|elif|if))$sp*(!$sp*)?$re_env$re_uv$re_core($sp|\$|[;&|)])"
+re_null="(^|[^0-9])(>>?|$ph2>?)$sp*(/dev/null|[Nn][Uu][Ll])([^[:alnum:]_./]|\$)|(^|$sp)1>>?$sp*(/dev/null|[Nn][Uu][Ll])([^[:alnum:]_./]|\$)"
+
+# The project's own test command (.superlite/test-cmd.json "test", "test_file"): its leading words up to the
+# first flag, placeholder or quote (two words or a path, no glob characters) count as a known runner.
+pp=()
+load_project_runner() {
+  local tc w words key re f n p
+  f="$proj/.superlite/test-cmd.json"
+  [ -f "$f" ] || return 0
+  read -r -d '' tc < "$f"
+  for key in test test_file; do
+    re='"'"$key"'"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
+    [[ $tc =~ $re ]] || continue
+    read -r -a words <<< "${BASH_REMATCH[1]}"
+    p=""; n=0
+    for w in "${words[@]}"; do
+      case "$w" in -*|*"{"*|*=*|*'"'*|*"'"*|*'$'*|*'\'*|*'*'*|*'?'*|*'['*) break ;; esac
+      p="${p:+$p }$w"; n=$((n+1))
+    done
+    if [ "$n" -ge 2 ] || { [ "$n" = 1 ] && [[ $p == */* ]]; }; then pp+=("$p"); fi
+  done
+}
+# project_hit TEXT MODE: 0 when TEXT holds a project runner (MODE seg: at its start; loop: at any command position).
+project_hit() {
+  local p t pat
+  for p in "${pp[@]}"; do
+    if [ "$2" = seg ]; then
+      t="${1#"${1%%[![:space:]]*}"}"
+      [[ "$t " == "$p "* ]] && return 0
+    else
+      pat=$'*[[:space:];&|(!]'"$p"$'[[:space:];&|)]*'
+      [[ " $1 " == $pat ]] && return 0
+    fi
+  done
+  return 1
+}
+deny() {
+  local t="${cmd:0:100}"; t="${t//[\"\\$'\n\r\t']/ }"
+  t="${t//$ph1/>&}"; t="${t//$ph2/&>}"
+  printf '{"kind":"rule-block","agent":"coordinator","tool":"Bash","target":"hidden test wait: %s"}\n' "$t" \
+    >> "$proj/.superlite/incidents.jsonl" 2>/dev/null
+  printf '%s\n' \
+    'Blocked: never wait on tests through a loop, and never hide a test run'"'"'s output (an until/while around a test runner, or a test run sent to /dev/null): a hung run then looks like a slow one, and the loop bypasses the test wrapper.' \
+    'Start the run with `sl run_tests --full --background` (focused: `sl run_tests --fast <file>`), then wait with `sl run_tests --wait`. It returns early with `SUSPECT HANG`, the verdict (blocked or spinning) and the process tree when the run stops producing output, and its summary names a TIMEOUT or a kill instead of a bare exit code.' >&2
+  exit 2
+}
+
+case "$cmd" in *until*|*while*|*null*|*[Nn][Uu][Ll]*) hid=1 ;; *) hid=0 ;; esac
+if [ "$hid" = 1 ]; then
+  load_project_runner
+  if [[ $cmd =~ $re_loop ]]; then
+    [[ $cmd =~ $re_in_loop ]] && deny
+    [ "${#pp[@]}" -gt 0 ] && project_hit "$cmd" loop && deny
+  fi
+fi
+
 out=""; rest="$cmd"; changed=0
 while :; do
   if [[ $rest =~ $re_seg ]]; then seg="${BASH_REMATCH[1]}"; sep="${BASH_REMATCH[2]}"; rest="${BASH_REMATCH[3]}"; last=0
   else seg="$rest"; sep=""; last=1; fi
+  if [ "$hid" = 1 ] && [[ $seg =~ $re_null ]]; then   # a known runner with stdout sent to /dev/null
+    if [[ $seg =~ $re_known ]]; then deny; fi
+    if [ "${#pp[@]}" -gt 0 ] && project_hit "$seg" seg; then deny; fi
+  fi
   q="${seg//[^\"]/}"; q2="${seg//[^\']/}"
   if [ $(( ${#q} % 2 )) = 1 ] || [ $(( ${#q2} % 2 )) = 1 ]; then exit 0; fi   # quote spans a separator
   if [[ $seg =~ $re_test ]]; then out="$out $sl "; changed=1; else out="$out$seg"; fi

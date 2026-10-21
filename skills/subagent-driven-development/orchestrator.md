@@ -68,3 +68,10 @@ A PreToolUse hook on `AskUserQuestion` that, when `.superlite/orchestrator.json`
 (push, merge, publish) or security-sensitive action. It should allow the call when the file is absent or says `human`,
 log each denial as an incident `kind: rule-block`, and also deny a Bash call of `sl orchestrator approve` unless an
 `AskUserQuestion` answer was received earlier in the session.
+
+## Waiting on tests
+Never wait on tests through a loop or a command that hides output (`until npx vitest run x.test.ts >/dev/null 2>&1; do sleep 20; done`,
+`pytest >/dev/null`): a hang then looks like a slow run, and the `rewrite-test-runs` hook denies it. Start `sl run_tests --full --background`
+and wait with `sl run_tests --wait`. It exits 3 with `SUSPECT HANG` (verdict blocked or spinning, process tree) once the run stops producing
+output, and a wait that runs out says `TIMEOUT`. After a SUSPECT HANG do not wait again: the loop is in the code under test, so hand the file to
+a fixer; `--wait --patient` only when the tests are known to be slow.

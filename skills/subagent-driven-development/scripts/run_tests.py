@@ -4,7 +4,8 @@ parse its junit XML or output, print one summary line.
 
     run_tests.py [--fast PATHS... | --full] [--log PATH] [--ledger PATH]
                  [--summary PATH] [--background]
-    run_tests.py --wait [--timeout S] [--summary PATH]
+                 [--expect SECONDS]
+    run_tests.py --wait [--timeout S] [--patient] [--summary PATH]
 
 Prints `passed failed skipped seconds` (errors count as failed). Each failing
 test becomes a `test-failure` incident; on a --full run each test file whose
@@ -16,12 +17,20 @@ a `tests` line to the progress ledger. On every run it also writes
 (a run where pytest produced nothing records failed=1 and the reason). Exit 0 when nothing failed, 1 when a
 test failed or none ran, 2 when pytest could not run.
 
+Hung-test probe (testprobe.py, thresholds in config/testprobe.json): once a run passes 3x its expected time
+(--expect, else the last green run of the same mode, else 60 s) it samples output bytes, tree CPU and child
+processes. Output and children flat with flat CPU is BLOCKED, with busy CPU SPINNING. That prints one
+`SUSPECT HANG: ...` line, logs a `perf` incident and writes ADDITIVE summary fields (`verdict`, `suspect_hang`,
+`running`); the run is never killed unless config says so. A killed or crashed run says so in `failures`
+(`process killed or crashed (exit -1)`, `TIMEOUT: ...`), never a bare exit code.
+
 --background starts a detached run of the same command, prints `summary: <path>` and exits 0
 at once. Each background run gets its own summary file (`test-summary-<id>.json` next to
 --summary) and the pointer `test-summary.latest` (atomic) names the newest run; when a run
 finishes it also publishes its summary to --summary, unless a newer run has started since.
 --wait blocks until the pointed run's own summary exists (an older summary never counts),
-prints it, and exits 0 green, 1 red, 2 on timeout or when no background run was started.
+prints it, and exits 0 green, 1 red, 2 on timeout (`TIMEOUT`) or when no background run was started, and 3 as
+soon as the probe reports a SUSPECT HANG (prints that line; the run keeps going; --patient waits on regardless).
 Stdlib only.
 """
 # Complexity notation:
@@ -44,6 +53,7 @@ import _pyrun as pyrun  # noqa: E402  # O(1) module load
 import testcmd  # noqa: E402  # O(1) module load
 import commit_task as ct  # noqa: E402  # O(1) module load
 import next_tasks as nt  # noqa: E402  # O(1) module load
+import testprobe as tp  # noqa: E402  # O(1) module load
 
 
 DEFAULT_SUMMARY = ".superlite/test-summary.json"  # O(1)
@@ -96,7 +106,8 @@ def wait_background(a):  # O(timeout / POLL_SECONDS) polls
         print("run_tests: no background run to wait for", file=sys.stderr)  # O(1)
         return 2  # O(1)
     mine = Path(ptr["summary"])  # O(1)
-    deadline = time.monotonic() + (a.timeout if a.timeout is not None else DEFAULT_WAIT)  # O(1)
+    limit = a.timeout if a.timeout is not None else DEFAULT_WAIT  # O(1)
+    deadline = time.monotonic() + limit  # O(1)
     while True:  # O(timeout / POLL_SECONDS) iterations
         if mine.exists():  # O(1)
             try:  # O(1)
@@ -104,13 +115,28 @@ def wait_background(a):  # O(timeout / POLL_SECONDS) polls
                 break  # O(1)
             except (OSError, ValueError):  # O(1) half-written (non-atomic fs): retry
                 pass  # O(1)
+        line = suspect_line_of(mine)  # O(1) stat
+        if line and not a.patient:  # the probe flagged this run: tell the caller now, run still going | O(1)
+            print(f"{line}\nrun_tests: the run is still going and was not killed; investigate the code, or wait on with --wait --patient")  # O(1)
+            return 3  # O(1)
         if time.monotonic() >= deadline:  # O(1)
-            print(f"run_tests: timed out waiting for {mine}", file=sys.stderr)  # O(1)
+            print(f"run_tests: TIMEOUT: timed out waiting for {mine} after {limit:.0f}s" + (f"\n{line}" if line else ""), file=sys.stderr)  # O(1)
             return 2  # O(1)
         time.sleep(POLL_SECONDS)  # O(1)
     print(json.dumps(data, ensure_ascii=False, indent=1))  # O(summary size)
     green = not data.get("failed") and bool(data.get("passed") or data.get("skipped"))  # O(1)
     return 0 if green else 1  # O(1)
+
+
+def suspect_path(summary):  # O(1) the probe's sidecar for a run (the summary file does not exist until the run ends)
+    return Path(summary).with_suffix(".suspect")  # O(1)
+
+
+def suspect_line_of(summary):  # O(1) stat + small read
+    try:  # O(1)
+        return json.loads(suspect_path(summary).read_text(encoding="utf-8"))["suspect_hang"]["line"]  # O(1)
+    except (OSError, ValueError, KeyError, TypeError):  # O(1)
+        return ""  # O(1)
 
 
 def publish_summary(a):  # O(summary size)
@@ -185,13 +211,14 @@ def existing_verified(log):  # O(B)
     return seen  # O(1)
 
 
-def write_summary(path, mode, counts, failures, seconds, error=None):  # O(k + sk) + file write
+def write_summary(path, mode, counts, failures, seconds, error=None, extra=None):  # O(k + sk) + file write
     """Write the test summary `pt_review packet` reads (atomically)."""  # O(1)
     data = {"passed": counts["passed"], "failed": counts["failed"] + (1 if error else 0),  # O(1)
             "skipped": counts["skipped"], "seconds": round(seconds, 1), "mode": mode,  # O(1)
             "failures": [f"{f}::{ctx}"[:200] for f, _line, ctx in failures]  # O(k)
             + ([error[:200]] if error else []),  # O(k) list concat
             "skipped_tests": counts["skipped_tests"]}  # O(1)
+    data.update(extra or {})  # additive probe fields only (verdict, suspect_hang, running) | O(1)
     p = Path(path)  # O(1)
     p.parent.mkdir(parents=True, exist_ok=True)  # O(1)
     tmp = p.with_name(p.name + ".tmp")  # O(1)
@@ -219,6 +246,9 @@ def main(argv=None):  # O(X + T*d + B + F log F) + pytest run + one incident app
                     help="start a detached run, print `summary: <path>`, exit 0")  # O(1)
     ap.add_argument("--wait", action="store_true", help="wait for the latest background run's summary")  # O(1)
     ap.add_argument("--timeout", type=float, default=None, help=f"--wait limit in seconds (default {DEFAULT_WAIT:.0f})")  # O(1)
+    ap.add_argument("--expect", type=float, default=None, metavar="SECONDS",  # O(1)
+                    help="expected test time; the hang probe starts at 3x this (default: last green run, else config fallback)")  # O(1)
+    ap.add_argument("--patient", action="store_true", help="with --wait: keep waiting after a SUSPECT HANG")  # O(1)
     ap.add_argument("--run-id", default=None, help=argparse.SUPPRESS)  # O(1) set by --background
     ap.add_argument("--publish", default=None, help=argparse.SUPPRESS)  # O(1) set by --background
     argv = list(sys.argv[1:] if argv is None else argv)  # O(len argv)
@@ -237,7 +267,55 @@ def main(argv=None):  # O(X + T*d + B + F log F) + pytest run + one incident app
                               error=f"run_tests crashed: {e!r}")  # O(1)
                 publish_summary(a)  # O(summary size)
             raise  # O(1)
-    return run(a)  # see run
+    try:  # O(1)
+        return run(a)  # see run
+    finally:  # a foreground run has no --wait reader: its sidecar must not outlive it | O(1)
+        suspect_path(a.summary).unlink(missing_ok=True)  # O(1)
+
+
+def expected_seconds(a, label):  # O(summary size) expected test time for the probe, None when unknown
+    if a.expect and a.expect > 0:  # O(1)
+        return a.expect  # O(1)
+    try:  # O(1)
+        env = float(os.environ.get("SUPERLITE_TEST_EXPECT_S", ""))  # O(1)
+        if env > 0:  # O(1)
+            return env  # O(1)
+    except ValueError:  # O(1)
+        pass  # O(1)
+    try:  # the last green run of the same mode | O(summary size)
+        prior = json.loads(Path(a.publish or a.summary).read_text(encoding="utf-8"))  # O(summary size)
+        if (prior.get("mode") == label and not prior.get("failed") and prior.get("passed")  # O(1)
+                and "suspect_hang" not in prior and prior.get("seconds", 0) > 0):  # O(1)
+            return float(prior["seconds"])  # O(1)
+    except (OSError, ValueError, AttributeError, TypeError):  # O(1)
+        pass  # O(1)
+    return None  # O(1)
+
+
+def make_reporter(a, label, paths):  # O(1) -> callback for the probe's first SUSPECT HANG
+    def report(info):  # O(D) + one summary write + one incident append
+        line = tp.suspect_line(info)  # O(D)
+        print(line, flush=True)  # the caller sees it at once (foreground stdout, or the background log) | O(1)
+        fields = {"verdict": "SUSPECT HANG", "suspect_hang": dict(info, line=line), "running": True}  # O(D)
+        try:  # the report must never break the run | O(summary size)
+            atomic_write(suspect_path(a.summary), json.dumps(fields, ensure_ascii=False) + "\n")  # what --wait reads | O(1)
+            ptr = read_pointer(a.publish) if a.run_id and a.publish else None  # O(1)
+            if not (ptr and ptr["id"] != a.run_id):  # a newer run owns the published file otherwise | O(1)
+                write_summary(a.publish if a.run_id and a.publish else a.summary, label,  # provisional: the run is still going | O(1)
+                              {"passed": 0, "failed": 0, "skipped": 0, "skipped_tests": []}, [],
+                              info.get("elapsed_s", 0.0), error=line, extra=fields)
+            cpu = "n/a" if info["cpu_pct"] is None else format(info["cpu_pct"], ".0f") + "%"  # O(1)
+            ctx = f"SUSPECT HANG {info['verdict']}: no output {info['flat_s']:.0f}s, cpu {cpu}, run still going"  # O(1)
+            add_incidents(a.log, [(", ".join(paths) or "-", 0, ctx, "perf", "open")])  # O(1)
+        except Exception as e:  # noqa: BLE001 | O(1)
+            print(f"run_tests: could not record the hang: {e!r}", file=sys.stderr)  # O(1)
+    return report  # O(1)
+
+
+def watched(a, cmd, label, paths, **kw):  # the test command under the hang probe | O(1) + the run
+    cfg = tp.load_config()  # O(file)
+    return tp.run_watched(cmd, cfg=cfg, expected_s=expected_seconds(a, label), test_file=", ".join(paths) or None,  # O(1) + the run
+                          on_suspect=make_reporter(a, label, paths), **kw)  # O(1)
 
 
 def run_other(a, spec, paths, label):  # one runner command (any language) | O(X + o) + the run
@@ -255,7 +333,7 @@ def run_other(a, spec, paths, label):  # one runner command (any language) | O(X
             marker.parent.mkdir(parents=True, exist_ok=True)  # O(1)
             marker.write_text("ok\n", encoding="utf-8")  # O(1)
         t0 = time.monotonic()  # O(1)
-        r = pyrun.run_tree(sub(spec["command"]), shell=True, capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)  # O(o) + the run
+        r = watched(a, sub(spec["command"]), label, paths, shell=True, env=env)  # O(o) + the run, probed for a hang
         seconds = time.monotonic() - t0  # O(1)
         text = (r.stdout or "") + (r.stderr or "")  # O(o)
         report = xml_path if xml_path.exists() and xml_path.stat().st_size else (literal if literal and literal.exists() and literal.stat().st_size else None)  # O(1)
@@ -268,10 +346,15 @@ def run_other(a, spec, paths, label):  # one runner command (any language) | O(X
             p = testcmd.parse_output(text, r.returncode)  # O(o)
             counts = {"passed": p["passed"], "failed": p["failed"], "skipped": p["skipped"], "skipped_tests": []}  # O(1)
             last = next((ln for ln in reversed(p["tail"]) if ln.strip()), "no output")  # O(1)
-            failures = [("-", 0, f"{n}: failed") for n in p["names"]] or ([("-", 0, f"exit code {r.returncode}: {last}"[:160])] if r.returncode else [])  # O(k)
+            failures = [("-", 0, f"{n}: failed") for n in p["names"]]  # O(k)
+            hang = tp.hang_text(r) if (r.returncode or r.killed) else ""  # a SUSPECT HANG or TIMEOUT verdict, never a bare exit code | O(D)
+            if hang:  # O(1)
+                failures.insert(0, ("-", 0, hang[:300]))  # O(k)
+            elif r.returncode and not failures:  # O(1)
+                failures = [("-", 0, f"{tp.exit_message(r.returncode)}: {last}"[:160])]  # O(1)
             files = {}  # O(1)
             atomic_write(Path(a.summary).with_name("test-output.log"), "\n".join(p["tail"]) + "\n")  # the last 40 lines | O(40)
-    return finish_run(a, label, counts, failures, files, seconds, r.returncode)  # O(k + F)
+    return finish_run(a, label, counts, failures, files, seconds, r.returncode, extra=tp.summary_fields(r))  # O(k + F)
 
 
 def run(a):  # O(X + T*d + B + F log F) + the runner + one incident append
@@ -300,26 +383,25 @@ def run(a):  # O(X + T*d + B + F log F) + the runner + one incident append
         cmd = [*base, *paths, "-q", "-p", "no:cacheprovider",  # O(p)
                "-o", "junit_family=xunit1", f"--junitxml={xml_path}"]  # O(1)
         t0 = time.monotonic()  # O(1)
-        r = pyrun.run_tree(cmd, capture_output=True, text=True, encoding="utf-8",  # O(O) + process spawn (pytest run time dominates)
-                           errors="replace")  # O(1)
+        r = watched(a, cmd, label, paths)  # O(O) + process spawn (pytest run time dominates), probed for a hang
         seconds = time.monotonic() - t0  # O(1)
         if (r.returncode not in (0, 1) or not xml_path.exists()  # O(1)
                 or xml_path.stat().st_size == 0):  # O(1)
             tail = (r.stdout + r.stderr).strip().splitlines()[-5:]  # O(O)
-            reason = "pytest produced no results: " + " | ".join(tail)  # O(1)
+            reason = tp.hang_text(r) or f"pytest produced no results ({tp.exit_message(r.returncode)}): " + " | ".join(tail)  # O(1)
             print(reason, file=sys.stderr)  # O(1)
             write_summary(a.summary, label, {"passed": 0, "failed": 0, "skipped": 0,  # O(1)
                                              "skipped_tests": []}, [], seconds,  # O(1)
-                          error=reason if r.returncode != 5 else None)  # O(1)
+                          error=reason if (r.returncode != 5 or r.killed) else None, extra=tp.summary_fields(r))  # O(1)
             publish_summary(a)  # O(summary size)
             print(f"0 0 0 {seconds:.1f}")  # O(1)
-            return 1 if r.returncode == 5 else 2  # O(1)
+            return 1 if (r.returncode == 5 and not r.killed) else 2  # O(1)
         counts, failures, files = parse_junit(xml_path)  # O(X + T*d)
-    return finish_run(a, label, counts, failures, files, seconds, r.returncode)  # O(k + F)
+    return finish_run(a, label, counts, failures, files, seconds, r.returncode, extra=tp.summary_fields(r))  # O(k + F)
 
 
-def finish_run(a, label, counts, failures, files, seconds, returncode):  # O(k + F + B) one incident append
-    write_summary(a.summary, label, counts, failures, seconds)  # O(k + sk)
+def finish_run(a, label, counts, failures, files, seconds, returncode, extra=None):  # O(k + F + B) one incident append
+    write_summary(a.summary, label, counts, failures, seconds, extra=extra)  # O(k + sk)
     publish_summary(a)  # O(summary size)
     items = [(f, line, ctx, "test-failure", "open") for f, line, ctx in failures]  # O(k)
     if label == "full":  # O(1)

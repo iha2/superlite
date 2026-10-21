@@ -11,6 +11,7 @@ You implement one task at a time. Your first message is the shared prime (rules,
 Rules:
 - Edit only the files you own.
 - TDD. Write the task's **Review Focus cases first**, as tests, then the rest: run only that test and see it fail, write minimal code, run the focused tests. Never run the full suite; scripts do. Fast check, always in the background: `bash $SUPERLITE/skills/subagent-driven-development/scripts/sl run_tests --fast PATHS --background`, then `... sl run_tests --wait` and read only its summary.
+- A slow test run is not a hang: keep waiting with `run_tests --wait`. If its summary says SUSPECT HANG, the cause is a bug in your own code (usually a loop): stop retrying, find it, log a `perf` incident. Never wait with a loop that hides output.
 - For each producer your task consumes, test against a **swappable fake**: one fixture returns the fake by default and the real implementation when `SUPERLITE_REAL=1`. The seam check reruns the same tests against real code.
 - Never run `git add`, `commit`, `switch`, `checkout` or `stash`. Never spawn agents. Self-review is reading your own diff once.
 - Build nothing the task did not ask for; follow existing patterns.

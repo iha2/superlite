@@ -1,0 +1,15 @@
+{
+  "comment": "Data, not code. Thresholds for the hung-test-run probe in scripts/testprobe.py (used by run_tests). The probe REPORTS a suspect hang; it never kills unless auto_kill_blocked is true. Probing starts only after elapsed > max(min_start_s, multiplier x expected test seconds); expected is --expect, else the last green run of the same mode, else fallback_expected_s. Every sample_interval_s it reads output bytes, tree CPU time and the child process set of the test process tree. Output flat and children unchanged: CPU at or below cpu_idle_pct is BLOCKED (deadlock or wait), at or above cpu_busy_pct is SPINNING (likely an infinite loop), unknown CPU is STALLED, anything between keeps waiting. A verdict is reported once it has held for min_flat_s. hard_timeout_s (0 = off) kills the process tree by PID and records a TIMEOUT. Override the file with env SUPERLITE_TESTPROBE_CONFIG=<path>; SUPERLITE_TESTPROBE=0 turns the probe off.",
+  "enabled": true,
+  "multiplier": 3,
+  "fallback_expected_s": 60,
+  "min_start_s": 30,
+  "sample_interval_s": 12,
+  "min_flat_s": 30,
+  "cpu_idle_pct": 2,
+  "cpu_busy_pct": 20,
+  "auto_kill_blocked": false,
+  "auto_kill_after_s": 300,
+  "hard_timeout_s": 0,
+  "max_tree_listed": 8
+}
