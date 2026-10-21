@@ -20,7 +20,7 @@ Hidden complexity found mid-task upgrades the size. Say so and step up. If the r
 
 ## 2. Explore and ask, once
 
-Read the relevant code and recent commits first. Use an Explore agent (model haiku, effort low) for broad sweeps. Do not ask what the repo or the request already answers.
+Read the relevant code and recent commits first. Use an Explore agent (it runs on Haiku) for broad sweeps. Do not ask what the repo or the request already answers.
 
 If purpose, constraints or success criteria are still missing, ask them in ONE `AskUserQuestion` call: up to 4 questions, multiple choice where possible, your recommended option first. For architectural work, include the plan `detail` choice in the same batch: `contracts`, `tests` or `full`. Recommend `full` when the core is algorithmic or risky, otherwise `tests` (the default). Add the orchestrator choice to that same call as one single-choice question, options `Human orchestrator: I approve the plan before it runs` and `AI orchestrator: hands off, it does everything` (details in `../subagent-driven-development/orchestrator.md`); never ask it when the request settles it, and in a headless run default to AI with a `Ruling:`. Then record it: `bash <skill-dir>/../subagent-driven-development/scripts/sl orchestrator set human|ai`. Never one question per message. Bounded work gets at most one batch. If nothing is missing, ask nothing and restate your understanding in the design instead.
 

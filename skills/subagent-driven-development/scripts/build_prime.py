@@ -40,8 +40,8 @@ Rules:
 - Run only fast, focused tests. Slow suites run later through run_tests.py.
 - Code to the interface stubs and the plan's Consumes and Produces lines.
   Never change a signature without a coordinator ruling.
-- Log every unexpected failure, workaround or guess with incident.py add.
-- Do not commit. The coordinator commits through commit_task.py.
+- Log every unexpected failure, workaround or guess with `sl incident add`.
+- Do not commit. The coordinator records a checkpoint with `sl commit_task`.
 - Kill processes by PID only. Never use taskkill /IM, pkill or killall.
 - Reply READY after reading this prime, then wait for your task.
 - Finish with DONE, DONE_WITH_CONCERNS, BLOCKED or NEEDS_CONTEXT, in at most
@@ -64,8 +64,8 @@ Rules:
   `bash $SUPERLITE/skills/subagent-driven-development/scripts/sl task Tn --plan PLAN` (SUPERLITE and PLAN
   are in your task message): it prints Tn's block and the Produces lines of every task Tn consumes. Reply
   NEEDS_CONTEXT to the coordinator only when that does not answer it.
-- Log every unexpected failure, workaround or guess with incident.py add.
-- Do not commit. The coordinator commits through commit_task.py.
+- Log every unexpected failure, workaround or guess with `sl incident add`.
+- Do not commit. The coordinator records a checkpoint with `sl commit_task`.
 - Kill processes by PID only. Never use image-name or pattern kills.
 - Reply READY after reading this prime, then wait for your task.
 - Finish with DONE, DONE_WITH_CONCERNS, BLOCKED or NEEDS_CONTEXT, in at most

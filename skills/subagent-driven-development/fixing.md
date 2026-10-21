@@ -33,5 +33,5 @@ Next: <best next hypothesis, and which spans to read first>
 - **Package reviewers** still fix what they find, but must close every finding, including ones sent later, and report a closed list.
 - **Final reviewer** only reports findings. They go to fixers, routed by tier and split by file.
 - **Fixer contract:** fix only the named findings; one regression test per fix; run `bash "$SL" run_tests --fast PATHS --background` on the touched files and wait only for that summary; `commit_task <Tn>`; report a closed list. Never refactor, never touch files outside the finding.
-- Never pass `model` to an agent call (it overrides the agent file). Never dispatch an extra or ad-hoc reviewer, and never `general-purpose` for build, review or fix work. An inadequate review gets a `Ruling:`.
+- Never pass `model` to a superlite agent call (it overrides the agent file). Never dispatch an extra or ad-hoc reviewer, and never `general-purpose` for build, review or fix work. An inadequate review gets a `Ruling:`.
 - **Mechanical misses:** when an `implementer-haiku` task ends NEEDS_CONTEXT, BLOCKED or red, route it to tier 1 (`fixer-sonnet`) with a fix note, and run `sl routing miss --task Tn --plan PLAN` (logs `kind-miss Tn`; the task is never retried on Haiku) so the first-time pass rate of mechanical tasks can be measured.

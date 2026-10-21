@@ -43,6 +43,9 @@ the review plan path, a five-line summary and "Reply approve to start, or tell m
 run `approve --review`. `set human` writes `approved: false`. The hook (`block-coordinator-edits`) denies superlite agent dispatch and the
 build tools while the mode is human and unapproved, and always denies the model writing `orchestrator.json` or `human-replies.jsonl`.
 
+In MVP mode the MVP plan (`docs/plans/<date>-<topic>.mvp.md`) and its prototype are the review plan: `approve --review` takes the
+`.mvp.md` path.
+
 Small inline work (trivial or bounded, no plan) is not orchestrated: it needs only the human's yes in chat, and no review plan.
 
 After the approval the run decides on its own, like the AI orchestrator. The human is not asked about scope or interface changes: each

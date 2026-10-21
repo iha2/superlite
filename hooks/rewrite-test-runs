@@ -6,7 +6,7 @@
 # Chained commands keep their other work: only the test segment is replaced, separators stay, and
 # the whole command then runs in the background. Anything ambiguous (odd quotes, heredocs, \u
 # escapes) passes unchanged. Each rewrite is logged to .superlite/incidents.jsonl (rule-rewrite).
-# Bash builtins only (each external process costs ~250 ms on Windows). Exit 0 always (fail open).
+# Bash builtins only (each external process costs ~250 ms on Windows). Exit 0 (fail open), except a denial (exit 2).
 
 IFS= read -r -d '' input   # builtin; returns 1 at EOF, which is fine
 

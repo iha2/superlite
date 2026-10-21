@@ -76,6 +76,7 @@ flowchart TB
 - Tests: Python's built-in `unittest` (default) | `pytest`
 - Draft posts: a `draft: true` header line skips the post (default) | no drafts
 - `serve` command: included, built-in Python web server (default) | leave it out
+- Commits: leave my work uncommitted, superlite takes hidden checkpoints (default) | commit each task on my branch
 
 ## Risks
 - Our own markdown converter will not cover all of markdown. We support a stated subset and test it; anything else passes through as plain text.

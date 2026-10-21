@@ -1,6 +1,6 @@
 # MVP flow (design)
 
-Status: design only, nothing is built yet. `commands/mvp.md` describes the steps for the coordinator.
+Status: partly built. `commands/mvp.md` runs the steps, and in human mode the `.mvp.md` plan is approved with `sl orchestrator approve --review <path>.mvp.md`. Not built yet: `skills/mvp-prototype/` and `mvp_check.py`.
 
 ## What MVP mode is
 
@@ -98,10 +98,10 @@ scripts/ (sl tool)      mvp_check.py: validates prototype.html and feedback.json
 `hooks/block-coordinator-edits` already allows `.superlite/**` (except the two protected files) and `docs/plans/*.review.md` while a human run is unapproved. So:
 
 - `.superlite/mvp/prototype.html` and `.superlite/mvp/mvp-feedback.json`: already allowed; no change.
-- `docs/plans/*.mvp.md` (the short plan): **add** to the human-unapproved allow list, next to `*.review.md`.
+- `docs/plans/*.mvp.md` (the MVP plan): already allowed. Before approval the hook blocks orchestration only, never file writes.
 - Opening the page needs no tool (the user does it). Any open command from the coordinator is a Bash call that does not write a file, so it is allowed.
 - Still blocked until approval: code writes, Agent dispatch of `superlite:*` and `general-purpose`, and `sl orchestrator approve` without an approving human reply newer than the file.
-- **Approval change:** `sl orchestrator approve --review` must also accept `.superlite/mvp/mvp-feedback.json`, with the same rule (an approving human reply newer than that file). The hook's deny message for the unapproved state should name the prototype as an alternative to the review plan.
+- **Approval:** `sl orchestrator approve --review docs/plans/<date>-<topic>.mvp.md`, with the usual rule (an approving human reply newer than that file). No change to `orchestrator.py` is needed.
 - The final write of the agent-format plan happens after approval, when `docs/plans/**` is already allowed.
 
 ## Open points

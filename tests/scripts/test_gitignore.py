@@ -216,9 +216,10 @@ def test_slim_prime_omits_the_section_without_a_gitignore(tmp_path):
 
 
 def test_agent_files_carry_the_ignored_paths_rule():
-    for name in ("implementer.md", "implementer-haiku.md"):
+    for name, first in (("implementer.md", "git-ignored paths list in your prime"),  # the slim prime carries the list; the mini prime does not
+                        ("implementer-haiku.md", "Read the repo's `.gitignore` first")):
         body = (SCRIPTS.parents[2] / "agents" / name).read_text(encoding="utf-8")
-        assert "git-ignored paths list in your prime" in body and "DONE_WITH_CONCERNS" in body and "Never edit `.gitignore`" in body
+        assert first in body and "DONE_WITH_CONCERNS" in body and "Never edit `.gitignore`" in body
 
 
 # ------------------------------------------------------------------ a task's own Owns win over the ignore list

@@ -22,7 +22,7 @@
 superlite plans a build, splits it into tasks that can run side by side, hands each task to the cheapest agent that can do it well, checks the seams, and reviews the result. You decide **who orchestrates**: you, or the AI.
 
 - **Autonomous.** Describe the project, pick the AI orchestrator, and walk away. Decisions it has to make are recorded as rulings, not asked as questions.
-- **Fast.** Up to 18 agents at once, a plan written for parallelism, and mechanical work on Haiku.
+- **Fast.** Up to 18 agents at once (measured in run k1; the dispatch cap is now 10 running tasks), a plan written for parallelism, and mechanical work on Haiku.
 
 ### Not a rival to superpowers
 
@@ -39,7 +39,7 @@ Same machine, same task: build a Python site generator and a spreadsheet engine 
 | Wall-clock to a finished build | 33.6 min (stock, 3 runs: 21.2 / 31.9 / 47.6)<br>23.5 min (orchestrated, 3 runs) | **16.1 min** |
 | Faster than superpowers | | **52%** vs stock, **31%** vs orchestrated |
 | Fastest-to-slowest spread, 3 runs | 26.4 min | **9.1 min** |
-| Agents working at once | 3 to 4 | **up to 18** |
+| Agents working at once | 3 to 4 | **up to 18** (k1) |
 | Hidden tests passed | 177 / 177 | 177 / 177 (a tie, at higher speed) |
 | Earlier 9-module benchmark (1 run each) | 34.4 min | **8.8 min** |
 | superlite against its own first version | 26.9 min | **16.1 min** (40% faster) |
@@ -63,7 +63,7 @@ And it is not tied to one language. A TypeScript site generator went from spec t
 | **Hands off** | "Build X. I am away, decide yourself" | The AI orchestrator plans, lints, dispatches and rules on open choices without stopping |
 | **Ship it** | "We are done: finish the branch" | Verification first, then merge or PR options. It never pushes without you |
 
-**Start commands.** `/superlite:start` asks for the mode and who orchestrates; `/superlite:mvp <what>`, `/superlite:feature <change>` and `/superlite:debug <bug>` go straight to a mode. Say it in plain words instead if you prefer; the commands are shortcuts. Also: `/superlite:status`, `resume`, `stop`, `report`, `setup`, `human`, `ai`, `approve`, `review`, `small` and `finish`.
+**Start commands.** `/superlite:start` asks for the mode and who orchestrates; `/superlite:mvp <what>`, `/superlite:feature <change>` and `/superlite:debug <bug>` go straight to a mode. Say it in plain words instead if you prefer; the commands are shortcuts. Also: `/superlite:status`, `resume`, `stop`, `report`, `setup`, `human`, `ai`, `approve`, `review`, `small`, `commit` and `finish`.
 
 **Who orchestrates.** With a human orchestrator nothing is linted, dispatched or sent to an agent until you reply approve, and after that you are not asked again: changes to scope are listed at finish; small inline work needs only your yes in chat; you review a plain-language plan with diagrams (a `.review.md`, about two pages, with a rough time and cost) **before** anything is linted or sent off; after your yes the coordinator rewrites it in the agent format (task graph, interfaces, examples, sizes) and runs it. With the AI orchestrator it does everything itself, with no review plan and no questions.
 
@@ -109,7 +109,7 @@ How it works, in [docs/](docs/): [how a run works](docs/how-a-run-works.md) · [
 - **`detail` (plan switch).** `writing-plans` records `**Detail:** contracts | tests | full` in the plan header, and a task can override it. `contracts` gives files, signatures and named tests with exact values. `tests` (the default) adds the test code verbatim and leaves the implementation to the implementer. `full` includes implementation code too, for tricky algorithms. `brainstorming` asks for it in its single batched question, and picks the default itself when unattended.
 - **Final review.** The coordinator runs at medium effort. The final review is a fresh Opus `final-reviewer` at high effort: one turn, findings only, reading a review packet built from the logs, with a target under 30 s. It is not a fork, so `CLAUDE_CODE_FORK_SUBAGENT` is not needed.
 - **Implementer cache TTL.** The implementer's frontmatter sets a 1-hour prompt cache TTL, so its history is still cached when fix rounds arrive waves later. Setting `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL=1h` in the environment does the same.
-- **Context-budgeted sizing.** Each task in a plan carries an `Est. context` line, predicted from the lines it writes, the lines it reads and the docs it is handed, on top of the implementer's fixed ~18k prefix. Tasks predicted above 80k are split, tasks whose variable part is smaller than the prefix are merged with a neighbor, no task is predicted to run longer than about 3 minutes, there is no fixed wave size (the task graph sets the parallel width), and the whole plan stays under 15k chars because it doubles as the shared prime. The coefficients are fit on one project, so treat them as a guide.
+- **Context-budgeted sizing.** Each task in a plan carries an `Est. context` line, predicted from the lines it writes, the lines it reads and the docs it is handed, on top of the implementer's fixed ~18k prefix. Tasks predicted above 80k are split, tasks whose variable part is smaller than the prefix are flagged by lint with a NOTE to merge, tasks sit in a 1.5 to 6 minute band (`predictor.json`), there is no fixed wave size (the task graph sets the parallel width), and the whole plan stays under 15k chars because it doubles as the shared prime. The coefficients are fit on one project, so treat them as a guide.
 
 ## Installation
 
@@ -374,7 +374,7 @@ scripts/bump-version.sh --check
 
 `bench/` holds a head-to-head harness: both plugins build the same 9-module project (`bench/task/SPEC.md`) headless on Opus, and a hidden 89-test suite scores the result. Run 1 (n=1 per arm; the runs overlapped):
 
-| | superpowers 6.4.1 | superlite 0.1.0 |
+| | superpowers 6.4.1 | superlite 0.1.0 (the version benchmarked) |
 |---|---|---|
 | Wall-clock | 34.4 min | **8.8 min** (3.9× faster) |
 | Hidden tests | 89 / 89 | 89 / 89 |
@@ -406,7 +406,7 @@ Analysis scripts:
 
 ## Tasks
 
-- [ ] **Superlite 0.3: a task-graph flow that aims at half of superpowers' time.** The design is in `C:\Work\Planning\Specs\2026-10-17-superlite-architecture-design.md` (D10-D18, G1, R1). Steps:
+- [ ] **The task-graph flow (planned as 0.3, shipped in 1.0): reach half of superpowers' time.** The design is in `C:\Work\Planning\Specs\2026-10-17-superlite-architecture-design.md` (D10-D18, G1, R1). Steps:
   - Smoke-test the 0.3 tools and agents.
   - Combined task (`bench/tasks/combo`), 3 reps, arms in parallel.
   - E12: planted defects (`bench/tasks/combo-planted`), 3 reps with and without the incident log.

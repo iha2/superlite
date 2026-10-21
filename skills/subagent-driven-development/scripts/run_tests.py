@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Run pytest, parse the junit XML, print one summary line.
+"""Run the project's test command (testcmd: .superlite/test-cmd.json, else detection; pytest for Python),
+parse its junit XML or output, print one summary line.
 
     run_tests.py [--fast PATHS... | --full] [--log PATH] [--ledger PATH]
                  [--summary PATH] [--background]
