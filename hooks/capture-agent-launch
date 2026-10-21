@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PostToolUse hook (matcher Agent): during an active superlite run, append one launch record to
 # <project>/.superlite/metrics.jsonl:
-#   {"ev":"launch","t":<epoch ms>,"agent_id":..,"type":..,"model":..,"desc":<max 120 chars>}
+#   {"ev":"launch","t":<epoch ms>,"agent_id":..,"type":..,"model":..,"desc":<max 120 chars>,"parent":<calling subagent's id, "" from the main session>}
 # Active when .superlite/stable.json, prime.md or pool.json exists under the project dir.
 # Bash builtins only (each external process costs ~250 ms on Windows). Never blocks: always exits 0.
 
@@ -34,9 +34,10 @@ jstr agentId; id="$REPLY"
 jstr subagent_type; type="$REPLY"
 jstr resolvedModel; model="$REPLY"
 jstr description; desc="${REPLY:0:120}"
-esc id; esc type; esc model; esc desc
+jstr agent_id; parent="$REPLY"   # the calling subagent; absent on the main thread
+esc id; esc type; esc model; esc desc; esc parent
 
 now="${EPOCHREALTIME//[.,]/}"; now="${now:0:${#now}-3}"
-printf '{"ev":"launch","t":%s,"agent_id":"%s","type":"%s","model":"%s","desc":"%s"}\n' \
-  "$now" "$id" "$type" "$model" "$desc" >> "$proj/.superlite/metrics.jsonl" 2>/dev/null
+printf '{"ev":"launch","t":%s,"agent_id":"%s","type":"%s","model":"%s","desc":"%s","parent":"%s"}\n' \
+  "$now" "$id" "$type" "$model" "$desc" "$parent" >> "$proj/.superlite/metrics.jsonl" 2>/dev/null
 exit 0

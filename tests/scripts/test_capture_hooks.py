@@ -59,8 +59,16 @@ def test_launch_record(proj):
     t = rec.pop("t")
     assert t0 - 50 <= t <= t1 + 50
     assert rec == {"ev": "launch", "agent_id": "a123", "type": "implementer-haiku",
-                   "model": "claude-haiku-5-5", "desc": "T1 build parser"}
+                   "model": "claude-haiku-5-5", "desc": "T1 build parser", "parent": ""}
     assert list(json.loads((proj / ".superlite" / "metrics.jsonl").read_text()).keys())[:2] == ["ev", "t"]
+
+
+def test_launch_from_a_subagent_records_its_parent(proj):
+    # PostToolUse carries the calling loop's agent_id when a subagent made the Agent call
+    r = run(LAUNCH, proj, {**LAUNCH_PAYLOAD, "agent_id": "coord9", "agent_type": "superlite:coordinator-sonnet"})
+    assert r.returncode == 0
+    (rec,) = records(proj)
+    assert rec["agent_id"] == "a123" and rec["parent"] == "coord9"
 
 
 def test_stop_record(proj):

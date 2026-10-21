@@ -4,10 +4,14 @@ When someone asks superlite to create something, it first settles who orchestrat
 
 - **Human orchestrator:** the human validates the plan before it is linted and sent off, in two phases. Phase 1: the review plan
   (`docs/plans/<date>-<topic>.review.md`, plain words with diagrams; template in `../writing-plans/review-plan.md`) is shown with its
-  path and a five-line summary. Phase 2, after the yes: `sl orchestrator approve --review <path>`, then the coordinator writes the
-  machine plan from it (header `**Review plan:** <path>`), `schedule --insert`, `lint --stable`, dispatch.
+  path and a five-line summary. The same message offers the read-only agent map, so approval stays the one stop: "Reply
+  approve. Add `map` to watch the run in the agent map pane (`/superlite:agents`: agents, tasks and the ledger)." Phase 2,
+  after the yes: `sl orchestrator approve --review <path>`, open the map if the reply asked for it (no terminal tail: the map
+  shows the ledger; `/superlite:tail` only where the mod is not installed), then the coordinator writes the machine plan from
+  it (header `**Review plan:** <path>`), `schedule --insert`, `lint --stable`, dispatch.
 - **AI orchestrator:** does everything itself (plan, lint, dispatch, rulings) and never stops to ask, except for the
-  destructive, outward-facing or security-sensitive actions in the SDD "Stop conditions".
+  destructive, outward-facing or security-sensitive actions in the SDD "Stop conditions". It asks nothing about views: at the
+  first dispatch it prints one line naming `/superlite:agents`.
 
 ## The question (brainstorming, once)
 One single-choice question, in the same `AskUserQuestion` call as brainstorming's other open questions (up to 4 per call):

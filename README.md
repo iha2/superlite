@@ -96,6 +96,17 @@ flowchart LR
   D --> E([Done])
 ```
 
+### Watch a run
+
+<p align="center">
+  <img src="assets/agent-map.webp" width="720" alt="The agent map pane: the main session at the top, the coordinator under it, each implementer, reviewer and fixer under the agent that spawned it, with tier, time, tokens and tasks; a blocked agent in red. Below it, the live feed of agent starts, finishes and ledger lines.">
+</p>
+
+A read-only view, offered when you approve the plan (reply `approve map`), or opened any time:
+
+- `/superlite:agents` opens the **agent map** in Claude Desktop: a tree from the main session down, each agent under the one that spawned it, green while it runs, red if it was aborted or blocked, grey when done. Each node shows its tier, time, tokens and tasks (✓ once checkpointed); click a row for its details and its ledger lines. It needs the `superlite-agents` mod: `/plugin install superlite-agents@superlite-dev`.
+- Without the mod (a terminal session, another harness), `/superlite:tail` prints the same run as a **live feed**: every agent start and finish from `metrics.jsonl` and every ledger line from `progress.md` (`sl tail --dir .superlite`).
+
 ---
 
 ## More
