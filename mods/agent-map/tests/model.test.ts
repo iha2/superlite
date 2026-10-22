@@ -146,6 +146,15 @@ describe('cards', () => {
     expect(ledgerFor(led.ledger, a1)).toEqual(['sent T3+T1+T5 to a1', 'sent R:T1+T3+T5 to rv1'])
   })
 
+  test('a batch in flight shows all its tasks: pool current "T3,T5" and every id in the description', () => {
+    const pool = parsePool('{"agents":[{"id":"a1","tasks":["T1"],"current":"T3,T5"}]}')
+    const files = { ...emptySuperlite(), ...parseMetrics(METRICS), pool }
+    expect(mergeCards({}, files, {}).find(c => c.id === 'a1')!.tasks).toEqual(['T1', 'T3', 'T5'])
+    const desc = parseMetrics('{"ev":"launch","t":1000,"agent_id":"b1","type":"superlite:implementer","desc":"T4,T6,T7 batch"}')
+    const b1 = mergeCards({}, { ...emptySuperlite(), ...desc }, {}).find(c => c.id === 'b1')!
+    expect(b1.tasks).toEqual(['T4', 'T6', 'T7'])
+  })
+
   test('status: running green, aborted red, done grey', () => {
     const f = parseMetrics(
       [

@@ -6,6 +6,7 @@ import type { LiveAgent, MetricsLaunch, MetricsStop, PoolEntry, Superlite, Token
 
 const FAMILIES = ['haiku', 'sonnet', 'opus'] as const
 const TID = /\bT(\d+[a-z]?)\b/
+const TIDS = /\bT(\d+[a-z]?)\b/g
 const CHARS_PER_TOKEN = 3.5
 // a stop whose last words say the agent did not finish its work
 const ABORTED = /\bStatus:\s*\**\s*BLOCKED\b|\[Request interrupted|\binterrupted by user\b|\baborted\b/i
@@ -233,10 +234,12 @@ export function mergeCards(live: Record<string, LiveAgent>, files: Superlite, us
     const pool = files.pool[id]
     const u = usage[id]
     const description = l?.description || la?.desc || ''
-    const tid = TID.exec(description)
+    const fromDesc = [...description.matchAll(TIDS)].map(m => `T${m[1]}`)
     const fromLedger = files.sent[id] ?? []
-    const known = [...(pool?.tasks ?? []), ...fromLedger.filter(t => !pool?.tasks.includes(t))]
-    const tasks = known.length ? known : tid ? [`T${tid[1]}`] : []
+    // pool.current is the task in flight, or a batch "T3,T5" (several tasks per agent message)
+    const inFlight = (pool?.current ?? '').split(',').map(t => t.trim()).filter(t => TID.test(t))
+    const known = [...new Set([...(pool?.tasks ?? []), ...inFlight, ...fromLedger])]
+    const tasks = known.length ? known : [...new Set(fromDesc)]
     const model = l?.model ?? la?.model ?? u?.model
     const type = l?.type || la?.type || st?.type || ''
     const isActive = l ? l.isActive : files.active.includes(id)

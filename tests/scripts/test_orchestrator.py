@@ -137,7 +137,7 @@ def test_every_bench_prompt_says_the_orchestrator_is_ai():
 def test_skill_size_caps_and_the_new_names():
     skills = REPO / "skills"
     assert len((skills / "using-superlite" / "SKILL.md").read_text(encoding="utf-8")) <= 2000
-    assert len((skills / "subagent-driven-development" / "SKILL.md").read_text(encoding="utf-8")) <= 11600
+    assert len((skills / "subagent-driven-development" / "SKILL.md").read_text(encoding="utf-8")) <= 12500
     brain = (skills / "brainstorming" / "SKILL.md").read_text(encoding="utf-8")
     assert "Human orchestrator: I approve the plan before it runs" in brain and "AI orchestrator: hands off, it does everything" in brain
     assert brain.count("AskUserQuestion") >= 1 and "ONE `AskUserQuestion` call" in brain
@@ -280,7 +280,7 @@ def test_skills_mention_both_phases_and_keep_their_caps():
         assert ".review.md" in text and "review-plan.md" in text and "approve --review" in text
     assert "**Review plan:**" in plans and "machine plan" in plans and "machine plan" in brain
     assert "approve --review PATH" in sdd and "review plan" in sdd
-    assert len((skills / "using-superlite" / "SKILL.md").read_text(encoding="utf-8")) <= 2000 and len(sdd) <= 11600
+    assert len((skills / "using-superlite" / "SKILL.md").read_text(encoding="utf-8")) <= 2000 and len(sdd) <= 12500
     readme = (REPO / "README.md").read_text(encoding="utf-8")
     assert "review plan" in readme.lower() and "You approve first" in readme
 

@@ -2,7 +2,7 @@
                       o/|
                     o/ o|           s u p e r l i t e
                   o/ o/ |           parallel builds, short reports
-                o/ o/ o |           v1.5.0
+                o/ o/ o |           v1.6.0
               o/ o/ o/  |
              / o/ o/   /            A Claude Code plugin: Opus plans,
             | o/ o/   /             Sonnet and Haiku build in parallel,

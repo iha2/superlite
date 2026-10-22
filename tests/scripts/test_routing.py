@@ -108,7 +108,9 @@ def pool(tmp_path, agents):
     return f
 
 
-def dispatch(tmp_path, p, agents, *extra):
+def dispatch(tmp_path, p, agents, *extra, batch="1"):
+    """One line per task unless `batch` is None (the config's batching) or a number."""
+    extra = extra + (("--batch", batch) if batch else ())
     cp = run(DISPATCH, "--plan", p, "--pool", pool(tmp_path, agents), "--ledger", tmp_path / "l.md", *extra, cwd=tmp_path)
     assert cp.returncode == 0, cp.both
     return {ln.split()[0]: ln.split(" ", 1)[1] for ln in cp.out.splitlines()}, cp.err

@@ -1,0 +1,41 @@
+ MVP
+ ------------------------------------------------------------------------------
+  [1 ASK]
+      v
+  [2 FEATURES]
+      v
+.- SANDBOX: one HTML file, fake data -------------------.
+: [3 PROTOTYPE]                                         :
+:     v                                                 :
+: [4 FEEDBACK]                                          :
+'-------------------------------------------------------'
+      v
+  [5 APPROVE]
+      v
+  [6 PLAN]
+      v
+  [7 BUILD]
+      |
+      +-----------+-----------+
+      v           v           v
+  [Haiku]     [Sonnet]    [Sonnet]
+  3 tasks     3 tasks     2 tasks
+      |           |           |
+      +-----------+-----------+
+      v
+  [8 REVIEW + FIX]
+      v
+  [9 REPORT]
+ ------------------------------------------------------------------------------
+  1  ASK        You say what you want.
+  2  FEATURES   The MVP plan: every feature, each marked in or out.
+  3  PROTOTYPE  One clickable HTML file in a sandbox, with fake data. No
+                product code.
+  4  FEEDBACK   You open it, cut features, press Save feedback.
+  5  APPROVE    Human mode: you approve. AI mode: it checks and logs a ruling.
+  6  PLAN       The task plan from the features you kept. Lint gates it.
+  7  BUILD      Agents run side by side, up to 3 tasks each. Cut features
+                stay out.
+  8  REVIEW     Package reviews, one final review, fixes by tier, tests.
+  9  REPORT     Time and cost, and the list of what was left out.
+ ------------------------------------------------------------------------------

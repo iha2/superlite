@@ -1,4 +1,4 @@
-# Benchmark report: superpowers 6.4.1 vs superlite 0.1.0 (the version benchmarked; current is 1.5.0)
+# Benchmark report: superpowers 6.4.1 vs superlite 0.1.0 (the version benchmarked; current is 1.6.0)
 
 **Date:** 2026-10-16 (corrected 2026-10-17) · **Task:** build `sitegen` from `bench/task/SPEC.md` (9 modules, stdlib Python) · **Reps:** 1 per arm
 

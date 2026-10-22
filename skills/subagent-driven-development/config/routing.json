@@ -12,5 +12,7 @@
   ],
   "stats_gate": {"min_n": 8, "min_first_time_pass": 0.8},
   "lane": {"tier": "haiku"},
-  "batch_note_max_min": 1.0
+  "batch": {"_comment": "dispatch groups ready tasks of one tier into one agent message: at most max_tasks, summed weight at most capacity. Weight by the heading's Complexity N: first band whose complexity_lte holds (no key = the rest). Unknown complexity counts as unknown_complexity. Critical-path tasks run alone when critical_path_solo. max_tasks 1 turns batching off.",
+            "max_tasks": 3, "capacity": 3, "unknown_complexity": 5, "critical_path_solo": true,
+            "weights": [{"complexity_lte": 3, "weight": 1}, {"complexity_lte": 5, "weight": 1.5}, {"weight": 3}]}
 }

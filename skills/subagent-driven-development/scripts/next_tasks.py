@@ -146,7 +146,7 @@ def read_text(path):  # O(L)
 def parse_plan(plan):  # O(L)
     """{task id: info}, in plan order.
 
-    info: title, est_time (min), est_context (k tokens), owns (list), body.
+    info: title, est_time (min), est_context (k tokens), complexity (heading `Complexity N`), owns (list), body.
     """
     lines = read_text(plan).split("\n")  # O(L)
     tasks, cur = {}, None  # O(1)
@@ -174,6 +174,7 @@ def parse_plan(plan):  # O(L)
             "title": title or tid,  # O(1)
             "est_time": _num(r"Est\.?\s*time:?\*{0,2}\s*([\d.]+)\s*min", head, body),  # O(len body) regex
             "est_context": _num(r"Est\.?\s*context:?\*{0,2}\s*([\d.]+)\s*k", head, body),  # O(len body) regex
+            "complexity": _num(r"Complexity\s+(\d+)", head, ""),  # O(len head) regex, heading only
             "owns": parse_owns(_field(body, "Owns")),  # O(len body + owns text)
             "body": body,  # O(1)
         }  # O(1)

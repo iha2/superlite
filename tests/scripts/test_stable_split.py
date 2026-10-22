@@ -196,7 +196,7 @@ def _lines(cp):
 def test_dispatch_and_next_tasks_offer_everything_without_stable_json(tmp_path):
     p = _roots(tmp_path)
     assert sorted(_lines(run(NEXT_TASKS, "--plan", p, cwd=tmp_path))) == ["T1", "T2", "T3"]
-    cp = run(DISPATCH, "--plan", p, "--pool", tmp_path / "pool.json", "--ledger", tmp_path / "l.md", cwd=tmp_path)
+    cp = run(DISPATCH, "--plan", p, "--pool", tmp_path / "pool.json", "--ledger", tmp_path / "l.md", "--batch", "1", cwd=tmp_path)
     assert sorted(_lines(cp)) == ["T1", "T2", "T3"], cp.both
 
 
@@ -205,7 +205,7 @@ def test_dispatch_and_next_tasks_offer_only_stable_tasks(tmp_path):
     (tmp_path / ".superlite").mkdir()
     (tmp_path / ".superlite" / "stable.json").write_text(json.dumps({"stable": ["T1", "T3"]}), encoding="utf-8")
     assert sorted(_lines(run(NEXT_TASKS, "--plan", p, cwd=tmp_path))) == ["T1", "T3"]
-    cp = run(DISPATCH, "--plan", p, "--pool", tmp_path / "pool.json", "--ledger", tmp_path / "l.md", cwd=tmp_path)
+    cp = run(DISPATCH, "--plan", p, "--pool", tmp_path / "pool.json", "--ledger", tmp_path / "l.md", "--batch", "1", cwd=tmp_path)
     assert sorted(_lines(cp)) == ["T1", "T3"], cp.both
 
 

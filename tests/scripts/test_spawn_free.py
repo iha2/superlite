@@ -85,7 +85,7 @@ def pool(tmp_path, agents):
 
 def dispatch(tmp_path, agents, *extra, ledger=None):
     led = ledger or tmp_path / "progress.md"
-    r = run("dispatch", "--pool", pool(tmp_path, agents), "--ledger", led, *extra)
+    r = run("dispatch", "--pool", pool(tmp_path, agents), "--ledger", led, "--batch", "1", *extra)  # one task per line
     assert r.returncode == 0, r.stderr
     return [[x, d.split(" tier=")[0]] for x, d in (ln.split(" ", 1) for ln in r.stdout.splitlines())], r.stderr
 
@@ -152,7 +152,7 @@ def test_commit_several_tasks_in_one_call_then_dispatch(tmp_path):
     repo = make_repo(tmp_path)
     write(repo, "src/a.py", "def parse(text):\n    return text.split()\n")
     write(repo, "src/b.py", "def lex(text):\n    return list(text)\n")
-    r = run("checkpoint", "T1", "T2", "--plan", "plan.md", "--dispatch", cwd=repo)
+    r = run("checkpoint", "T1", "T2", "--plan", "plan.md", "--dispatch", "--batch", "1", cwd=repo)
     assert r.returncode == 0, r.stdout + r.stderr
     out = r.stdout.splitlines()
     assert out[0].startswith("T1 ") and out[1].startswith("T2 ")
@@ -255,7 +255,7 @@ def test_commit_releases_pool_agent_and_dispatch_failure_keeps_commit(tmp_path):
     # a broken pool after the commit: dispatch warns, the commit's exit code stands
     write(repo, "src/b.py", "def lex(text):\n    return list(text)\n")
     pool_path.write_text("{not json", encoding="utf-8")
-    r = run("checkpoint", "T2", "--plan", "plan.md", "--dispatch", cwd=repo)
+    r = run("checkpoint", "T2", "--plan", "plan.md", "--dispatch", "--batch", "1", cwd=repo)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "warning: dispatch failed" in r.stderr and "next:" in r.stdout
     assert git(repo, "log", "--format=%s", "-1") == "T2: lexer"

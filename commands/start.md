@@ -12,8 +12,8 @@ Start a superlite session. Arguments: $ARGUMENTS
    - Mode, if unset: the suggested flow first, labelled `(Recommended)` with its reason, then the "also fits" flows, then the rest that fit the project state. Regular (size the request, then brainstorm, plan, build, review), MVP (smallest working version first), Feature (a change to existing code, proved on a prototype you try first), Debug (find the cause, fix with a regression test), Small (a few files, inline), Review (review and harden a branch).
    - Orchestrator, always unless the user already said: Human (you approve a plain-language review plan before anything is built) or AI (hands off). Then run `sl orchestrator set human|ai`.
 5. Load the skill for the mode and follow it:
-   - Regular: `superlite:using-superlite` sizing, then `superlite:brainstorming`.
-   - MVP, Feature, Debug, Small, Review: the same as `/superlite:mvp`, `/superlite:feature`, `/superlite:debug`, `/superlite:small`, `/superlite:review`.
+   - Regular: print `assets/flows/regular.txt` the same way (one ```text block, verbatim, never redrawn), then `superlite:using-superlite` sizing and `superlite:brainstorming`.
+   - MVP, Feature, Debug (each prints its own diagram from `assets/flows/`), Small, Review: the same as `/superlite:mvp`, `/superlite:feature`, `/superlite:debug`, `/superlite:small`, `/superlite:review`.
    - Resume or Status (a run in progress): the same as `/superlite:resume` or `/superlite:status`.
 
 Menu by the "Project state" line in the session context (show only the options that fit):

@@ -1,0 +1,48 @@
+ FEATURE
+ ------------------------------------------------------------------------------
+  [1 ASK]
+      v
+  [2 PLAN]
+      v
+  [3 RESEARCH]
+      v
+  [4 APPROVE]
+      v
+.- SANDBOX: own worktree, your code untouched ----------.
+: [5 PROTOTYPE] <-----------------------+               :
+:     |                                 |               :
+:     +-----------+-----------+         |               :
+:     v           v           v         |               :
+: [Haiku]     [Sonnet]    [Sonnet]      |               :
+: 3 tasks     3 tasks     2 tasks       |               :
+:     |           |           |         |               :
+:     +-----------+-----------+         |               :
+:     v                                 |               :
+: [6 TRY IT] ---------------------------+  changes      :
+'-------------------------------------------------------'
+      v
+  [7 PORT]
+      |
+      +-----------+-----------+
+      v           v           v
+  [Haiku]     [Sonnet]    [Sonnet]
+  3 tasks     3 tasks     2 tasks
+      |           |           |
+      +-----------+-----------+
+      v
+  [8 REVIEW + FIX]
+      v
+  [9 REPORT]
+ ------------------------------------------------------------------------------
+  1  ASK        You say the change you want.
+  2  PLAN       What changes and how you will check it (acceptance checks).
+  3  RESEARCH   Read-only code map: entry points, seams, interfaces to keep.
+  4  APPROVE    Human mode: you approve the plan. AI mode: skipped.
+  5  PROTOTYPE  A sandbox: its own worktree, your checkout untouched. Agents
+                build side by side, 8 tasks at most.
+  6  TRY IT     You run it. "It works" moves on. Changes go back to step 5.
+  7  PORT       Agents side by side port the prototype into your real code.
+                Existing interfaces stay frozen. Existing tests must pass.
+  8  REVIEW     Seam checks, one final review, fixes by tier.
+  9  REPORT     Time and cost, prototype and integration each shown.
+ ------------------------------------------------------------------------------

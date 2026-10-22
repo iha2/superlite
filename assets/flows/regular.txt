@@ -1,0 +1,41 @@
+ REGULAR
+ ------------------------------------------------------------------------------
+  [1 ASK]
+      v
+  [2 SIZE]
+      v
+  [3 PLAN]
+      v
+  [4 APPROVE]
+      v
+  [5 GATE]
+      v
+  [6 BUILD]
+      |
+      +-----------+-----------+
+      v           v           v
+  [Haiku]     [Sonnet]    [Sonnet]
+  3 tasks     3 tasks     2 tasks
+      |           |           |
+      +-----------+-----------+
+      v
+  [7 REVIEW + TEST]
+      v
+  [8 FINAL REVIEW]
+      v
+  [9 FIX]
+      v
+  [10 REPORT]
+ ------------------------------------------------------------------------------
+  1  ASK      You say what you want.
+  2  SIZE     Trivial, bounded or large. Large gets one batch of questions.
+  3  PLAN     The design and the task plan. Human mode adds a review plan.
+  4  APPROVE  Human mode: you approve before anything runs. AI mode: skipped.
+  5  GATE     Lint checks the plan. Only stable tasks go out.
+  6  BUILD    Agents run side by side, up to 3 tasks each. Haiku: mechanical.
+              Sonnet: the rest.
+  7  REVIEW   Reviewers fix their own findings. Tests run in the background.
+  8  FINAL    One fresh reviewer reads the packet and tiers the findings.
+  9  FIX      Fixers by tier (Sonnet, Sonnet high, Opus), then tests again.
+  10 REPORT   Time and cost, projected vs actual. Nothing is committed.
+ ------------------------------------------------------------------------------

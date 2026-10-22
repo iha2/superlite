@@ -2,17 +2,22 @@
 """Ready tasks and who runs each, in one call: next_tasks + assign for every ready task.
 
     dispatch.py --plan P [--pool .superlite/pool.json] [--ledger .superlite/progress.md]
-                [--committed T1,T2] [--running T3] [--cap 10]
+                [--committed T1,T2] [--running T3] [--cap 10] [--batch N]
 
-stdout, one line per ready task, longest predicted first, within the cap:
+stdout, one line per batch of ready tasks (one agent, one message), longest predicted first, within the cap:
     Tn agent=<id>        clear winner (D11 scoring, margin >= 3); that agent is now taken
-    Tn poll <id>,<id>    tie or no signal: relevance-poll these idle agents
+    Tn,Tm poll <id>,<id> tie or no signal: relevance-poll these idle agents
     Tn fresh             no eligible idle agent: start a primed implementer
     T0 wave0             synthesized Wave 0 skeleton still pending (`sl wave0`): its own agent, first line
 stderr: `evict=<id> <reason>` for each idle agent eligible for none of the ready tasks.
 
+Batching (`batch` in config/routing.json; `--batch 1` turns it off): ready tasks of one tier share an agent, up to
+`max_tasks` per batch, by complexity: each task weighs by its `Complexity N` band and a batch holds at most
+`capacity` (3 simple, 2 medium, a complex task alone). Critical-path tasks stay alone, so nothing they unblock
+waits behind a batch. Each batch is seeded by the longest task and filled with the tasks it has most in common with (shared deps, then package).
+
 Defaults when a flag is omitted: done tasks come from the ledger's `- checkpoint Tn <sha>`
-lines (old `- commit` lines too); running tasks are the pool agents' `current` tasks not yet
+lines (old `- commit` lines too); running tasks are the pool agents' `current` tasks (`Tn` or a batch `Tn,Tm`) not yet
 checkpointed (busy or not: a FAILED or BLOCKED task keeps its `current` until `checkpoint` records it). An agent with
 a `current` gets no new task, and no agent appears on two lines of one call (`agent=` or
 `poll`). The plan is parsed once, in this process. Stdlib only.
@@ -38,20 +43,79 @@ def load_pool(path):  # O(pool bytes)
     return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {"agents": []}  # O(pool bytes)
 
 
+def currents(ag):  # O(len current)
+    """The tasks an agent is on: `current` is "Tn", a batch "Tn,Tm", or a list."""
+    cur = ag.get("current") or []  # O(1)
+    parts = cur if isinstance(cur, list) else str(cur).split(",")  # O(len)
+    return [str(x).strip() for x in parts if str(x).strip()]  # O(len)
+
+
 def running_from_pool(pool, committed=()):  # O(a)
     done = set(committed)  # O(c)
-    return [ag["current"] for ag in pool.get("agents", [])  # O(a)
-            if ag.get("current") and ag["current"] not in done]
+    return [t for ag in pool.get("agents", []) for t in currents(ag) if t not in done]  # O(a + tasks)
+
+
+def stable_cp(plan):  # O(stable.json)
+    """Critical-path task ids that `lint --stable` saved, else none."""
+    try:  # O(1)
+        import plan_tools as pt  # O(1) lazy
+        return set(json.loads((pt.stable_root(plan) / ".superlite" / "stable.json").read_text(encoding="utf-8")).get("critical_path") or [])  # O(file)
+    except Exception:  # noqa: BLE001 | no stable.json: no task is held alone for it | O(1)
+        return set()  # O(1)
+
+
+def task_weight(cx, b):  # O(bands)
+    """A task's share of a batch, by its `Complexity N` band; unknown complexity counts as `unknown_complexity`."""
+    cx = b.get("unknown_complexity", 5) if cx is None else cx  # O(1)
+    for band in b.get("weights", []):  # O(bands) iterations
+        if "complexity_lte" not in band or cx <= band["complexity_lte"]:  # O(1)
+            return float(band.get("weight", 1))  # O(1)
+    return 1.0  # O(1)
+
+
+def make_batches(ready, tier, info, graph, b, max_ctx, cp=()):  # O(R^2 * (d + o))
+    """[[task ids]] in ready order. The longest unbatched task seeds a batch, which then takes the same-tier tasks it has
+    most in common with (2 per shared dependency, 1 per shared package; ties in ready order) while they fit: task count,
+    summed weight, summed context. Critical-path tasks and tasks as heavy as a whole batch stay alone."""
+    size = int(b.get("max_tasks", 1))  # O(1)
+    if size <= 1:  # O(1)
+        return [[t] for t in ready]  # O(R)
+    cap = float(b.get("capacity", size))  # O(1)
+    ctx = {t: info.get(t, {}).get("est_context") or asg.DEFAULT_CONTEXT_K for t in ready}  # O(R)
+    w = {t: task_weight(info.get(t, {}).get("complexity"), b) for t in ready}  # O(R * bands)
+    pkgs = {t: {asg.package(o) for o in info.get(t, {}).get("owns", []) if asg.package(o)} for t in ready}  # O(R*o)
+    solo = {t for t in ready if (t in cp and b.get("critical_path_solo", True)) or w[t] >= cap}  # O(R)
+    order = {t: k for k, t in enumerate(ready)}  # O(R)
+    left = list(ready)  # O(R)
+    batches = []  # O(1)
+    while left:  # O(R) iterations
+        seed = left.pop(0)  # O(R)
+        bt, bw, bc = [seed], w[seed], ctx[seed]  # O(1)
+        deps, pk = set(graph.get(seed, [])), set(pkgs[seed])  # O(d + o)
+        while seed not in solo and len(bt) < size:  # O(size) iterations
+            fits = [t for t in left if t not in solo and tier(t) == tier(seed) and bw + w[t] <= cap + 1e-9
+                    and bc + ctx[t] <= max_ctx(tier(seed))]  # O(R)
+            if not fits:  # O(1)
+                break  # O(1)
+            t = min(fits, key=lambda x: (-(2 * len(set(graph.get(x, [])) & deps) + len(pkgs[x] & pk)), order[x]))  # O(R*(d + o))
+            left.remove(t)  # O(R)
+            bt.append(t)  # O(1)
+            bw, bc = bw + w[t], bc + ctx[t]  # O(1)
+            deps |= set(graph.get(t, []))  # O(d)
+            pk |= pkgs[t]  # O(o)
+        batches.append(bt)  # O(1)
+    return batches  # O(R)
 
 
 def is_idle(ag):  # O(1)
     return not (ag.get("busy") or ag.get("status") == "busy" or ag.get("current"))  # O(1)
 
 
-def plan_dispatch(plan, pool, committed, running, cap, tiers=None, cfg=None, lane_virtual=0):  # O(L + n + e + R*a*(F + o))
-    """[(task, decision)] and {agent id: evict reason}; decision is 'agent=ID tier=T', 'poll IDS tier=T' or
-    'fresh tier=T agent=TYPE'. A task only goes to an idle agent of its own tier; the lane tier (haiku) reuses
-    an idle eligible lane agent (lowest context, then fewest tasks) with no poll, else starts a fresh one."""
+def plan_dispatch(plan, pool, committed, running, cap, tiers=None, cfg=None, lane_virtual=0, batch=None):  # O(L + n + e + R^2*(d + o) + R*a*(F + o))
+    """[(tasks, decision)] and {agent id: evict reason}; tasks is "Tn" or a batch "Tn,Tm"; decision is 'agent=ID tier=T',
+    'poll IDS tier=T' or 'fresh tier=T agent=TYPE'. A batch only goes to an idle agent of its own tier; the lane tier
+    (haiku) reuses an idle eligible lane agent (lowest context, then fewest tasks) with no poll, else starts a fresh
+    one. `batch` overrides the config's batch `max_tasks` (1 = one task per agent)."""
     cfg = cfg or routing.load_cfg()  # O(file)
     graph = nt.taskgraph(plan)  # O(L + n + e), memoized
     info = nt.parse_plan(plan)  # O(L)
@@ -64,9 +128,18 @@ def plan_dispatch(plan, pool, committed, running, cap, tiers=None, cfg=None, lan
     tier = lambda t: tiers.get(t, default)  # noqa: E731 | O(1)
     times = {t: (info[t]["est_time"] if t in info and info[t]["est_time"] is not None  # O(n)
                  else nt.DEFAULT_TIME) for t in graph}
-    ready = nt.ready_tasks(graph, times, committed, running, cap,  # O(n*(n + e) + R log R) draft closure
-                           nt.taskgraph_full(plan).get("status", {}),  # O(1) memoized
-                           nt.stable_filter(plan))  # only stable tasks when .superlite/stable.json exists
+    ready_ids = nt.ready_tasks(graph, times, committed, running, cap,  # O(n*(n + e) + R log R) draft closure
+                               nt.taskgraph_full(plan).get("status", {}),  # O(1) memoized
+                               nt.stable_filter(plan))  # only stable tasks when .superlite/stable.json exists
+    bcfg = dict(cfg.get("batch") or {})  # O(1)
+    if batch is not None:  # O(1)
+        bcfg["max_tasks"] = batch  # O(1)
+    groups = make_batches(ready_ids, tier, info, graph, bcfg,  # O(R^2*(d + o))
+                          lambda tr: float(routing.tier_limits(cfg, tr)["max_context_k"]), stable_cp(plan))
+    members = {",".join(g): g for g in groups}  # batch key -> its tasks | O(R)
+    ready = list(members)  # O(R) batches, longest first (a batch is led by its longest task)
+    tier_of_task = tier  # O(1)
+    tier = lambda u: tier_of_task(members[u][0] if u in members else u)  # noqa: E731 | a batch has one tier | O(1)
     lane = cfg.get("lane") or {}  # O(1)
     lane_tier = lane.get("tier")  # O(1)
     agents = pool.get("agents", [])  # O(a)
@@ -74,11 +147,11 @@ def plan_dispatch(plan, pool, committed, running, cap, tiers=None, cfg=None, lan
     eligible = {}  # task -> {agent id: score} over eligible idle agents of the task's own tier | O(1)
     eligible_somewhere = set()  # O(1)
     reasons = {}  # O(1)
-    for t in ready:  # O(R) iterations
-        task = info.get(t, {})  # O(1)
-        deps = graph.get(t, [])  # O(1)
-        owns = task.get("owns", [])  # O(1)
-        est_context = task.get("est_context") or asg.DEFAULT_CONTEXT_K  # O(1)
+    for t in ready:  # O(R) iterations, one per batch
+        ms = members[t]  # O(1)
+        deps = sorted({d for m in ms for d in graph.get(m, [])})  # O(d)
+        owns = [o for m in ms for o in info.get(m, {}).get("owns", [])]  # O(o)
+        est_context = sum(info.get(m, {}).get("est_context") or asg.DEFAULT_CONTEXT_K for m in ms)  # O(1)
         limits = routing.tier_limits(cfg, tier(t))  # O(1)
         eligible[t] = {}  # O(1)
         for ag in idle:  # O(a) iterations
@@ -135,14 +208,14 @@ def render(lines, evict):  # O(R + a)
         print(f"{t} {decision}")  # O(1)
 
 
-def run(plan, pool_path, ledger, committed=None, running=None, cap=10):  # O(c + L + n + e + R*a*(F + o))
+def run(plan, pool_path, ledger, committed=None, running=None, cap=10, batch=None):  # O(c + L + n + e + R*a*(F + o))
     """Library entry for checkpoint --dispatch; flags left as None take their defaults."""
     pool = load_pool(pool_path)  # O(pool bytes)
     done = nt.csv(committed) if committed is not None else sorted(ct.checkpointed_tasks(ledger))  # O(c)
     busy = nt.csv(running) if running is not None else running_from_pool(pool, done)  # O(a)
     import wave0  # noqa: E402 | O(1) lazy
     w0 = wave0.synth_info(plan) and "T0" not in done and "T0" not in busy  # synthesized Wave 0 still pending | O(1)
-    lines, evict = plan_dispatch(plan, pool, done, busy, cap, lane_virtual=1 if w0 else 0)  # see plan_dispatch
+    lines, evict = plan_dispatch(plan, pool, done, busy, cap, lane_virtual=1 if w0 else 0, batch=batch)  # see plan_dispatch
     if w0:  # first line, a haiku lane agent | O(R)
         cfg = routing.load_cfg()  # O(file)
         lt = (cfg.get("lane") or {}).get("tier", "haiku")  # O(1)
@@ -158,13 +231,14 @@ def main(argv=None):  # O(c + L + n + e + R*a*(F + o))
     ap.add_argument("--committed", help="default: the ledger's checkpoint lines")  # O(1)
     ap.add_argument("--running", help="default: `current` of each busy pool agent")  # O(1)
     ap.add_argument("--cap", type=int, default=10)  # O(1)
+    ap.add_argument("--batch", type=int, help="most tasks per agent message (default: config batch.max_tasks; 1 = off)")  # O(1)
     a = ap.parse_args(argv)  # O(1)
     plan = a.plan or load_pool(a.pool).get("plan") or nt.DEFAULT_PLAN  # O(pool bytes)
     import orchestrator  # O(1)
     blocked = orchestrator.require(plan, "dispatch")  # human mode waits for approval | O(file)
     if blocked:  # O(1)
         return blocked  # O(1)
-    render(*run(plan, a.pool, a.ledger, a.committed, a.running, a.cap))  # see run
+    render(*run(plan, a.pool, a.ledger, a.committed, a.running, a.cap, a.batch))  # see run
     try:  # the budget line when it changed (needs .superlite/metrics.jsonl) | O(compute)
         import budget  # O(1)
         budget.maybe_print(plan, str(Path(a.pool).parent))  # O(compute)

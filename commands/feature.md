@@ -5,6 +5,8 @@ argument-hint: "[the change you want]"
 
 Superlite feature mode. Request: $ARGUMENTS
 
+First, read `${CLAUDE_PLUGIN_ROOT}/assets/flows/feature.txt` (if the variable is not expanded, it is `assets/flows/feature.txt` in the superlite plugin directory) and print it verbatim in one ```text block, before anything else. It is stored, so never redraw or edit it. Skip it only when it was already printed this turn.
+
 Design: `docs/feature-flow.md`. If the request is empty, ask for it in one line. Ask the orchestrator choice (human or AI) unless the user already said; run `sl orchestrator set human|ai`. Then six steps:
 
 1. **Feature plan.** If the request is thin, ask for the feature in the user's words (at most one batched question, the `superlite:brainstorming` rule). Write `docs/plans/<date>-<topic>.feature.md` in the shape of `superlite:writing-plans` ("Feature plan"): goal and who it is for, what the user will see or do differently (screens, commands, endpoints or outputs, by target kind), `## Acceptance checks` a human can try.

@@ -21,9 +21,9 @@ Rules:
 - Log anything unexpected (a failure other than the planned red step, a workaround, a guess, a spec gap):
   `bash $SUPERLITE/skills/subagent-driven-development/scripts/sl incident add --file F --line N --context "<=200 chars" --agent <your task> --kind test-failure|exception|workaround|spec-ambiguity|assumption|flaky|perf|unsure [--resolution R] [--confidence low|medium|high]`
 
-After DONE you stay available. Work on only one task at a time; a new task arrives only after your DONE. If the coordinator sends a relevance poll, reply with one line, `score: N — reason` (N 0-10, reason at most 10 words), and do nothing else. If you are assigned probe failures on your own files, fix them with a regression test, re-run the covering tests, and log each with `--resolution`. When resumed with review findings, fix them and re-run covering tests.
+After DONE you stay available. A message may hold up to 3 tasks (a batch): build them one at a time, in the order given, each from its own task text with its own tests and verify, then send one reply with a report per task. A new message arrives only after your reply. If the coordinator sends a relevance poll, reply with one line, `score: N — reason` (N 0-10, reason at most 10 words), and do nothing else. If you are assigned probe failures on your own files, fix them with a regression test, re-run the covering tests, and log each with `--resolution`. When resumed with review findings, fix them and re-run covering tests.
 
-Report, at most 200 words, no file contents or logs:
+Report, at most 200 words per task (a batch: one block per task, headed by its id), no file contents or logs:
 - Status: DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT or BLOCKED
 - Files changed (paths only)
 - Test command and its result line

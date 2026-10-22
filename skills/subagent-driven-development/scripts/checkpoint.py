@@ -3,7 +3,7 @@
 
     checkpoint.py Tn [Tm ...] [--plan P] [--ledger .superlite/progress.md]
                   [--log .superlite/incidents.jsonl] [--allow-other-tasks]
-                  [--dispatch [--pool .superlite/pool.json] [--running T3] [--cap 10]]
+                  [--dispatch [--pool .superlite/pool.json] [--running T3] [--cap 10] [--batch N]]
 
 Several ids are checkpointed in order in one process (one plan parse, one exclude check).
 Output: the SHA for one task; `Tn <sha>` or `Tn FAILED` per task for several. Each
@@ -259,13 +259,21 @@ def release_agents(pool_path, tids):  # O(pool bytes)
     done = set(tids)  # O(t)
     changed = False  # O(1)
     for ag in pool.get("agents", []):  # O(a) iterations
-        cur = ag.get("current")  # O(1)
-        if cur in done:  # O(1) set lookup
+        cur = ag.get("current") or []  # "Tn", a batch "Tn,Tm", or a list | O(1)
+        curs = [str(x).strip() for x in (cur if isinstance(cur, list) else str(cur).split(",")) if str(x).strip()]  # O(len)
+        hit = [t for t in curs if t in done]  # O(batch)
+        if not hit:  # O(1)
+            continue  # O(1)
+        for t in hit:  # O(batch) iterations
+            if t not in ag.setdefault("tasks", []):  # O(tasks per agent)
+                ag["tasks"].append(t)  # O(1)
+        left = [t for t in curs if t not in done]  # a FAILED batch task keeps the agent on it | O(batch)
+        if left:  # O(1)
+            ag["current"] = ",".join(left)  # O(batch)
+        else:  # O(1)
             ag.pop("current", None)  # O(1)
             ag["busy"] = False  # O(1)
-            if cur not in ag.setdefault("tasks", []):  # O(tasks per agent) <= 3
-                ag["tasks"].append(cur)  # O(1)
-            changed = True  # O(1)
+        changed = True  # O(1)
     if changed:  # O(1)
         tmp = p.with_name(p.name + ".tmp")  # O(1)
         tmp.write_text(json.dumps(pool, indent=1) + "\n", encoding="utf-8")  # O(pool bytes)
@@ -436,6 +444,7 @@ def main(argv=None):  # O(L + t*(m*o)) + git spawns per task; one process for al
     ap.add_argument("--pool", default=".superlite/pool.json", help="pool for --dispatch")  # O(1)
     ap.add_argument("--running", help="running tasks for --dispatch (default: from the pool)")  # O(1)
     ap.add_argument("--cap", type=int, default=10, help="cap for --dispatch")  # O(1)
+    ap.add_argument("--batch", type=int, help="most tasks per agent message for --dispatch (default: config; 1 = off)")  # O(1)
     a = ap.parse_args(argv)  # O(1)
 
     info = nt.parse_plan(a.plan)  # O(L) parse plan, once for every task
@@ -481,7 +490,7 @@ def main(argv=None):  # O(L + t*(m*o)) + git spawns per task; one process for al
         print("next:")  # O(1)
         try:  # the checkpoints stand whatever happens here | O(1)
             import dispatch  # O(1) lazy: dispatch imports this module
-            dispatch.render(*dispatch.run(a.plan, a.pool, a.ledger, None, a.running, a.cap))  # see dispatch.run
+            dispatch.render(*dispatch.run(a.plan, a.pool, a.ledger, None, a.running, a.cap, a.batch))  # see dispatch.run
         except (SystemExit, Exception) as e:  # O(1)
             print(f"warning: dispatch failed ({e}); run `dispatch` after fixing it", file=sys.stderr)  # O(1)
     return worst  # O(1)
