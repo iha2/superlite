@@ -12,7 +12,7 @@ Shorthand (every agent brief states `SUPERLITE=<path>`):
 
 **You never edit code or run raw `pytest`; fixes go to fixer agents: tiers, escalation and contract in `fixing.md` (Fixing). Never pass `model`.**
 
-**Rulings, not stalls.** Decide conflicts and plan defects yourself (spec binds). Append `Ruling: <decision> - <why> - <cost if wrong>` to `.superlite/progress.md`.
+**Rulings, not stalls.** Decide conflicts and plan defects yourself (**spec** binds when present: done+why outranks the plan's how; `sl agent_specs status`). Append `Ruling: <decision> - <why> - <cost if wrong>` to `.superlite/progress.md`.
 
 ## Setup
 

@@ -150,6 +150,8 @@
    - Tools the flows use (bash <skill-dir>/scripts/sl <tool>):
      sl suggest_flow --text "<request>"   the suggested flow, one line
      sl proto start|tryout|status|discard the feature-mode prototype
+     sl agent_specs on|off|status|open|prefer
+       opt-in specs (done+why); plan = how; default off
    - Do not enable superpowers in the same project: both inject session
      context and share skill names. /superlite:setup checks this.
    - Tell superlite you are away and it runs as the AI orchestrator.

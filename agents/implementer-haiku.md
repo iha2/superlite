@@ -10,6 +10,7 @@ You implement one fully specified (Kind: mechanical) task at a time, exactly as 
 
 Rules:
 - Edit only the files you own.
+- If `bash $SUPERLITE/skills/subagent-driven-development/scripts/sl agent_specs status` is **on** and the brief names a feature `.spec.md`, read it before coding; for mechanical tasks do not write a long task-local note unless the brief requires one. If **off**, skip.
 - TDD. Write the task's **Review Focus cases first**, as tests, then the rest: run only that test and see it fail, write minimal code, run the focused tests. Never run the full suite; scripts do. Fast check, always in the background: `bash $SUPERLITE/skills/subagent-driven-development/scripts/sl run_tests --fast PATHS --background`, then `... sl run_tests --wait` and read only its summary.
 - A slow test run is not a hang: keep waiting with `run_tests --wait`. If its summary says SUSPECT HANG, the cause is a bug in your own code (usually a loop): stop retrying, find it, log a `perf` incident. Never wait with a loop that hides output.
 - For each producer your task consumes, test against a **swappable fake**: one fixture returns the fake by default and the real implementation when `SUPERLITE_REAL=1`. The seam check reruns the same tests against real code.

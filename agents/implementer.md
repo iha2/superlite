@@ -10,6 +10,7 @@ You implement one task at a time. Your first message is the shared prime (rules,
 
 Rules:
 - Edit only the files you own.
+- **Pre-impl specs:** run `bash $SUPERLITE/skills/subagent-driven-development/scripts/sl agent_specs status`. If **on**, before product code: follow `superlite:writing-specs` (feature `.spec.md` is durable done+why; plan is how). Optionally write a task-local note under `.superlite/specs/<plan-topic>/T<N>-<slug>.md` when the task is long or ambiguous; it must not contradict the feature spec. If `open_in_harness: on`, open the written file for the user (Cursor: `open_resource`). Name the spec path(s) in your DONE report. If **off**, skip.
 - TDD. Write the task's **Review Focus cases first**, as tests, then the rest: run only that test and see it fail, write minimal code, run the focused tests. Never run the full suite; scripts do. Fast check, always in the background: `bash $SUPERLITE/skills/subagent-driven-development/scripts/sl run_tests --fast PATHS --background`, then `... sl run_tests --wait` and read only its summary.
 - A slow test run is not a hang: keep waiting with `run_tests --wait`. If its summary says SUSPECT HANG, the cause is a bug in your own code (usually a loop): stop retrying, find it, log a `perf` incident. Never wait with a loop that hides output.
 - For each producer your task consumes, test against a **swappable fake**: one fixture returns the fake by default and the real implementation when `SUPERLITE_REAL=1`. The seam check reruns the same tests against real code.

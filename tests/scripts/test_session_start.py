@@ -36,6 +36,13 @@ def test_intro_is_shown_once_per_installed_version(tmp_path):
     assert "was just installed" not in _context(tmp_path)   # the second session stays quiet
 
 
+def test_agent_specs_prefer_asked_once(tmp_path):
+    first = _context(tmp_path)
+    assert "pre-implementation specs" in first and "agent_specs prefer" in first
+    (tmp_path / "preferences.json").write_text('{"agent_specs": false, "open_in_harness": true}\n', encoding="utf-8")
+    assert "agent_specs prefer" not in _context(tmp_path)
+
+
 def test_intro_and_help_files_fit_a_terminal():
     for name in ("intro.txt", "help.txt"):
         text = (ROOT / "assets" / name).read_text(encoding="utf-8")
