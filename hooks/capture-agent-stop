@@ -2,7 +2,7 @@
 # SubagentStop hook: during an active superlite run, append one stop record to
 # <project>/.superlite/metrics.jsonl:
 #   {"ev":"stop","t":<epoch ms>,"agent_id":..,"type":..,"transcript":<path, forward slashes>,"last":<max 160 chars>}
-# Active when .superlite/stable.json, prime.md or pool.json exists under the project dir.
+# Active when .superlite/stable.json, prime.md, pool.json, orchestrator.json or feature.json exists.
 # Bash builtins only (each external process costs ~250 ms on Windows). Never blocks: always exits 0.
 
 IFS= read -r -d '' input   # builtin; returns 1 at EOF, which is fine
@@ -25,12 +25,17 @@ esc() {
 
 jstr cwd; proj="${CLAUDE_PROJECT_DIR:-${REPLY//\\//}}"
 [ -n "$proj" ] || proj="$PWD"
-[ -f "$proj/.superlite/stable.json" ] || [ -f "$proj/.superlite/prime.md" ] || [ -f "$proj/.superlite/pool.json" ] || exit 0
+[ -f "$proj/.superlite/stable.json" ] || [ -f "$proj/.superlite/prime.md" ] || [ -f "$proj/.superlite/pool.json" ] || [ -f "$proj/.superlite/orchestrator.json" ] || [ -f "$proj/.superlite/feature.json" ] || exit 0
 
 jstr agent_id; id="$REPLY"
+if [ -z "$id" ]; then jstr subagent_id; id="$REPLY"; fi   # Cursor subagentStop
 jstr agent_type; type="$REPLY"
+if [ -z "$type" ]; then jstr subagent_type; type="$REPLY"; fi
 jstr agent_transcript_path; tr="${REPLY//\\//}"
-jstr last_assistant_message; last="${REPLY:0:160}"
+jstr last_assistant_message; last="$REPLY"
+if [ -z "$last" ]; then jstr summary; last="$REPLY"; fi
+if [ -z "$last" ]; then jstr description; last="$REPLY"; fi
+last="${last:0:160}"
 esc id; esc type; esc tr; esc last
 
 now="${EPOCHREALTIME//[.,]/}"; now="${now:0:${#now}-3}"

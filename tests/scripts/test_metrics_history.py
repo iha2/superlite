@@ -347,3 +347,16 @@ def test_report_of_reads_the_handback_when_the_stop_text_is_empty(tmp_path):
     assert metrics.report_of({"last": "", "transcript": str(tr)}) == "Status: DONE. 4 tests pass"
     assert metrics.report_of({"last": "Status: BLOCKED", "transcript": str(tr)}) == "Status: BLOCKED"  # the stop text wins
     assert metrics.report_of({"last": "", "transcript": str(tmp_path / "missing.jsonl")}) == ""  # no transcript: no crash
+
+
+def test_cursor_role_transcript_estimates_output_tokens(tmp_path):
+    import sys
+    sys.path.insert(0, str(SCRIPTS))
+    import metrics
+    tr = tmp_path / "cursor.jsonl"
+    tr.write_text(json.dumps({
+        "role": "assistant",
+        "message": {"content": [{"type": "text", "text": "x" * 35}]},
+    }) + "\n", encoding="utf-8")
+    segs = metrics.transcript_segments(tr, [])
+    assert segs and segs[0]["tok"]["output"] >= 10

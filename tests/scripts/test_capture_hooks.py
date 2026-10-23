@@ -151,6 +151,45 @@ def test_hooks_json_registers_both():
     assert data["SubagentStop"][0]["hooks"][0]["command"] == 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/capture-agent-stop"'
 
 
+def test_cursor_hooks_register_capture():
+    data = json.loads((ROOT / "hooks" / "hooks-cursor.json").read_text(encoding="utf-8"))["hooks"]
+    assert "capture-agent-launch" in data["subagentStart"][0]["command"]
+    assert "capture-agent-stop" in data["subagentStop"][0]["command"]
+
+
+CURSOR_START = {
+    "hook_event_name": "subagentStart", "subagent_id": "abc-123", "subagent_type": "explore",
+    "task": "Prototype container rules", "subagent_model": "claude-haiku-5-5",
+    "parent_conversation_id": "conv-1", "tool_call_id": "tc-1",
+}
+CURSOR_STOP = {
+    "hook_event_name": "subagentStop", "subagent_id": "abc-123", "subagent_type": "explore",
+    "status": "completed", "task": "Prototype container rules", "description": "Prototype container rules",
+    "summary": "Web keep is the shell.", "duration_ms": 45000,
+    "agent_transcript_path": "C:\\Users\\me\\.cursor\\agent.jsonl",
+}
+
+
+def test_cursor_payloads_record_when_the_orchestrator_is_set(tmp_path):
+    (tmp_path / ".superlite").mkdir()
+    (tmp_path / ".superlite" / "orchestrator.json").write_text('{"mode":"ai"}')
+    assert run(LAUNCH, tmp_path, CURSOR_START).returncode == 0
+    assert run(STOP, tmp_path, CURSOR_STOP).returncode == 0
+    launch, stop = records(tmp_path)
+    assert launch["agent_id"] == "abc-123" and launch["type"] == "explore"
+    assert launch["model"] == "claude-haiku-5-5" and launch["desc"] == "Prototype container rules"
+    assert launch["parent"] == ""
+    assert stop["agent_id"] == "abc-123" and stop["type"] == "explore"
+    assert stop["transcript"].endswith("agent.jsonl") and stop["last"] == "Web keep is the shell."
+
+
+def test_feature_json_is_a_run_marker(tmp_path):
+    (tmp_path / ".superlite").mkdir()
+    (tmp_path / ".superlite" / "feature.json").write_text("{}")
+    run(STOP, tmp_path, CURSOR_STOP)
+    assert len(records(tmp_path)) == 1
+
+
 def test_lf_endings():
     for h in (LAUNCH, STOP):
         assert b"\r" not in h.read_bytes()
