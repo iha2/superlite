@@ -54,6 +54,23 @@ if [ -n "${HOME:-}${SUPERLITE_HOME:-}" ] && [ -f "${PLUGIN_ROOT}/assets/intro.tx
 '"superlite ${version} was just installed. Before anything else in your first reply, Read ${intro} and print it to the user verbatim inside one text code block, then continue with their request. Do this only once."  # O(s)
 fi  # O(1)
 
+# One-time prefer for pre-impl specs (default remains off until prefer on). Marker: agent_specs key in preferences.json.
+prefs="${home}/preferences.json"  # O(1)
+if [ -n "${HOME:-}${SUPERLITE_HOME:-}" ] && [ ! -f "$prefs" ]; then  # O(1)
+  need_prefer=1  # O(1)
+elif [ -f "$prefs" ]; then  # O(1)
+  need_prefer=1  # O(1)
+  IFS= read -r -d '' pref_body < "$prefs" || true  # O(file)
+  [[ $pref_body == *'"agent_specs"'* ]] && need_prefer=0  # O(file)
+else  # O(1)
+  need_prefer=0  # O(1)
+fi  # O(1)
+if [ "${need_prefer:-0}" = 1 ]; then  # O(1)
+  content="${content}"$'
+
+'"Ask once (plain text, one question): does the user want pre-implementation specs on by default? Specs define what done looks like and why; plans choose how. Default stays off until they choose. After they answer, run: bash ${PLUGIN_ROOT}/skills/subagent-driven-development/scripts/sl agent_specs prefer on|off. Do not ask again after prefer is recorded."  # O(s)
+fi  # O(1)
+
 escaped=$(escape_for_json "$content")  # O(s) + subshell
 session_context="You have superlite. Its 'superlite:using-superlite' skill follows; load other skills with the Skill tool.\n\n${escaped}"  # O(s)
 

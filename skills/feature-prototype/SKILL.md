@@ -31,6 +31,7 @@ The prototype is the smallest thing that stands up and shows the feature working
 
 ## The prototype plan
 
+- When `sl agent_specs status` is on, keep the feature `.spec.md` in view (acceptance from the spec); optional task-local notes stay under the worktree's `.superlite/specs/`.
 - An agent-format plan in the worktree, `<worktree>/docs/plans/<date>-<topic>.proto.md`, at most 8 tasks and about a quarter of the integration estimate (cost and time). A larger plan means the scope is wrong: cut it back to what the acceptance checks need.
 - Wave 0 sets up the container (the stubs, fakes and fixtures, the run command); the feature tasks then run in parallel, Haiku for mechanical pieces and Sonnet for the rest.
 - Its tests are written against the feature plan's acceptance checks, so they carry into the integration build as its acceptance tests.

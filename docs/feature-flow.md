@@ -39,11 +39,11 @@ flowchart TB
 
 ### Step 1: the feature plan
 
-The user is asked for the feature in their own words if the request is thin, with at most one batched question (the existing brainstorming rule). Opus writes `docs/plans/<date>-<topic>.feature.md`:
+The user is asked for the feature in their own words if the request is thin, with at most one batched question (the existing brainstorming rule). When `sl agent_specs status` is **on** (opt-in; default off; first session may `prefer on|off` into `~/.superlite/preferences.json`), write a durable **feature spec** (`docs/plans/<date>-<topic>.spec.md`) via `superlite:writing-specs` before or with the plan: a spec is what done looks like and why; a plan is how (one spec can outlive many plans). Open the spec in the harness when `open_in_harness` is on. Opus writes `docs/plans/<date>-<topic>.feature.md`:
 
 - the goal and who it is for, in plain words;
 - what the user will see or do differently (screens, commands, endpoints, or outputs, by target kind, as in MVP mode);
-- the acceptance checks a human can try;
+- the acceptance checks a human can try (aligned with the feature spec when agent_specs is on);
 - after step 2: the code map, the interfaces to keep, the prototype scope and an outline of the integration build.
 
 ### Step 2: research the code base
