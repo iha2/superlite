@@ -235,7 +235,16 @@ def test_skills_and_docs_name_the_feature_flow():
     proto_skill = text("skills", "feature-prototype", "SKILL.md")
     for s in ("web", "cli", "library", "api", "other", "L1", "L2", "stub", "8 tasks"):
         assert s in proto_skill, s
+    for s in ("UI component set", "one-off markup", "not stubbed"):
+        assert s in proto_skill, s
     plans = text("skills", "writing-plans", "SKILL.md")
+    for s in ("UI component set", "one-off markup"):
+        for label, doc in (
+            ("commands/feature.md", text("commands", "feature.md")),
+            ("docs/feature-flow.md", text("docs", "feature-flow.md")),
+            ("skills/writing-plans/SKILL.md", plans),
+        ):
+            assert s in doc, (label, s)
     assert ".feature.md" in plans and "## Code map" in plans and "integration plan" in plans
     assert "try-out" in text("skills", "subagent-driven-development", "orchestrator.md")
     for f in (("assets", "help.txt"), ("docs", "tools.md")):

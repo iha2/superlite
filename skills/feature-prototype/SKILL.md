@@ -13,11 +13,15 @@ The prototype is the smallest thing that stands up and shows the feature working
 - **Stub:** everything the kept code calls that the feature does not change: the database becomes a seeded fixture or an in-memory store, external services become fakes returning the plan's example values, auth becomes one fixed test user, config uses test values with no real secrets.
 - **Drop:** screens, commands and modules the feature never reaches. Do not delete them in the worktree if the build needs them to compile; leave them untouched and unused.
 
+## Web UI component set
+
+When the target is a web UI, the code map names the repo's UI component set: the directory or package existing screens import for buttons, fields, and layout. The prototype keeps that set, and the new screen is composed from those components. Use one-off markup only when the code map says the repo has no UI component set. The set is not stubbed and not dropped.
+
 ## By target kind
 
 | Kind | Keep | Stub | The try-out |
 |---|---|---|---|
-| web | the app shell, routing, the pages and components the feature changes, their API calls | the backend behind those calls (a fake handler or fixture data), auth, analytics | a URL and port; show it in a preview pane |
+| web | the app shell, routing, the pages the feature changes, the repo's UI component set, their API calls | the backend behind those calls (a fake handler or fixture data), auth, analytics | a URL and port; show it in a preview pane |
 | cli | the entry point, argument parsing, the commands the feature adds or changes | the file system or network the command reaches (a temp folder, fixtures) | a terminal session: the commands to type and what they print |
 | library | the public modules the feature extends and their callers' types | heavy dependencies the new calls do not need | example calls with their results, or a short script |
 | api | the server start, the routes the feature touches, request and response models | the data store (in-memory or seeded), downstream services (fakes) | example requests (curl or an HTTP file) and the responses |
