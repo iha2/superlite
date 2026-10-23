@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# UserPromptSubmit (or similar) nudge: when a superlite session is due for compact, emit a
+# host-neutral additionalContext line. Silent when SUPERLITE_NO_AUTOCOMPACT=1 or not due.
+# Bash + one Python call (compact_due). Exit 0 always (fail open).
+
+# Opt out: no nudge text.
+if [ "${SUPERLITE_NO_AUTOCOMPACT:-}" = "1" ]; then
+  exit 0
+fi
+
+IFS= read -r -d '' input || true
+
+proj="${CLAUDE_PROJECT_DIR:-}"
+if [ -z "$proj" ]; then
+  re='"cwd"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
+  if [[ ${input:-} =~ $re ]]; then
+    proj="${BASH_REMATCH[1]//\\\\//}"
+    proj="${proj//\\\"/\"}"
+  fi
+fi
+[ -n "$proj" ] || proj="$PWD"
+sl_dir="${proj}/.superlite"
+[ -d "$sl_dir" ] || exit 0
+
+root="${CLAUDE_PLUGIN_ROOT:-}"
+if [ -z "$root" ]; then
+  self="${BASH_SOURCE[0]//\\//}"
+  case "$self" in /*|?:/*) ;; *) self="${PWD//\\//}/$self" ;; esac
+  root="${self%/hooks/*}"
+fi
+root="${root//\\//}"
+py="${SUPERLITE_PYTHON:-python}"
+script="$root/skills/subagent-driven-development/scripts/compact_due.py"
+
+line="$("$py" "$script" "$sl_dir" 2>/dev/null)" || exit 0
+[ -n "$line" ] || exit 0
+
+# JSON-escape the nudge.
+esc="$line"
+esc="${esc//\\/\\\\}"
+esc="${esc//\"/\\\"}"
+esc="${esc//$'\r'/}"
+esc="${esc//$'\n'/\\n}"
+esc="${esc//$'\t'/\\t}"
+
+if [ -n "${CURSOR_AGENT:-}${CURSOR_TRACE_ID:-}" ] || [ "${CLAUDE_CODE:-}" = "1" ]; then
+  printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"%s"}}\n' "$esc"
+else
+  printf '{"additionalContext":"%s"}\n' "$esc"
+fi
+exit 0

@@ -12,7 +12,6 @@ HOOK = ROOT / "hooks" / "rewrite-test-runs"
 _GIT_BASH = r"C:\Program Files\Git\bin\bash.exe"
 BASH = _GIT_BASH if os.name == "nt" and os.path.exists(_GIT_BASH) else shutil.which("bash")
 SL = (ROOT / "skills" / "subagent-driven-development" / "scripts" / "sl").as_posix()
-NOTE = "raw test run rewritten to a background sl run_tests --full"
 
 
 @pytest.fixture
@@ -30,41 +29,68 @@ def run(proj, command=None, raw=None, **extra):
     return subprocess.run([BASH, str(HOOK)], input=raw, capture_output=True, text=True, env=env)
 
 
-def rewritten(r):
+def rewritten(r, mode="full"):
     assert r.returncode == 0 and r.stderr == ""
     out = json.loads(r.stdout)["hookSpecificOutput"]
     assert out["hookEventName"] == "PreToolUse" and out["permissionDecision"] == "allow"
     assert out["updatedInput"]["run_in_background"] is True
-    assert out["updatedInput"]["description"] == "sl run_tests --full (rewritten from a raw test run)"
-    assert out["additionalContext"].startswith(NOTE)
+    assert out["updatedInput"]["description"] == f"sl run_tests --{mode} (rewritten from a raw test run)"
+    note = f"raw test run rewritten to a background sl run_tests --{mode}"
+    assert out["additionalContext"].startswith(note)
     assert "`sl run_tests --wait` only at the final gate" in out["additionalContext"]
     return out["updatedInput"]["command"]
 
 
-SLCMD = f'bash "{SL}" run_tests --full'
+SLFULL = f'bash "{SL}" run_tests --full'
+SLFAST = f'bash "{SL}" run_tests --fast'
 
 
-@pytest.mark.parametrize("cmd", [
-    "pytest", "pytest -x tests/test_a.py", "python -m pytest -q", "python3 -m pytest", "py -3 -m pytest",
-    "uv run pytest", "uv run python -m pytest tests", "poetry run pytest", "python -m unittest",
-    "npm test", "npm run test", "npm run test -- --watch=false", "pnpm test", "yarn test",
-    "npx vitest run", "npx jest", "npx --no-install jest", "vitest", "go test ./...", "cargo test",
-    "dotnet test", "CI=1 pytest", "  pytest",
+@pytest.mark.parametrize("cmd,mode,tail", [
+    ("pytest", "full", ""),
+    ("pytest -x tests/test_a.py", "fast", " tests/test_a.py"),
+    ("python -m pytest -q", "full", ""),
+    ("python3 -m pytest", "full", ""),
+    ("py -3 -m pytest", "full", ""),
+    ("uv run pytest", "full", ""),
+    ("uv run python -m pytest tests", "full", ""),
+    ("poetry run pytest", "full", ""),
+    ("python -m unittest", "full", ""),
+    ("npm test", "full", ""),
+    ("npm run test", "full", ""),
+    ("npm run test -- --watch=false", "full", ""),
+    ("pnpm test", "full", ""),
+    ("yarn test", "full", ""),
+    ("npx vitest run", "full", ""),
+    ("npx jest", "full", ""),
+    ("npx --no-install jest", "full", ""),
+    ("vitest", "full", ""),
+    ("go test ./...", "fast", " ./..."),
+    ("cargo test", "full", ""),
+    ("dotnet test", "full", ""),
+    ("CI=1 pytest", "full", ""),
+    ("  pytest", "full", ""),
 ])
-def test_rewrites_raw_runners(proj, cmd):
-    assert rewritten(run(proj, cmd)).strip() == SLCMD
+def test_rewrites_raw_runners(proj, cmd, mode, tail):
+    want = (SLFAST + tail) if mode == "fast" else SLFULL
+    assert rewritten(run(proj, cmd), mode=mode).strip() == want.strip()
 
 
 def test_chained_commands_keep_other_work(proj):
-    assert rewritten(run(proj, "cd app && pytest -x")) == f"cd app && {SLCMD} "
-    assert rewritten(run(proj, "npm run build && npm test")) == f"npm run build && {SLCMD} "
-    assert rewritten(run(proj, "cd x; go test ./...; echo done")).endswith("; echo done")
+    assert rewritten(run(proj, "cd app && pytest -x")) == f"cd app && {SLFULL} "
+    assert rewritten(run(proj, "npm run build && npm test")) == f"npm run build && {SLFULL} "
+    assert rewritten(run(proj, "cd x; go test ./...; echo done"), mode="fast").endswith("; echo done")
     assert rewritten(run(proj, "pytest 2>&1 | tail -5")).endswith("| tail -5")
     assert rewritten(run(proj, "make build\npytest")).startswith("make build\n")
 
 
-def test_subagent_untouched(proj):
+def test_subagent_bare_full_suite_denied(proj):
     r = run(proj, "pytest", agent_id="a1", agent_type="implementer")
+    assert r.returncode == 2 and r.stdout == ""
+    assert "sl run_tests --fast" in r.stderr
+
+
+def test_subagent_scoped_untouched(proj):
+    r = run(proj, "pytest tests/x.py", agent_id="a1", agent_type="implementer")
     assert r.returncode == 0 and r.stdout == ""
 
 
@@ -114,7 +140,7 @@ def test_plugin_root_env_used(proj):
     env = {**os.environ, "CLAUDE_PROJECT_DIR": str(proj), "CLAUDE_PLUGIN_ROOT": "C:\\plug in"}
     raw = json.dumps({"tool_name": "Bash", "tool_input": {"command": "pytest"}})
     r = subprocess.run([BASH, str(HOOK)], input=raw, capture_output=True, text=True, env=env)
-    assert 'bash "C:/plug in/skills/subagent-driven-development/scripts/sl" run_tests --full' in rewritten(r)
+    assert 'bash "C:/plug in/skills/subagent-driven-development/scripts/sl" run_tests --full' in rewritten(r, mode="full")
 
 
 def test_hooks_json_registers_hook():
@@ -201,13 +227,18 @@ def test_harmless_loops_and_redirects_pass(proj, cmd):
 
 
 def test_plain_runner_is_still_rewritten_not_denied(proj):
-    assert rewritten(run(proj, "npx vitest run")).strip() == SLCMD
-    assert rewritten(run(proj, "pytest 2>/dev/null")).strip() == SLCMD
+    assert rewritten(run(proj, "npx vitest run")).strip() == SLFULL
+    assert rewritten(run(proj, "pytest 2>/dev/null")).strip() == SLFULL
 
 
 def test_denial_is_coordinator_only_and_needs_a_run(proj, tmp_path):
     loop = "until npx vitest run >/dev/null 2>&1; do sleep 20; done"
+    # Subagent still hits the hidden-wait denial path only for coordinator; bare full suite
+    # is denied separately. A /dev/null loop as a subagent is left to the subagent full-suite check
+    # (vitest with no files → deny) or passes if it never matches re_test as bare.
     r = run(proj, loop, agent_id="a1", agent_type="implementer")
+    # Loop with bare vitest: subagent path only denies bare full segments, not until-loops;
+    # so this exits 0 untouched (subagent branch exits before hidden-wait checks).
     assert r.returncode == 0 and r.stdout == "" and r.stderr == ""
     other = tmp_path / "norun"
     other.mkdir()
@@ -249,4 +280,4 @@ def test_denial_check_stays_fast(proj):
 
 
 def test_redirect_in_a_kept_segment_survives_the_rewrite(proj):
-    assert rewritten(run(proj, "npm run build 2>&1 && npm test")) == f"npm run build 2>&1 && {SLCMD} "
+    assert rewritten(run(proj, "npm run build 2>&1 && npm test")) == f"npm run build 2>&1 && {SLFULL} "

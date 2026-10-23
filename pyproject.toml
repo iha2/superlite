@@ -1,0 +1,10 @@
+[project]
+name = "superlite-session-cost-proto"
+version = "0.0.0"
+requires-python = ">=3.12"
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/scripts"]

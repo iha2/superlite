@@ -8,3 +8,17 @@ bench/results/*-smoke*
 bench/results/*.jsonl
 bench/results/*.stderr
 bench/results/*.runlog
+
+# superlite: dependency, build and cache folders
+.superlite/
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/

@@ -357,9 +357,31 @@ def run_other(a, spec, paths, label):  # one runner command (any language) | O(X
     return finish_run(a, label, counts, failures, files, seconds, r.returncode, extra=tp.summary_fields(r))  # O(k + F)
 
 
+def expand_fast_paths(paths):  # O(p) source paths -> related tests; test paths kept
+    """--fast accepts source or test paths; source maps via testcmd.resolve_related."""
+    out = []  # O(1)
+    for p in paths:  # O(p)
+        rel = p.replace("\\", "/")  # O(len)
+        if testcmd.is_test_path(rel) and Path(rel).is_file():  # O(1)
+            out.append(rel)  # O(1)
+            continue  # O(1)
+        out.extend(testcmd.resolve_related(".", rel))  # O(1) raises FileNotFoundError
+    return out  # O(p)
+
+
 def run(a):  # O(X + T*d + B + F log F) + the runner + one incident append
     paths = [p for chunk in (a.fast or []) for p in nt.csv(chunk)]  # O(p)
     label = "fast" if paths else "full"  # O(1)
+    if paths:  # O(1)
+        try:  # O(1)
+            paths = expand_fast_paths(paths)  # O(p)
+        except FileNotFoundError as e:  # O(1)
+            reason = str(e)  # O(1)
+            print(f"run_tests: {reason}", file=sys.stderr)  # O(1)
+            write_summary(a.summary, label, {"passed": 0, "failed": 0, "skipped": 0, "skipped_tests": []}, [], 0.0, error=reason)  # O(1)
+            publish_summary(a)  # O(summary size)
+            print("0 0 0 0.0")  # O(1)
+            return 1  # O(1)
     spec = testcmd.resolve(".", paths)  # .superlite/test-cmd.json, else marker files | O(m + f)
     if spec is None:  # no test command: exit 2 with a clear summary | O(1)
         reason = ("no test command found: add .superlite/test-cmd.json "  # O(1)

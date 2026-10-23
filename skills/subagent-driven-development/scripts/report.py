@@ -28,6 +28,7 @@ HERE = Path(__file__).resolve().parent  # O(1)
 if str(HERE) not in sys.path:  # O(1)
     sys.path.insert(0, str(HERE))  # O(1)
 
+import cost_table  # noqa: E402  | O(1)
 import metrics  # noqa: E402  | O(1)
 import plan_tools as pt  # noqa: E402  | O(1)
 import predict  # noqa: E402  | O(1)
@@ -187,6 +188,7 @@ def collect(plan_path, sl_dir) -> dict:  # O(M + B + n*(n + e))
         "quality": {"tests": tests, "first_time_pass": sum(1 for x in ftp if x), "first_time_n": len(ftp),
                     "rework_dispatches": sum(r["rework_dispatches"] for r in rows), "open_incidents": len(incidents)},
         "tasks": per,
+        "cost_table": cost_table.summary_json(str(sl)),  # additive: est agent table / cost-summary.json | O(R)
     }  # O(1)
 
 
@@ -244,6 +246,14 @@ def render(c) -> str:  # O(n)
                    f"{_delta(r['delta']):14}{'$%.3f' % r['cost_usd']:>8}" + ("  first-time miss" if r["first_time_pass"] is False else ""))  # O(1)
     if len(c["tasks"]) > TOP_MISSES:  # O(1)
         out.append(f"(+{len(c['tasks']) - TOP_MISSES} smaller misses; `sl report --json` lists all)")  # O(1)
+    if c.get("cost_table"):  # additive agent cost table | O(R)
+        ct = c["cost_table"]  # O(1)
+        out += ["", "agent cost table:", "| agent | model | wall_min | tokens | usd |",  # O(1)
+                "| --- | --- | --- | --- | --- |"]
+        for r in ct.get("rows") or []:  # O(R)
+            out.append(f"| {r['agent']} | {r['model']} | {r['wall_min']} | {r['tokens']} | {r['usd']} |")  # O(1)
+        out.append(f"| totals |  | {ct.get('wall_min')} | {ct.get('tokens')} | {ct.get('usd')} |")  # O(1)
+        out.append(f"cost source: {ct.get('source', 'est')}")  # O(1)
     out += ["", "takeaway: " + takeaway(c)]  # O(1)
     return "\n".join(out) + "\n"  # O(n)
 

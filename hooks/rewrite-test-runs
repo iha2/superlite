@@ -1,22 +1,23 @@
 #!/usr/bin/env bash
 # PreToolUse hook (Bash): during an active superlite run, rewrite the COORDINATOR's raw test runs
 # (pytest, npm test, npx vitest|jest, go test, cargo test, dotnet test, ...) into a background
-# `sl run_tests --full`. Calls with agent_id (subagents), commands that already contain run_tests,
-# and sessions without a run marker (.superlite/stable.json, prime.md or pool.json) are untouched.
-# Chained commands keep their other work: only the test segment is replaced, separators stay, and
-# the whole command then runs in the background. Anything ambiguous (odd quotes, heredocs, \u
-# escapes) passes unchanged. Each rewrite is logged to .superlite/incidents.jsonl (rule-rewrite).
-# DENIED instead (exit 2, rule-block incident, message points to `sl run_tests --wait`): a known test
-# runner (the list above plus mocha, rspec, mvn, gradle and the command in .superlite/test-cmd.json)
-# inside an until/while loop, or a test run with stdout sent to /dev/null. Only known runners match, so
-# `until curl ...` and `until [ -f x ]` pass.
+# `sl run_tests --full`, or `sl run_tests --fast <files>` when the raw command names test/source paths.
+# Subagents (agent_id): bare full-suite runners are DENIED (exit 2); other subagent calls are untouched.
+# Commands that already contain run_tests, and sessions without a run marker (.superlite/stable.json,
+# prime.md or pool.json) are untouched. Chained commands keep their other work: only the test segment
+# is replaced, separators stay, and the whole command then runs in the background. Anything ambiguous
+# (odd quotes, heredocs, \u escapes) passes unchanged. Each rewrite is logged to
+# .superlite/incidents.jsonl (rule-rewrite). DENIED instead (exit 2, rule-block incident): a known test
+# runner inside an until/while loop, or a test run with stdout sent to /dev/null; also a subagent bare
+# full suite. Only known runners match, so `until curl ...` and `until [ -f x ]` pass.
 # Bash builtins only (each external process costs ~250 ms on Windows). Exit 0 (fail open), except a denial (exit 2).
 
 IFS= read -r -d '' input   # builtin; returns 1 at EOF, which is fine
 shopt -u patsub_replacement 2>/dev/null   # bash 5.2+: `&` in a ${x//a/&} replacement must stay literal
 
 re_agent='"agent_id"[[:space:]]*:[[:space:]]*"'
-[[ $input =~ $re_agent ]] && exit 0   # subagent call
+has_agent=0
+[[ $input =~ $re_agent ]] && has_agent=1
 re_tool='"tool_name"[[:space:]]*:[[:space:]]*"Bash"'
 [[ $input =~ $re_tool ]] || exit 0
 
@@ -52,11 +53,27 @@ if [ -z "$root" ]; then
   root="${self%/hooks/*}"
 fi
 root="${root//\\//}"
-sl="bash \"$root/skills/subagent-driven-development/scripts/sl\" run_tests --full"
+sl_base="bash \"$root/skills/subagent-driven-development/scripts/sl\" run_tests"
+sl="$sl_base --full"
 
 # A test segment: optional env assignments and runner prefix, then a known runner.
 re_test='^[[:space:]]*([A-Za-z_][A-Za-z_0-9]*=[^[:space:]]*[[:space:]]+)*((uv|poetry|pipenv|pdm|hatch)[[:space:]]+run[[:space:]]+)?(((python[0-9.]*|py)([[:space:]]+-[0-9]+)?[[:space:]]+-m[[:space:]]+)?(pytest|py\.test|unittest)|((npm|pnpm|yarn|bun)[[:space:]]+(run[[:space:]]+)?test)|((npx|pnpm[[:space:]]+(exec|dlx)|bunx|yarn)[[:space:]]+(--no-install[[:space:]]+)?(vitest|jest))|(vitest|jest)|(go|cargo|dotnet)[[:space:]]+test)([[:space:]]|$)'
 re_seg='^([^&|;'$'\n'']*)(&&|\|\||;|\||'$'\n''|&)(.*)$'
+
+# files_from_seg SEG: path-like args after the runner into REPLY (empty = bare / full suite).
+files_from_seg() {
+  local rest w
+  REPLY=""
+  [[ $1 =~ $re_test ]] || return 0
+  rest="${1#"${BASH_REMATCH[0]}"}"
+  for w in $rest; do
+    case "$w" in
+      -*|--[[:alnum:]-]*) continue ;;
+      /dev/null|[Nn][Uu][Ll]|*/null) continue ;;  # redirects, not test paths
+      */*|*\\*|*.py|*.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs|*.go|*.rs|*.rb|*.cs) REPLY="${REPLY:+$REPLY }$w" ;;
+    esac
+  done
+}
 
 ph1=$'\x02'; ph2=$'\x03'
 cmd="${cmd//>&/$ph1}"; cmd="${cmd//&>/$ph2}"   # keep 2>&1 and &> out of the separator split
@@ -117,6 +134,30 @@ deny() {
     'Start the run with `sl run_tests --full --background` (focused: `sl run_tests --fast <file>`), then wait with `sl run_tests --wait`. It returns early with `SUSPECT HANG`, the verdict (blocked or spinning) and the process tree when the run stops producing output, and its summary names a TIMEOUT or a kill instead of a bare exit code.' >&2
   exit 2
 }
+deny_subagent_full() {
+  local t="${cmd:0:100}"; t="${t//[\"\\$'\n\r\t']/ }"
+  printf '{"kind":"rule-block","agent":"subagent","tool":"Bash","target":"full suite: %s"}\n' "$t" \
+    >> "$proj/.superlite/incidents.jsonl" 2>/dev/null
+  printf '%s\n' \
+    'Blocked: subagents must not run the full test suite during a superlite run.' \
+    'Use `sl run_tests --fast <files>` for focused tests only.' >&2
+  exit 2
+}
+
+# Subagents: deny a bare full-suite runner; leave everything else untouched.
+if [ "$has_agent" = 1 ]; then
+  _rest="$cmd"; _last=0
+  while :; do
+    if [[ $_rest =~ $re_seg ]]; then _seg="${BASH_REMATCH[1]}"; _rest="${BASH_REMATCH[3]}"; _last=0
+    else _seg="$_rest"; _last=1; fi
+    if [[ $_seg =~ $re_test ]]; then
+      files_from_seg "$_seg"
+      [ -z "$REPLY" ] && deny_subagent_full
+    fi
+    [ "$_last" = 1 ] && break
+  done
+  exit 0
+fi
 
 case "$cmd" in *until*|*while*|*null*|*[Nn][Uu][Ll]*) hid=1 ;; *) hid=0 ;; esac
 if [ "$hid" = 1 ]; then
@@ -127,7 +168,7 @@ if [ "$hid" = 1 ]; then
   fi
 fi
 
-out=""; rest="$cmd"; changed=0
+out=""; rest="$cmd"; changed=0; used_fast=0
 while :; do
   if [[ $rest =~ $re_seg ]]; then seg="${BASH_REMATCH[1]}"; sep="${BASH_REMATCH[2]}"; rest="${BASH_REMATCH[3]}"; last=0
   else seg="$rest"; sep=""; last=1; fi
@@ -137,7 +178,12 @@ while :; do
   fi
   q="${seg//[^\"]/}"; q2="${seg//[^\']/}"
   if [ $(( ${#q} % 2 )) = 1 ] || [ $(( ${#q2} % 2 )) = 1 ]; then exit 0; fi   # quote spans a separator
-  if [[ $seg =~ $re_test ]]; then out="$out $sl "; changed=1; else out="$out$seg"; fi
+  if [[ $seg =~ $re_test ]]; then
+    files_from_seg "$seg"
+    if [ -n "$REPLY" ]; then out="$out $sl_base --fast $REPLY "; used_fast=1
+    else out="$out $sl "; fi
+    changed=1
+  else out="$out$seg"; fi
   out="$out$sep"
   [ "$last" = 1 ] && break
 done
@@ -149,6 +195,7 @@ printf '{"kind":"rule-rewrite","agent":"coordinator","tool":"Bash","command":"%s
 
 out="${out//$ph1/>&}"; out="${out//$ph2/&>}"
 esc out
-printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","updatedInput":{"command":"'"$out"'","run_in_background":true,"description":"sl run_tests --full (rewritten from a raw test run)"},"additionalContext":"raw test run rewritten to a background sl run_tests --full; its result arrives as a notification and in .superlite/test-summary.json; use `sl run_tests --wait` only at the final gate"}}'
+if [ "$used_fast" = 1 ]; then mode=fast; else mode=full; fi
+printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","updatedInput":{"command":"'"$out"'","run_in_background":true,"description":"sl run_tests --'"$mode"' (rewritten from a raw test run)"},"additionalContext":"raw test run rewritten to a background sl run_tests --'"$mode"'; its result arrives as a notification and in .superlite/test-summary.json; use `sl run_tests --wait` only at the final gate"}}'
 printf '\n'
 exit 0
