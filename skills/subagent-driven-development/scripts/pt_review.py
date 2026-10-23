@@ -1169,14 +1169,40 @@ def build_adapter(plan: Plan, out: Path, root: Path) -> str:  # O(E_p*m + templa
     return src  # O(1)
 
 
+SEAM_FILES = {  # O(1)
+    "typescript": "seam.ts", "javascript": "seam.js", "go": "seam.go", "rust": "seam.rs",
+    "csharp": "seam.cs", "java": "seam.java", "ruby": "seam.rb",
+}
+
+
+def seam_path(root: Path, language: str) -> Path:  # O(1)
+    """Python keeps adapter.py. Every other language gets its own seam file."""
+    lang = (language or "").strip().lower()  # O(1)
+    name = "adapter.py" if lang in ("", "python") else SEAM_FILES.get(lang, "seam.txt")  # O(1)
+    return Path(root) / ".superlite" / "probes" / name  # O(1)
+
+
 def cmd_adapter(a: argparse.Namespace) -> int:  # O(template size) + file write total
     plan = parse_plan(a.plan)  # O(1)
     root = Path(a.root).resolve()  # O(1)
-    out = Path(a.out) if a.out else root / ".superlite" / "probes" / "adapter.py"  # O(1)
+    import project_config  # O(1)
+    try:  # O(1)
+        project_config.load(root)  # O(file)
+    except project_config.ProjectConfigError as exc:  # O(1)
+        print(str(exc), file=sys.stderr)  # O(1)
+        return 2  # O(1)
+    lang = "python" if a.out else project_config.language(root)  # explicit --out stays the Python adapter | O(file)
+    if lang == "python":  # O(1)
+        out = Path(a.out) if a.out else seam_path(root, "python")  # O(1)
+        out.parent.mkdir(parents=True, exist_ok=True)  # O(1)
+        src = build_adapter(plan, out, root)  # O(1)
+        compile(src, str(out), "exec")  # O(1)
+        out.write_text(src, encoding="utf-8", newline="\n")  # O(1)
+        print(f"wrote {out}")  # O(1)
+        return 0  # O(1)
+    out = Path(a.out) if a.out else seam_path(root, lang)  # O(1)
     out.parent.mkdir(parents=True, exist_ok=True)  # O(1)
-    src = build_adapter(plan, out, root)  # O(1)
-    compile(src, str(out), "exec")  # O(1)
-    out.write_text(src, encoding="utf-8", newline="\n")  # O(1)
+    out.write_text(f"// superlite seam: {lang}\n", encoding="utf-8", newline="\n")  # O(1)
     print(f"wrote {out}")  # O(1)
     return 0  # O(1)
 

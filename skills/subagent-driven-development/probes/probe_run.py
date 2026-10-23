@@ -1028,12 +1028,29 @@ def remove_checkout(tree: Path, repo: Path | None) -> None:  # O(tree files) + 2
     shutil.rmtree(tree.parent, ignore_errors=True)  # O(tree files) rmtree
 
 
+def _python_adapter_required(root: Path) -> bool:  # O(file)
+    """Missing adapter.py fails only for Python, or when test-cmd.json is absent."""
+    cfg = root / ".superlite" / "test-cmd.json"  # O(1)
+    if not cfg.is_file():  # O(1)
+        return True  # O(1)
+    try:  # O(1)
+        data = json.loads(cfg.read_text(encoding="utf-8-sig"))  # O(file)
+    except (OSError, ValueError):  # O(1)
+        return True  # O(1)
+    if not isinstance(data, dict):  # O(1)
+        return True  # O(1)
+    lang = str(data.get("language") or "python").strip().lower()  # O(1)
+    return lang in ("", "python")  # O(1)
+
+
 def run_main(a) -> int:  # O(checkout + _run_main) total; one git checkout per --checkpoint run
     root = Path(a.root or os.getcwd()).resolve()  # O(1)
     adapter = Path(a.adapter).resolve() if a.adapter else root / ".superlite" / "probes" / "adapter.py"  # O(1)
     if not adapter.is_file():  # O(1)
-        print(f"probe_run: adapter not found: {adapter}", file=sys.stderr)  # O(1)
-        return 2  # O(1)
+        if a.adapter or _python_adapter_required(root):  # an explicit --adapter still must exist | O(file)
+            print(f"probe_run: adapter not found: {adapter}", file=sys.stderr)  # O(1)
+            return 2  # O(1)
+        return 0  # seam-only project; nothing to probe | O(1)
     if not a.commit:  # O(1)
         return _run_main(a, root, root, adapter)  # O(_run_main)
     # --checkpoint: probe that checkpoint's tree, not the working tree. The adapter is usually untracked

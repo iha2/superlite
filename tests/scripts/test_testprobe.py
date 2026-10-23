@@ -192,7 +192,9 @@ def test_take_sample_sees_a_live_process_tree_and_its_cpu():
         b = tp.take_sample(busy.pid, [])
         time.sleep(0.6)
         c = tp.take_sample(busy.pid, [])
-        assert b.pids == frozenset({busy.pid}) and c.cpu - b.cpu > 0.2, (b.cpu, c.cpu, b.method)
+        # A venv python.exe on Windows is a launcher: the real interpreter is its child.
+        assert busy.pid in b.pids and os.getpid() not in b.pids
+        assert c.cpu - b.cpu > 0.2, (b.cpu, c.cpu, b.method)
         assert tp.cpu_method() == a.method
     finally:
         busy.kill()
