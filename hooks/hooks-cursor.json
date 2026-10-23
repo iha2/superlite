@@ -5,6 +5,16 @@
       {
         "command": "bash ./hooks/session-start"
       }
+    ],
+    "subagentStart": [
+      {
+        "command": "bash ./hooks/capture-agent-launch"
+      }
+    ],
+    "subagentStop": [
+      {
+        "command": "bash ./hooks/capture-agent-stop"
+      }
     ]
   }
 }

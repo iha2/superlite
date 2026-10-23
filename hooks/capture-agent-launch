@@ -2,7 +2,7 @@
 # PostToolUse hook (matcher Agent): during an active superlite run, append one launch record to
 # <project>/.superlite/metrics.jsonl:
 #   {"ev":"launch","t":<epoch ms>,"agent_id":..,"type":..,"model":..,"desc":<max 120 chars>,"parent":<calling subagent's id, "" from the main session>}
-# Active when .superlite/stable.json, prime.md or pool.json exists under the project dir.
+# Active when .superlite/stable.json, prime.md, pool.json, orchestrator.json or feature.json exists.
 # Bash builtins only (each external process costs ~250 ms on Windows). Never blocks: always exits 0.
 
 IFS= read -r -d '' input   # builtin; returns 1 at EOF, which is fine
@@ -28,13 +28,17 @@ case "$tool" in ''|Agent|Task) ;; *) exit 0 ;; esac
 
 jstr cwd; proj="${CLAUDE_PROJECT_DIR:-${REPLY//\\//}}"
 [ -n "$proj" ] || proj="$PWD"
-[ -f "$proj/.superlite/stable.json" ] || [ -f "$proj/.superlite/prime.md" ] || [ -f "$proj/.superlite/pool.json" ] || exit 0
+[ -f "$proj/.superlite/stable.json" ] || [ -f "$proj/.superlite/prime.md" ] || [ -f "$proj/.superlite/pool.json" ] || [ -f "$proj/.superlite/orchestrator.json" ] || [ -f "$proj/.superlite/feature.json" ] || exit 0
 
-jstr agentId; id="$REPLY"
+jstr agentId; id="$REPLY"                 # Claude tool_response.agentId
+if [ -z "$id" ]; then jstr subagent_id; id="$REPLY"; fi   # Cursor subagentStart
 jstr subagent_type; type="$REPLY"
 jstr resolvedModel; model="$REPLY"
-jstr description; desc="${REPLY:0:120}"
-jstr agent_id; parent="$REPLY"   # the calling subagent; absent on the main thread
+if [ -z "$model" ]; then jstr subagent_model; model="$REPLY"; fi
+jstr description; desc="$REPLY"
+if [ -z "$desc" ]; then jstr task; desc="$REPLY"; fi
+desc="${desc:0:120}"
+jstr agent_id; parent="$REPLY"   # the calling subagent; absent on the main thread and on Cursor
 esc id; esc type; esc model; esc desc; esc parent
 
 now="${EPOCHREALTIME//[.,]/}"; now="${now:0:${#now}-3}"

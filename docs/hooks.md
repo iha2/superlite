@@ -1,6 +1,6 @@
 # Hooks
 
-`hooks/hooks.json` registers these eight. The run hooks are active only while a run marker exists (`.superlite/stable.json`, `prime.md` or `pool.json`, written by the first lint). They fail open on bad input.
+`hooks/hooks.json` registers these eight. Cursor's `hooks/hooks-cursor.json` registers `sessionStart` plus the two capture scripts on `subagentStart` and `subagentStop`. The run hooks are active only while a run marker exists (`.superlite/stable.json`, `prime.md` or `pool.json`, written by the first lint, or `orchestrator.json` or `feature.json` once a superlite session has started). They fail open on bad input.
 
 - `session-start`: injects `using-superlite` at startup, clear and compact.
 - `block-unsafe-kill`: always on for Bash and PowerShell; blocks killing processes by name or pattern (`taskkill /IM`, `pkill`, `killall`, `Stop-Process -Name`). Kill by PID is allowed.
@@ -8,5 +8,5 @@
 - `rewrite-test-runs`: during a run, rewrites the coordinator's raw test commands into a background `sl run_tests --full`, or `sl run_tests --fast <files>` when the command names test/source paths, and logs a `rule-rewrite` incident. Subagents may not run a bare full suite (exit 2); use `--fast`. It also denies (exit 2, `rule-block`) a known runner inside an `until`/`while` loop or with stdout sent to `/dev/null`; the message points to `sl run_tests --wait`. `until curl ...` and `until [ -f x ]` pass.
 - `compact-nudge`: on `UserPromptSubmit`, when a session is due for compact (~35–40 min), adds a host-neutral `additionalContext` nudge. Silent when `SUPERLITE_NO_AUTOCOMPACT=1` or not due.
 - `record-human-reply`: on every prompt the human submits while a human-orchestrator run is unapproved, appends one line to `.superlite/human-replies.jsonl` (time, whether it approves, the first 160 characters). It also records while a feature-mode try-out waits (`.superlite/feature.json` status `tryout`, human mode). `sl orchestrator approve` needs an approving reply newer than the review plan, `sl proto tryout --approve` one newer than the prototype's last checkpoint. Only this hook writes the file; it never blocks.
-- `capture-agent-launch`: during a run, appends a `launch` record (agent id, type, model, description) to `.superlite/metrics.jsonl` after each `Agent` call.
-- `capture-agent-stop`: during a run, appends a `stop` record (agent id, type, transcript path, last message) to `.superlite/metrics.jsonl` when a subagent stops.
+- `capture-agent-launch`: during a run, appends a `launch` record (agent id, type, model, description) to `.superlite/metrics.jsonl` after each `Agent` call. On Cursor the same script reads `subagentStart` (`subagent_id`, `subagent_type`, `subagent_model`, `task`).
+- `capture-agent-stop`: during a run, appends a `stop` record (agent id, type, transcript path, last message) to `.superlite/metrics.jsonl` when a subagent stops. On Cursor it reads `subagentStop` (`subagent_id`, `summary`, `agent_transcript_path`). Time is the gap between the two records. Cost is priced from the transcript; a Cursor transcript with no usage is estimated from its text.
