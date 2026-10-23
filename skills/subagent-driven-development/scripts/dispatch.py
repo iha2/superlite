@@ -201,11 +201,14 @@ def plan_dispatch(plan, pool, committed, running, cap, tiers=None, cfg=None, lan
     return out, evict  # O(1)
 
 
-def render(lines, evict):  # O(R + a)
+def render(lines, evict, swarm=None):  # O(R + a)
     for aid, why in evict.items():  # O(a) iterations
         print(f"evict={aid} {why}", file=sys.stderr)  # O(1)
     for t, decision in lines:  # O(R) iterations
         print(f"{t} {decision}")  # O(1)
+    if swarm:  # O(S)
+        for row in swarm:  # O(S)
+            print(row)  # O(1)
 
 
 def run(plan, pool_path, ledger, committed=None, running=None, cap=10, batch=None):  # O(c + L + n + e + R*a*(F + o))
@@ -238,7 +241,18 @@ def main(argv=None):  # O(c + L + n + e + R*a*(F + o))
     blocked = orchestrator.require(plan, "dispatch")  # human mode waits for approval | O(file)
     if blocked:  # O(1)
         return blocked  # O(1)
-    render(*run(plan, a.pool, a.ledger, a.committed, a.running, a.cap, a.batch))  # see run
+    lines, evict = run(plan, a.pool, a.ledger, a.committed, a.running, a.cap, a.batch)  # see run
+    swarm = None  # O(1)
+    try:  # Cursor (or other) host: additive SWARM block after the usual lines | O(H)
+        import host_models as hm  # O(1)
+        host = hm.detect_host(plan)  # Execution header or SUPERLITE_HOST | O(L)
+        if host:  # O(1)
+            resolved = hm.resolve(host, plan)  # O(H) keeps existing host-models.json unless first time
+            text = [f"{t} {d}" for t, d in lines]  # O(R)
+            swarm = hm.swarm_lines(text, resolved)  # O(R)
+    except Exception:  # noqa: BLE001 | host optional; never break dispatch | O(1)
+        swarm = None  # O(1)
+    render(lines, evict, swarm)  # see render
     try:  # the budget line when it changed (needs .superlite/metrics.jsonl) | O(compute)
         import budget  # O(1)
         budget.maybe_print(plan, str(Path(a.pool).parent))  # O(compute)

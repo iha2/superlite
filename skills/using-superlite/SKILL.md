@@ -29,4 +29,4 @@ Superlite: parallel work, short reports.
 
 **Tools.** `bash <skill-dir>/../subagent-driven-development/scripts/sl <tool>`, never `python`. Incidents go to `.superlite/incidents.jsonl`; Graphify only if `sl graphify_gate` allows.
 
-**Platform adaptation.** Off Claude Code, read the matching `references/<harness>-tools.md` next to this skill (antigravity, codex, gemini, hermes, muse, pi); it maps tool names and says how to run `agents/*.md`.
+**Platform adaptation.** Off Claude Code, read the matching `references/<harness>-tools.md` next to this skill (antigravity, codex, cursor, gemini, hermes, muse, pi); it maps tool names and says how to run `agents/*.md`.

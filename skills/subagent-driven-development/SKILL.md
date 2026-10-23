@@ -16,7 +16,7 @@ Shorthand (every agent brief states `SUPERLITE=<path>`):
 
 ## Setup
 
-- Branch `superlite/<topic>` if on the default branch (no worktree). Write the start SHA to `.superlite/progress.md` (`- start <sha>`). `checkpoint` adds `.superlite/` to `.git/info/exclude` itself.
+- **One feature, one worktree** (AGENTS.md): if this plan is a feature (or any multi-file build that could collide with another in-flight change), work only in that feature's git worktree on branch `superlite/<topic>` — cut with `git worktree add -b superlite/<topic> .superlite/worktrees/<topic> <base>` if missing, and move the agent root there before edits. Never edit a second feature in the same checkout. Trivial one-line fixes on the current branch are exempt. Write the start SHA to `.superlite/progress.md` (`- start <sha>`). `checkpoint` adds `.superlite/` to `.git/info/exclude` itself.
 - Wave 0 is never yours: `lint --stable` builds `.superlite/briefs/wave0.md` from the plan and prints `START FIRST:` with the Agent line for `superlite:implementer-haiku` (T0; `bash "$SL" wave0 --plan $PLAN` reprints it). Send it first in the same message as the stable set; then `checkpoint T0`. Tasks do not wait for T0. Then `bash "$SL" plan_tools adapter --plan $PLAN`.
 - Prime now: `bash "$SL" build_prime --plan $PLAN` prints `hash size` and writes the slim `.superlite/prime.md` (rules, header, constraints, stable interfaces; `--prime full --spec SPEC --sections "1,3"` = whole plan). Start the first ready tasks now.
 - Incidents: `.superlite/incidents.jsonl` (agents call `bash "$SL" incident add`); you log BLOCKED and NEEDS_CONTEXT with `--agent coordinator`.

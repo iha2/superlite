@@ -81,7 +81,9 @@ The goal: the smallest thing that stands up and shows the feature working, insid
 
 ### Step 6: the integration build
 
-A second build, now on the original code, on the user's feature branch:
+A second build on a **dedicated** integration worktree and branch for this feature only (`superlite/<topic>` under `.superlite/worktrees/<topic>`, or equivalent). Never layer integration onto another open feature's checkout or a shared dirty `main` — one feature per worktree so several features can proceed in parallel (AGENTS.md). The prototype sandbox (`.superlite/sandboxes/<topic>-proto`) stays separate.
+
+Then, in that worktree:
 
 - the integration plan in the agent format: one task per touched module, the existing interfaces `FROZEN`, migration tasks where data changes, and the prototype's acceptance tests as the target;
 - code is ported from the prototype, not merged: the prototype's stubs and fakes stay behind;

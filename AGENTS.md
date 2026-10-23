@@ -15,6 +15,7 @@ A lean build-lifecycle plugin: 10 skills in `skills/`, 7 agents in `agents/`, an
 - Versions are declared in `.version-bump.json`. Change them only with `scripts/bump-version.sh <version>`; run `scripts/bump-version.sh --audit` to catch missed files.
 - Keep LF line endings. `hooks/session-start` uses `printf`, never a heredoc.
 - Do not touch `bench/` results or `docs/plans/` when working on a harness integration.
+- **One feature, one worktree.** Never develop two features in the same checkout. Before writing code for a feature (including feature-mode integration), cut a dedicated branch and git worktree — e.g. `git worktree add -b superlite/<topic> .superlite/worktrees/<topic> <base>` — move the agent root there, and keep other features' trees untouched. Prototype sandboxes (`.superlite/sandboxes/<topic>-proto`) stay separate from the integration worktree. Trivial one-line fixes on the current branch are exempt.
 
 ## Harness files
 

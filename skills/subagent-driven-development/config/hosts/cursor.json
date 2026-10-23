@@ -1,0 +1,42 @@
+{
+  "_comment": "Cursor host profile: one slug per job for the whole run. Candidates are tried in order; resolve writes the first into .superlite/host-models.json. price_unit is request (Cursor billing), not API $/MTok.",
+  "host": "cursor",
+  "price_unit": "request",
+  "dispatch": "Task",
+  "parallel": "multitask",
+  "swarm_by": "tier",
+  "tier_to_job": {
+    "haiku": "mechanical",
+    "sonnet": "build"
+  },
+  "agent_to_job": {
+    "superlite:implementer-haiku": "mechanical",
+    "implementer-haiku": "mechanical",
+    "superlite:implementer": "build",
+    "implementer": "build",
+    "superlite:package-reviewer": "build",
+    "package-reviewer": "build",
+    "superlite:fixer-sonnet": "build",
+    "fixer-sonnet": "build",
+    "superlite:fixer-sonnet-high": "build-hard",
+    "fixer-sonnet-high": "build-hard",
+    "superlite:fixer-opus": "judge",
+    "fixer-opus": "judge",
+    "superlite:final-reviewer": "judge",
+    "final-reviewer": "judge"
+  },
+  "jobs": {
+    "mechanical": {
+      "candidates": ["composer-2.5-fast", "inherit"]
+    },
+    "build": {
+      "candidates": ["claude-sonnet-5-5-high", "inherit"]
+    },
+    "build-hard": {
+      "candidates": ["claude-sonnet-5-5-high", "inherit"]
+    },
+    "judge": {
+      "candidates": ["claude-opus-5-thinking-high", "claude-opus-5-5-medium", "inherit"]
+    }
+  }
+}

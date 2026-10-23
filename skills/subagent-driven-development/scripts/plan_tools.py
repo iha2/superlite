@@ -346,6 +346,11 @@ class Plan:  # O(1)
                 return [e.strip().strip("`").strip() for e in m.group(1).split(",") if e.strip().strip("`").strip()]  # O(len line)
         return None  # O(1)
 
+    def header_execution(self) -> dict:  # O(L)
+        """Parse `**Execution:** host=cursor, parallel=multitask, swarm_by=tier` (empty dict if absent)."""
+        import host_models as hm  # O(1) lazy
+        return hm.parse_execution(self.non_fenced_text())  # O(L)
+
     def non_fenced_text(self) -> str:  # O(L)
         return "\n".join(ln for ln, f in zip(self.lines, self.fenced) if not f)  # O(L)
 

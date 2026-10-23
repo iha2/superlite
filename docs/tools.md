@@ -13,7 +13,8 @@ A checkpoint is a hidden save of one task under `refs/superlite/*`; a commit is 
 | `predict` | Predicts each task's time, context and cost; `--refit` fits the coefficients |
 | `build_prime` | Builds the shared prime every agent reads first. By tier (`prime` in `routing.json`): `slim` for sonnet (rules, plan header, Global constraints, stable tasks' title, Owns, dependencies and interfaces; about 8 KB where the whole plan is 20 KB), `mini` for haiku (`--tier haiku`), or `--prime full` (whole plan and `--sections` spec text) |
 | `task` | `sl task Tn`: task Tn's block from the current plan plus the Produces lines of every task it consumes; how agents read their task and neighbours |
-| `dispatch` | Ready tasks and who runs each, in one call (`next_tasks` + `assign`); groups ready tasks of one tier into batches of up to 3 per agent message by complexity (`--batch 1` turns it off) |
+| `dispatch` | Ready tasks and who runs each, in one call (`next_tasks` + `assign`); groups ready tasks of one tier into batches of up to 3 per agent message by complexity (`--batch 1` turns it off). When the plan (or `SUPERLITE_HOST`) selects a host such as cursor, also prints an additive `SWARM` block |
+| `host_models` | `resolve` / `show` / `job-for`: once-per-run host profile → `.superlite/host-models.json` (Cursor Multitask map) |
 | `next_tasks` | Computes which tasks are ready |
 | `assign` | Scores idle agents and picks the most relevant one |
 | `checkpoint` | Checks scope, then records one or more tasks' owned files as checkpoints (default: hidden `refs/superlite/*`, branch untouched; real commits with autocommit on); `--dispatch` also prints the next dispatch. `commit_task` is its old name and still works |
