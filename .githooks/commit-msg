@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Strip Cursor (and similar) agent attribution from commit messages.
+# Enable once per clone: git config core.hooksPath .githooks
+set -euo pipefail
+msg="${1:?}"
+tmp="$(mktemp)"
+# Drop Co-authored-by / Signed-off-by lines that name Cursor's agent identity.
+grep -viE '^[[:space:]]*(Co-authored-by|Signed-off-by):[[:space:]]*Cursor([[:space:]]|<|$)' "$msg" > "$tmp" || true
+# Trim trailing blank lines left behind
+awk 'NF{p=1} p' "$tmp" | awk '
+  { lines[NR]=$0 }
+  END {
+    end=NR
+    while (end>0 && lines[end] ~ /^[[:space:]]*$/) end--
+    for (i=1; i<=end; i++) print lines[i]
+  }
+' > "$msg"
+rm -f "$tmp"

@@ -1,0 +1,13 @@
+---
+description: Do not leave Cursor agent attribution on git commits
+alwaysApply: true
+---
+
+# No Cursor commit notes
+
+Never leave Cursor agent notes on commits.
+
+- Do not add `Co-authored-by: Cursor <cursoragent@cursor.com>` (or any Cursor agent Signed-off-by / “Made with Cursor” trailer).
+- This clone should use `git config core.hooksPath .githooks`; the `commit-msg` hook strips those lines automatically.
+- If a commit message still contains them, amend only when the amend rules allow; otherwise make a follow-up that does not reintroduce them.
+- Details: `AGENTS.md`.
