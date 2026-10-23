@@ -10,6 +10,7 @@ reordered or rewritten; only missing entries are appended. Stdlib only.
 #   e = entries in the table, g = lines in the existing .gitignore, w = path length, d = directory segments of a path
 import fnmatch  # O(1)
 import json  # O(1)
+import sys  # O(1)
 from pathlib import Path  # O(1)
 
 CONFIG = Path(__file__).resolve().parents[1] / "config" / "gitignore.json"  # O(1)
@@ -100,13 +101,25 @@ def _norm(line: str) -> str:  # O(w)
     return line.strip().lstrip("/").rstrip("/")  # O(w)
 
 
+def project_extra(root) -> list[str]:  # O(file)
+    """Extra gitignore lines from `superlite.json`. A non-list `gitignore` yields []. A bad file raises."""
+    scripts = str(Path(__file__).resolve().parent)  # O(1)
+    if scripts not in sys.path:  # O(1)
+        sys.path.insert(0, scripts)  # O(1)
+    import project_config  # O(1)
+    raw = project_config.load(root).get("gitignore", [])  # O(file)
+    if not isinstance(raw, list):  # O(1)
+        return []  # O(1)
+    return clean_extra(raw)  # O(x)
+
+
 def ensure(root, langs, table=None, extra=(), owned=()) -> list[str]:  # O(g + e*o) + file I/O
     """Append to `root/.gitignore` the entries for `langs`, `common` and the plan's `extra` that it lacks; the entries added.
 
     `node_modules`, `/node_modules` and `node_modules/` count as the same entry. Existing lines are never
     touched; a missing final newline is completed, the file's own line ending is kept, and nothing is
     written when nothing is missing. An entry that covers a path in `owned` (a file or folder a task builds) is skipped, so a second call changes nothing."""
-    want = entries_for(langs, table, extra)  # O(e)
+    want = entries_for(langs, table, list(extra or ()) + project_extra(root))  # O(e) shipped, then plan Ignore, then overlay
     owned = [o for o in owned if "*" not in o]  # a path some task owns (dist/bundle.js, bin/tool) is built, never ignored | O(o)
     if owned:  # O(1)
         ms = [(e, Matcher([e])) for e in want]  # O(e)

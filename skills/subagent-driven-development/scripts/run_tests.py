@@ -358,14 +358,19 @@ def run_other(a, spec, paths, label):  # one runner command (any language) | O(X
 
 
 def expand_fast_paths(paths):  # O(p) source paths -> related tests; test paths kept
-    """--fast accepts source or test paths; source maps via testcmd.resolve_related."""
+    """--fast accepts source or test paths. An existing source file maps via testcmd.resolve_related.
+    A path that is not a file is left as given, so pytest can report a collection error and another
+    language's runner receives it in {files}."""
     out = []  # O(1)
     for p in paths:  # O(p)
         rel = p.replace("\\", "/")  # O(len)
         if testcmd.is_test_path(rel) and Path(rel).is_file():  # O(1)
             out.append(rel)  # O(1)
             continue  # O(1)
-        out.extend(testcmd.resolve_related(".", rel))  # O(1) raises FileNotFoundError
+        if Path(rel).is_file():  # a real source file; missing related tests fail loud | O(1)
+            out.extend(testcmd.resolve_related(".", rel))  # O(1) raises FileNotFoundError
+            continue  # O(1)
+        out.append(rel)  # missing path: the runner reports it | O(1)
     return out  # O(p)
 
 

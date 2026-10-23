@@ -47,14 +47,23 @@ HINTS = {"blocked": "deadlock or wait, no CPU and no output",  # O(1)
 
 
 def load_config(path=None):  # O(file)
-    """Defaults, overlaid by config/testprobe.json (or SUPERLITE_TESTPROBE_CONFIG); a bad file means defaults."""
+    """Defaults, overlaid by config/testprobe.json (or SUPERLITE_TESTPROBE_CONFIG); a bad file means defaults.
+
+    `superlite.json` `testprobe` keys merge only when `path` is omitted and SUPERLITE_TESTPROBE_CONFIG is unset.
+    """
     cfg = dict(DEFAULTS)  # O(1)
-    p = Path(path or os.environ.get("SUPERLITE_TESTPROBE_CONFIG") or CONFIG)  # O(1)
+    env = os.environ.get("SUPERLITE_TESTPROBE_CONFIG")  # O(1)
+    p = Path(path or env or CONFIG)  # O(1)
     try:  # O(1)
         data = json.loads(p.read_text(encoding="utf-8-sig"))  # O(file)
         cfg.update({k: data[k] for k in DEFAULTS if k in data})  # O(1)
     except (OSError, ValueError, TypeError):  # O(1)
         pass  # O(1)
+    if path is None and not env:  # explicit path or env wins | O(1)
+        import project_config  # O(1)
+        over = project_config.load(Path(".").resolve()).get("testprobe")  # O(file)
+        if isinstance(over, dict):  # O(1)
+            cfg.update({k: over[k] for k in DEFAULTS if k in over})  # O(1)
     if os.environ.get("SUPERLITE_TESTPROBE", "") == "0":  # O(1)
         cfg["enabled"] = False  # O(1)
     return cfg  # O(1)

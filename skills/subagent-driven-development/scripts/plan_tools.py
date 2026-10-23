@@ -827,9 +827,49 @@ def draft_ids(plan: Plan) -> set[str]:  # O(n*k*s)
     return {t.id for t in plan.tasks if t.status == "draft"}  # O(n*k*s)
 
 
+def _overlay_rc(root) -> int | None:  # O(file)
+    """2 when superlite.json is present and unusable; None when it is missing or valid."""
+    if str(SCRIPT_DIR) not in sys.path:  # O(1)
+        sys.path.insert(0, str(SCRIPT_DIR))  # O(1)
+    import project_config  # O(1)
+    try:  # O(1)
+        project_config.load(Path(root).resolve())  # O(file)
+    except project_config.ProjectConfigError as exc:  # O(1)
+        print(str(exc), file=sys.stderr)  # O(1)
+        return 2  # O(1)
+    return None  # O(1)
+
+
+def _cmd_stub_spec(plan: Plan) -> int:  # O(n*q*s)
+    """Non-Python: print one stub line and one contract line per Produces signature. Write nothing."""
+    n = 0  # O(1)
+    for task in plan.tasks:  # O(n)
+        if task.id in draft_ids(plan):  # O(n) recomputed; n is small
+            continue  # O(1)
+        for item in task.produces:  # O(q)
+            sig = parse_signature(item)  # O(s)
+            if sig is None:  # O(1)
+                print(f"warning: {task.id}: cannot parse signature {item!r}; skipped", file=sys.stderr)  # O(s)
+                continue  # O(1)
+            print(f"stub: {sig['item']}")  # O(s)
+            print(f"contract: {task.contract_text}")  # O(k*s)
+            n += 1  # O(1)
+    if n == 0:  # O(1)
+        print("no stubbable Produces lines found")  # O(1)
+    return 0  # O(1)
+
+
 def cmd_stubs(args) -> int:  # O(C+L + E*s) total + file I/O
-    plan = Plan.load(args.plan)  # O(C+L) + file read
     root = Path(args.root)  # O(1)
+    bad = _overlay_rc(root)  # O(file)
+    if bad:  # O(1)
+        return bad  # O(1)
+    if str(SCRIPT_DIR) not in sys.path:  # O(1)
+        sys.path.insert(0, str(SCRIPT_DIR))  # O(1)
+    import project_config  # O(1)
+    plan = Plan.load(args.plan)  # O(C+L) + file read
+    if project_config.language(root) != "python":  # O(file)
+        return _cmd_stub_spec(plan)  # O(n*q*s)
     warnings: list[str] = []  # O(1)
     per_file: dict[str, list[tuple[Task, dict]]] = {}  # O(1)
     drafts = draft_ids(plan)  # O(n*k*s)
@@ -1355,6 +1395,9 @@ def block_hash(task: Task) -> str:  # O(block bytes) whitespace-insensitive dige
 
 
 def cmd_lint_stable(args) -> int:  # O(lint + n*k*s)
+    bad = _overlay_rc(".")  # a bad superlite.json fails closed | O(file)
+    if bad:  # O(1)
+        return bad  # O(1)
     import orchestrator  # human mode: no lint --stable (and so no dispatch) before approval | O(1)
     blocked = orchestrator.require(args.plan, "lint --stable")  # O(file)
     if blocked:  # O(1)
@@ -1486,6 +1529,9 @@ def cmd_prune(args) -> int:  # O(prune)
 def cmd_lint(args) -> int:  # O(lint) total
     if getattr(args, "stable", False):
         return cmd_lint_stable(args)
+    bad = _overlay_rc(".")  # a bad superlite.json fails closed | O(file)
+    if bad:  # O(1)
+        return bad  # O(1)
     plan = Plan.load(args.plan)  # O(C+L)
     issues, warnings = lint_plan(plan, args)  # O(lint)
     for w in warnings:  # O(w) iterations

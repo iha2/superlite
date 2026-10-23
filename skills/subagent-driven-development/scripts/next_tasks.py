@@ -317,14 +317,22 @@ def main(argv=None):  # O(L + n + e + R log R) + process spawn
     ap.add_argument("--plan", default=DEFAULT_PLAN)  # O(1)
     ap.add_argument("--committed", default="")  # O(1)
     ap.add_argument("--running", default="")  # O(1)
-    ap.add_argument("--cap", type=int, default=10)  # O(1)
+    ap.add_argument("--cap", type=int, default=None, help="default: superlite.json cap, else 10")  # O(1)
     a = ap.parse_args(argv)  # O(1)
+    if str(SCRIPTS) not in sys.path:  # O(1)
+        sys.path.insert(0, str(SCRIPTS))  # O(1)
+    import project_config  # O(1)
+    try:  # O(1)
+        cap = project_config.effective_cap(a.cap, Path(".").resolve())  # O(file)
+    except project_config.ProjectConfigError as exc:  # O(1)
+        print(str(exc), file=sys.stderr)  # O(1)
+        return 2  # O(1)
     graph = taskgraph(a.plan)  # O(n + e) + process spawn
     status = taskgraph_full(a.plan).get("status", {})  # O(1) memoized
     info = parse_plan(a.plan)  # O(L)
     times = {t: (info[t]["est_time"] if t in info and info[t]["est_time"] is not None  # O(n)
                  else DEFAULT_TIME) for t in graph}  # O(1)
-    for t in ready_tasks(graph, times, csv(a.committed), csv(a.running), a.cap, status, stable_filter(a.plan)):  # O(cap) iterations after O(n + e + R log R) ready_tasks
+    for t in ready_tasks(graph, times, csv(a.committed), csv(a.running), cap, status, stable_filter(a.plan)):  # O(cap) iterations after O(n + e + R log R) ready_tasks
         print(t)  # O(1)
     return 0  # O(1)
 

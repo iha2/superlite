@@ -53,6 +53,9 @@ def _load_json(path: Path, what: str) -> dict:  # O(S) read+parse
 
 def load_models(path=None) -> dict:  # O(S + M)
     data = _load_json(Path(path) if path else CONFIG_DIR / "models.json", "models file")  # O(S)
+    if path is None:  # an explicit file wins over superlite.json | O(1)
+        import project_config  # O(1)
+        data = project_config.apply_project_prices(data, Path(".").resolve())  # O(M)
     mult = data.get("cache_write_multipliers", {"5m": 1.25, "1h": 2.0})  # O(1)
     for m in data.get("models", {}).values():  # O(M) iterations
         m.setdefault("cache_write_5m", m["input"] * mult.get("5m", 1.25))  # O(1)
