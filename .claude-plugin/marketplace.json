@@ -8,7 +8,7 @@
     {
       "name": "superlite",
       "description": "Lightweight Claude Code skills for the build lifecycle: one approval gate, parallel waves, short reports",
-      "version": "1.10.0",
+      "version": "1.10.1",
       "source": "./",
       "author": {
         "name": "CWogu"
