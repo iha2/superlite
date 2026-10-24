@@ -9,6 +9,9 @@
     "beforeSubmitPrompt": [
       {
         "command": "git -c 'alias.sl-hook=!cd \"${GIT_PREFIX:-.}\" && exec bash ./hooks/record-human-reply' sl-hook"
+      },
+      {
+        "command": "git -c 'alias.sl-hook=!cd \"${GIT_PREFIX:-.}\" && exec bash ./hooks/cost-report' sl-hook"
       }
     ],
     "preToolUse": [
@@ -24,6 +27,19 @@
     "subagentStop": [
       {
         "command": "git -c 'alias.sl-hook=!cd \"${GIT_PREFIX:-.}\" && exec bash ./hooks/capture-agent-stop' sl-hook"
+      },
+      {
+        "command": "git -c 'alias.sl-hook=!cd \"${GIT_PREFIX:-.}\" && exec bash ./hooks/capture-host-usage' sl-hook"
+      }
+    ],
+    "stop": [
+      {
+        "command": "git -c 'alias.sl-hook=!cd \"${GIT_PREFIX:-.}\" && exec bash ./hooks/capture-host-usage' sl-hook"
+      }
+    ],
+    "afterAgentResponse": [
+      {
+        "command": "git -c 'alias.sl-hook=!cd \"${GIT_PREFIX:-.}\" && exec bash ./hooks/capture-host-usage' sl-hook"
       }
     ]
   }

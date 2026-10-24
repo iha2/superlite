@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# UserPromptSubmit / beforeSubmitPrompt: inject a live superlite cost line into additional
+# context whenever a session is active. Always on (including $0.00 before agents run).
+# Silent when SUPERLITE_NO_COST_REPORT=1 or no session. Exit 0 always (fail open).
+
+if [ "${SUPERLITE_NO_COST_REPORT:-}" = "1" ]; then
+  exit 0
+fi
+
+IFS= read -r -d '' input || true
+
+# Cursor beforeSubmitPrompt waits for continue; emit it even when we stay silent.
+re_cursor='"hook_event_name"[[:space:]]*:[[:space:]]*"beforeSubmitPrompt"'
+is_cursor=0
+[[ ${input:-} =~ $re_cursor ]] && is_cursor=1
+[ -n "${CURSOR_AGENT:-}${CURSOR_TRACE_ID:-}${CURSOR_PLUGIN_ROOT:-}" ] && is_cursor=1
+
+proj="${CLAUDE_PROJECT_DIR:-${CURSOR_PROJECT_DIR:-}}"
+if [ -z "$proj" ]; then
+  re='"cwd"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
+  if [[ ${input:-} =~ $re ]]; then
+    proj="${BASH_REMATCH[1]//\\\\//}"
+    proj="${proj//\\\"/\"}"
+  fi
+fi
+if [ -z "$proj" ]; then
+  re_roots='"workspace_roots"[[:space:]]*:[[:space:]]*\[([^]]*)\]'
+  re_item='^[^"]*"(([^"\\]|\\.)*)"(.*)$'
+  re_drive='^/([A-Za-z]:/.*)$'
+  if [[ ${input:-} =~ $re_roots ]]; then
+    rest="${BASH_REMATCH[1]}"
+    while [[ $rest =~ $re_item ]]; do
+      rest="${BASH_REMATCH[3]}"
+      r="${BASH_REMATCH[1]}"
+      r="${r//\\\\//}"; r="${r//\\\"/\"}"
+      [[ $r =~ $re_drive ]] && r="${BASH_REMATCH[1]}"
+      [ -n "$proj" ] || proj="$r"
+      [ -d "$r/.superlite" ] && { proj="$r"; break; }
+    done
+  fi
+fi
+[ -n "$proj" ] || proj="$PWD"
+sl_dir="${proj}/.superlite"
+[ -d "$sl_dir" ] || { [ "$is_cursor" = 1 ] && printf '{"continue":true}\n'; exit 0; }
+
+root="${CLAUDE_PLUGIN_ROOT:-${CURSOR_PLUGIN_ROOT:-}}"
+if [ -z "$root" ]; then
+  self="${BASH_SOURCE[0]//\\//}"
+  case "$self" in /*|?:/*) ;; *) self="${PWD//\\//}/$self" ;; esac
+  root="${self%/hooks/*}"
+fi
+root="${root//\\//}"
+py="${SUPERLITE_PYTHON:-python}"
+script="$root/skills/subagent-driven-development/scripts/cost_live.py"
+
+line="$("$py" "$script" "$sl_dir" 2>/dev/null)" || line=""
+if [ -z "$line" ]; then
+  [ "$is_cursor" = 1 ] && printf '{"continue":true}\n'
+  exit 0
+fi
+
+esc="$line"
+esc="${esc//\\/\\\\}"
+esc="${esc//\"/\\\"}"
+esc="${esc//$'\r'/}"
+esc="${esc//$'\n'/\\n}"
+esc="${esc//$'\t'/\\t}"
+
+if [ "$is_cursor" = 1 ]; then
+  # Cursor beforeSubmitPrompt: continue + additional_context (snake_case) each turn.
+  printf '{"continue":true,"additional_context":"%s"}\n' "$esc"
+elif [ -n "${CLAUDE_CODE:-}" ] || [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"%s"}}\n' "$esc"
+else
+  printf '{"additionalContext":"%s"}\n' "$esc"
+fi
+exit 0

@@ -229,7 +229,9 @@ def test_registration_and_endings():
     data = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
     guard_entry = [e for e in data["PreToolUse"] if e["hooks"][0]["command"].endswith("block-coordinator-edits\"")][0]
     assert "Agent" in guard_entry["matcher"].split("|")
-    assert data["UserPromptSubmit"][0]["hooks"][0]["command"] == 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/record-human-reply"'
+    ups = [h["command"] for h in data["UserPromptSubmit"][0]["hooks"]]
+    assert ups[0] == 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/record-human-reply"'
+    assert 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/cost-report"' in ups
     for h in (GUARD, REPLY):
         assert b"\r" not in h.read_bytes()
 
@@ -274,10 +276,14 @@ def launcher(name):
 
 def test_cursor_registration():
     data = json.loads((ROOT / "hooks" / "hooks-cursor.json").read_text(encoding="utf-8"))["hooks"]
-    want = {"sessionStart": "session-start", "beforeSubmitPrompt": "record-human-reply",
-            "preToolUse": "block-coordinator-edits", "subagentStart": "capture-agent-launch",
-            "subagentStop": "capture-agent-stop"}
-    assert {k: [e["command"] for e in v] for k, v in data.items()} == {k: [launcher(n)] for k, n in want.items()}
+    want = {"sessionStart": ["session-start"],
+            "beforeSubmitPrompt": ["record-human-reply", "cost-report"],
+            "preToolUse": ["block-coordinator-edits"], "subagentStart": ["capture-agent-launch"],
+            "subagentStop": ["capture-agent-stop", "capture-host-usage"],
+            "stop": ["capture-host-usage"], "afterAgentResponse": ["capture-host-usage"]}
+    assert {k: [e["command"] for e in v] for k, v in data.items()} == {
+        k: [launcher(n) for n in names] for k, names in want.items()
+    }
 
 
 def windows_path():

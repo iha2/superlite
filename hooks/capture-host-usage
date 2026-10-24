@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# Cursor stop / afterAgentResponse (and Claude Stop when it sends usage): append one
+# host_usage record to <project>/.superlite/metrics.jsonl with the host's own token
+# fields. Never invent zeros: if no token/cost fields are present, write nothing.
+# Active when a superlite session marker exists. Exit 0 always (fail open).
+
+IFS= read -r -d '' input || true
+
+jstr() {
+  local re='"'"$1"'"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"' s
+  REPLY=""
+  [[ ${input:-} =~ $re ]] || return 0
+  s="${BASH_REMATCH[1]}"
+  s="${s//\\\\/$'\x01'}"; s="${s//\\\"/\"}"; s="${s//\\n/ }"; s="${s//\\r/}"; s="${s//\\t/ }"; s="${s//\\\//\/}"
+  REPLY="${s//$'\x01'/\\}"
+}
+jnum() {
+  local re='"'"$1"'"[[:space:]]*:[[:space:]]*(-?[0-9]+(\.[0-9]+)?)'
+  REPLY=""
+  [[ ${input:-} =~ $re ]] || return 0
+  REPLY="${BASH_REMATCH[1]}"
+}
+esc() {
+  local s="${!1}"
+  s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; s="${s//$'\n'/ }"; s="${s//$'\r'/}"; s="${s//$'\t'/ }"
+  printf -v "$1" '%s' "$s"
+}
+
+jstr cwd; proj="${CLAUDE_PROJECT_DIR:-${CURSOR_PROJECT_DIR:-${REPLY//\\//}}}"
+if [ -z "$proj" ]; then
+  re_roots='"workspace_roots"[[:space:]]*:[[:space:]]*\[([^]]*)\]'
+  re_item='^[^"]*"(([^"\\]|\\.)*)"(.*)$'
+  re_drive='^/([A-Za-z]:/.*)$'
+  if [[ ${input:-} =~ $re_roots ]]; then
+    rest="${BASH_REMATCH[1]}"
+    while [[ $rest =~ $re_item ]]; do
+      rest="${BASH_REMATCH[3]}"
+      r="${BASH_REMATCH[1]}"
+      r="${r//\\\\//}"; r="${r//\\\"/\"}"
+      [[ $r =~ $re_drive ]] && r="${BASH_REMATCH[1]}"
+      [ -n "$proj" ] || proj="$r"
+      [ -d "$r/.superlite" ] && { proj="$r"; break; }
+    done
+  fi
+fi
+[ -n "$proj" ] || proj="$PWD"
+sd="$proj/.superlite"
+[ -f "$sd/stable.json" ] || [ -f "$sd/prime.md" ] || [ -f "$sd/pool.json" ] || [ -f "$sd/orchestrator.json" ] || [ -f "$sd/feature.json" ] || exit 0
+
+# Real host/model fields only — do not default missing ones to invent a $0 row.
+jnum input_tokens; in_t="$REPLY"
+jnum output_tokens; out_t="$REPLY"
+jnum cache_read_tokens; cr_t="$REPLY"
+jnum cache_write_tokens; cw_t="$REPLY"
+jnum total_cost_usd; usd="$REPLY"
+jnum cost_usd; [ -z "$usd" ] && usd="$REPLY"
+jnum charged_cents; cents="$REPLY"
+[ -z "$cents" ] && { jnum chargedCents; cents="$REPLY"; }
+
+has=0
+[ -n "$in_t$out_t$cr_t$cw_t$usd$cents" ] && has=1
+[ "$has" = 1 ] || exit 0
+
+[ -n "$in_t" ] || in_t=0
+[ -n "$out_t" ] || out_t=0
+[ -n "$cr_t" ] || cr_t=0
+[ -n "$cw_t" ] || cw_t=0
+
+jstr model; model="$REPLY"
+[ -z "$model" ] && { jstr model_id; model="$REPLY"; }
+jstr generation_id; gid="$REPLY"
+jstr conversation_id; cid="$REPLY"
+jstr hook_event_name; evname="$REPLY"
+# Per-agent when the host sends it (subagentStop / Agent stop payloads).
+jstr agent_id; aid="$REPLY"
+[ -z "$aid" ] && { jstr subagent_id; aid="$REPLY"; }
+jstr agent_type; atype="$REPLY"
+[ -z "$atype" ] && { jstr subagent_type; atype="$REPLY"; }
+[ -z "$atype" ] && { jstr type; atype="$REPLY"; }
+# Host from the environment / hook name — never from the model string (e.g. claude-sonnet-4).
+host="cursor"
+if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -z "${CURSOR_PLUGIN_ROOT:-}${CURSOR_AGENT:-}${CURSOR_TRACE_ID:-}" ]; then
+  host="claude"
+elif [ "$evname" = "Stop" ]; then
+  host="claude"
+fi
+
+if [ -z "$usd" ] && [ -n "$cents" ]; then
+  case "$cents" in
+    *[!0-9]*) ;;  # non-integer cents: ignore; prefer an explicit usd field
+    *) usd="$((cents / 100)).$(printf '%02d' $((cents % 100)))" ;;
+  esac
+fi
+usd_json=null
+[ -n "$usd" ] && usd_json="$usd"
+
+esc model; esc gid; esc cid; esc evname; esc host; esc aid; esc atype
+now="${EPOCHREALTIME//[.,]/}"; now="${now:0:${#now}-3}"
+printf '{"ev":"host_usage","t":%s,"host":"%s","model":"%s","generation_id":"%s","conversation_id":"%s","hook":"%s","agent_id":"%s","agent_type":"%s","input":%s,"output":%s,"cache_read":%s,"cache_write":%s,"usd":%s}\n' \
+  "$now" "$host" "$model" "$gid" "$cid" "$evname" "$aid" "$atype" "$in_t" "$out_t" "$cr_t" "$cw_t" "$usd_json" \
+  >> "$sd/metrics.jsonl" 2>/dev/null
+exit 0
