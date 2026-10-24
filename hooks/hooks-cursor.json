@@ -6,6 +6,11 @@
         "command": "bash ./hooks/session-start"
       }
     ],
+    "beforeSubmitPrompt": [
+      {
+        "command": "bash ./hooks/record-human-reply"
+      }
+    ],
     "subagentStart": [
       {
         "command": "bash ./hooks/capture-agent-launch"

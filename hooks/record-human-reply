@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# UserPromptSubmit hook: while a human-orchestrator run is unapproved (.superlite/orchestrator.json
+# UserPromptSubmit hook (Cursor: beforeSubmitPrompt): while a human-orchestrator run is unapproved (.superlite/orchestrator.json
 # has mode human and approved false), or a feature-flow try-out waits for the human (mode human and
 # .superlite/feature.json has status tryout), append one line per human prompt to
 # <project>/.superlite/human-replies.jsonl:
@@ -11,17 +11,43 @@
 
 IFS= read -r -d '' input   # builtin; returns 1 at EOF, which is fine
 
-# jstr KEY: first JSON string value for KEY, decoded, into REPLY (empty if absent).
-jstr() {
-  local re='"'"$1"'"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"' s
-  REPLY=""
-  [[ $input =~ $re ]] || return 0
-  s="${BASH_REMATCH[1]}"
+# Cursor (beforeSubmitPrompt) waits for {"continue":true}; Claude Code (UserPromptSubmit) gets no output.
+re_cursor='"hook_event_name"[[:space:]]*:[[:space:]]*"beforeSubmitPrompt"'
+[[ $input =~ $re_cursor ]] && trap 'printf "{\"continue\":true}\n"' EXIT
+
+# jdecode S: JSON string body S, decoded, into REPLY.
+jdecode() {
+  local s="$1"
   s="${s//\\\\/$'\x01'}"; s="${s//\\\"/\"}"; s="${s//\\n/ }"; s="${s//\\r/}"; s="${s//\\t/ }"; s="${s//\\\//\/}"
   REPLY="${s//$'\x01'/\\}"
 }
 
-jstr cwd; proj="${CLAUDE_PROJECT_DIR:-${REPLY//\\//}}"
+# jstr KEY: first JSON string value for KEY, decoded, into REPLY (empty if absent).
+jstr() {
+  local re='"'"$1"'"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
+  REPLY=""
+  [[ $input =~ $re ]] || return 0
+  jdecode "${BASH_REMATCH[1]}"
+}
+
+# Project: Claude Code's env or cwd; Cursor runs plugin hooks elsewhere, so its env or the first
+# workspace root (sent as /c:/path) that holds a superlite run.
+jstr cwd; proj="${CLAUDE_PROJECT_DIR:-${CURSOR_PROJECT_DIR:-${REPLY//\\//}}}"
+if [ -z "$proj" ]; then
+  re_roots='"workspace_roots"[[:space:]]*:[[:space:]]*\[([^]]*)\]'
+  re_item='^[^"]*"(([^"\\]|\\.)*)"(.*)$'
+  re_drive='^/([A-Za-z]:/.*)$'
+  if [[ $input =~ $re_roots ]]; then
+    rest="${BASH_REMATCH[1]}"
+    while [[ $rest =~ $re_item ]]; do
+      rest="${BASH_REMATCH[3]}"
+      jdecode "${BASH_REMATCH[1]}"; r="${REPLY//\\//}"
+      [[ $r =~ $re_drive ]] && r="${BASH_REMATCH[1]}"
+      [ -n "$proj" ] || proj="$r"
+      [ -f "$r/.superlite/orchestrator.json" ] && { proj="$r"; break; }
+    done
+  fi
+fi
 [ -n "$proj" ] || proj="$PWD"
 sd="$proj/.superlite"
 [ -f "$sd/orchestrator.json" ] || exit 0

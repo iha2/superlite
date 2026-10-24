@@ -231,6 +231,45 @@ def test_registration_and_endings():
         assert b"\r" not in h.read_bytes()
 
 
+def cursor_reply(proj, prompt, roots, cwd):
+    raw = json.dumps({"hook_event_name": "beforeSubmitPrompt", "prompt": prompt, "conversation_id": "c1",
+                      "generation_id": "g1", "attachments": [], "workspace_roots": roots})
+    env = {k: v for k, v in os.environ.items() if k not in ("CLAUDE_PROJECT_DIR", "CURSOR_PROJECT_DIR")}
+    return subprocess.run([BASH, str(REPLY)], input=raw, capture_output=True, text=True, env=env, cwd=str(cwd))
+
+
+def cursor_root(p):
+    s = str(p).replace("\\", "/")
+    return "/" + s[0].lower() + s[1:] if len(s) > 1 and s[1] == ":" else s
+
+
+def test_cursor_reply_recorded_from_workspace_root(human, tmp_path_factory):
+    elsewhere = tmp_path_factory.mktemp("plugin_root")  # Cursor runs plugin hooks outside the project
+    r = cursor_reply(human, "I approve the plan. Go ahead.", [cursor_root(human)], elsewhere)
+    assert r.returncode == 0 and json.loads(r.stdout) == {"continue": True} and r.stderr == ""
+    (rec,) = lines(human)
+    assert rec["approves"] is True and rec["text"] == "I approve the plan. Go ahead."
+    assert not (elsewhere / ".superlite").exists()
+
+
+def test_cursor_reply_picks_the_root_with_a_run(human, tmp_path_factory):
+    other = tmp_path_factory.mktemp("other_root")
+    r = cursor_reply(human, "approve", [cursor_root(other), cursor_root(human)], other)
+    assert r.returncode == 0 and json.loads(r.stdout) == {"continue": True}
+    assert lines(human)[0]["approves"] is True and not (other / ".superlite").exists()
+
+
+def test_cursor_reply_inactive_still_continues(tmp_path):
+    make(tmp_path, "ai")
+    r = cursor_reply(tmp_path, "approve", [cursor_root(tmp_path)], tmp_path)
+    assert r.returncode == 0 and json.loads(r.stdout) == {"continue": True} and lines(tmp_path) == []
+
+
+def test_cursor_registration():
+    data = json.loads((ROOT / "hooks" / "hooks-cursor.json").read_text(encoding="utf-8"))["hooks"]
+    assert data["beforeSubmitPrompt"][0]["command"] == "bash ./hooks/record-human-reply"
+
+
 def test_latency(human):
     def best(argv, raw, cwd):
         env = {**os.environ, "CLAUDE_PROJECT_DIR": str(human)}
