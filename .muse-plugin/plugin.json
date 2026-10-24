@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "superlite",
   "displayName": "Superlite",
-  "version": "1.10.2",
+  "version": "1.10.3",
   "description": "Lightweight Claude Code skills for the build lifecycle: one approval gate, parallel waves, short reports",
   "compat": {
     "source": "native",
