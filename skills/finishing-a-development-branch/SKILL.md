@@ -42,12 +42,19 @@ No further menus or typed confirmations. Act on the answer.
 ## 5. Execute the choice
 
 - **Merge locally:** if the work ran in a worktree, run the merge from the main checkout (where the base branch lives). Check out the base branch, merge the feature branch. If the merge was not a fast-forward or had conflicts, run `bash <skill-dir>/../subagent-driven-development/scripts/sl run_tests --full` again. Remove the worktree (step 6), then delete the feature branch with `git branch -d`.
-- **Push and PR:** `git push -u origin <branch>`, then `gh pr create` with a title and a body holding the summary and test evidence. Report the PR URL. Keep the branch.
-- **Keep:** report the branch name and any worktree path. Nothing else.
+- **Push and PR:** `git push -u origin <branch>`, then `gh pr create` with a title and a body holding the summary and test evidence. Report the PR URL. Keep the branch. Remove the worktree (step 6).
+- **Keep:** report the branch name. If the worktree is clean, remove it (step 6). If it has uncommitted work, leave it and report the path.
 
 ## 6. Worktree cleanup
 
-Only if the work ran in a worktree you created and the branch was merged: `git worktree remove <path>`. For push-and-PR or keep, leave it in place.
+A flow removes every worktree it created before it ends. Move the agent root back to the main checkout first, then from there run `git worktree remove <path>`.
+
+- Merged: remove the worktree, then `git branch -d` the feature branch.
+- Pushed: remove the worktree. Leave the branch.
+- Kept, and `git status --short` in that worktree is empty: remove the worktree. Leave the branch.
+- Kept, with uncommitted work: leave the worktree and name its path. Do not use `--force`.
+
+A prototype sandbox is removed with `sl proto discard` at feature finish, not with this step.
 
 ## Never
 

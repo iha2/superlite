@@ -222,6 +222,11 @@ def test_feature_command_has_the_six_steps():
         assert s in t, s
     for n in range(1, 7):
         assert f"{n}. " in t
+    assert "remove the integration worktree" in t and "does not leave a worktree it created" in t
+    finish = text("skills", "finishing-a-development-branch", "SKILL.md")
+    assert "removes every worktree it created" in finish and "uncommitted work" in finish
+    assert "Do not use `--force`" in finish
+    assert "does not leave a worktree it created" in text("docs", "feature-flow.md")
 
 
 def test_start_command_shows_the_suggestion_first():

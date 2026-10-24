@@ -8,7 +8,7 @@ alwaysApply: true
 Never develop two features in the same checkout.
 
 - **Before code** for a feature (feature-mode integration, multi-file builds, harness work): cut or reopen a dedicated branch and worktree, e.g. `git worktree add -b superlite/<topic> .superlite/worktrees/<topic> <base>`, then move the agent root into that worktree.
-- **Prototype** sandboxes stay at `.superlite/sandboxes/<topic>-proto` (via `sl proto start`). They are not a substitute for the integration worktree.
+- **Prototype** sandboxes stay at `.superlite/sandboxes/<topic>-proto` (via `sl proto start`). They are not a substitute for the integration worktree. At finish, `sl proto discard` removes the sandbox, and the flow removes the integration worktree from the main checkout. A keep with uncommitted work stays.
 - **Do not** layer feature B onto a checkout that already has feature A's uncommitted or in-progress work, or onto a dirty shared `main` while A is open elsewhere.
 - **Exempt:** trivial one-line / one-file fixes the user asked to do on the current branch.
 - Details: `AGENTS.md`, `commands/feature.md` step 6, `docs/feature-flow.md`.

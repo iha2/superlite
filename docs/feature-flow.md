@@ -90,7 +90,7 @@ Then, in that worktree:
 - seam checks between the new and the existing code, and every existing test must still pass;
 - the normal review, final review, tiered fixes and finish report. The report shows the prototype and the integration as two parts, each with time and cost, projected against actual.
 
-The prototype worktree is removed at finish with `sl proto discard`, which first saves the prototype's report headline into `feature.json`, then removes the worktree and the branch (`--keep-branch` keeps the branch). `sl proto status [--json]` shows the state at any time.
+The prototype worktree is removed at finish with `sl proto discard`, which first saves the prototype's report headline into `feature.json`, then removes the worktree and the branch (`--keep-branch` keeps the branch). The integration worktree (`.superlite/worktrees/<topic>`) is removed in the same finish, from the main checkout, once the branch is merged or pushed, or on keep when that tree is clean. A keep with uncommitted work leaves the worktree. The flow does not leave a worktree it created. `sl proto status [--json]` shows the state at any time.
 
 **The report.** When `.superlite/feature.json` exists, `sl report` adds a feature-flow part: the prototype and the integration on two lines, each with wall-clock and agent cost, projected and actual, and the prototype's cost as a share of the integration against the 25% cap. The prototype numbers come from its own build report in the worktree (`.superlite/report.json`), saved into `feature.json` at try-out and discard so they outlive the worktree.
 
