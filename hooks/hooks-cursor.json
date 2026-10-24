@@ -3,22 +3,27 @@
   "hooks": {
     "sessionStart": [
       {
-        "command": "bash ./hooks/session-start"
+        "command": "git -c 'alias.sl-hook=!cd \"${GIT_PREFIX:-.}\" && exec bash ./hooks/session-start' sl-hook"
       }
     ],
     "beforeSubmitPrompt": [
       {
-        "command": "bash ./hooks/record-human-reply"
+        "command": "git -c 'alias.sl-hook=!cd \"${GIT_PREFIX:-.}\" && exec bash ./hooks/record-human-reply' sl-hook"
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "git -c 'alias.sl-hook=!cd \"${GIT_PREFIX:-.}\" && exec bash ./hooks/block-coordinator-edits' sl-hook"
       }
     ],
     "subagentStart": [
       {
-        "command": "bash ./hooks/capture-agent-launch"
+        "command": "git -c 'alias.sl-hook=!cd \"${GIT_PREFIX:-.}\" && exec bash ./hooks/capture-agent-launch' sl-hook"
       }
     ],
     "subagentStop": [
       {
-        "command": "bash ./hooks/capture-agent-stop"
+        "command": "git -c 'alias.sl-hook=!cd \"${GIT_PREFIX:-.}\" && exec bash ./hooks/capture-agent-stop' sl-hook"
       }
     ]
   }

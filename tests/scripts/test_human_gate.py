@@ -182,7 +182,10 @@ def test_reply_approves(human, prompt):
 @pytest.mark.parametrize("prompt", [
     "no", "not yet", "don't approve", "dont proceed", "wait, change the scope", "yes but add tests",
     "stop", "instead, do X", "approve, but change the name", "hmm", "Create hello.txt containing hi",
-    "unapproved", "yesterday", "nothing", "what about the schema?",
+    "unapproved", "yesterday", "nothing", "what about the schema?", "approve?", "Should I approve it?",
+    "The guard is not registered, so the gate is held only by the sl tools refusing to run until you approve. "
+    "Can we fix this as well or am I misunderstanding?",
+    "Go ahead and rename the module, then update every caller, rerun the tests, and send me the results after",
 ])
 def test_reply_does_not_approve(human, prompt):
     reply(human, prompt)
@@ -265,9 +268,114 @@ def test_cursor_reply_inactive_still_continues(tmp_path):
     assert r.returncode == 0 and json.loads(r.stdout) == {"continue": True} and lines(tmp_path) == []
 
 
+def launcher(name):
+    return f"git -c 'alias.sl-hook=!cd \"${{GIT_PREFIX:-.}}\" && exec bash ./hooks/{name}' sl-hook"
+
+
 def test_cursor_registration():
     data = json.loads((ROOT / "hooks" / "hooks-cursor.json").read_text(encoding="utf-8"))["hooks"]
-    assert data["beforeSubmitPrompt"][0]["command"] == "bash ./hooks/record-human-reply"
+    want = {"sessionStart": "session-start", "beforeSubmitPrompt": "record-human-reply",
+            "preToolUse": "block-coordinator-edits", "subagentStart": "capture-agent-launch",
+            "subagentStop": "capture-agent-stop"}
+    assert {k: [e["command"] for e in v] for k, v in data.items()} == {k: [launcher(n)] for k, n in want.items()}
+
+
+def windows_path():
+    import winreg  # noqa: F401  (Windows only)
+    out = subprocess.run(["powershell", "-NoProfile", "-Command",
+                          "[Environment]::GetEnvironmentVariable('Path','Machine') + ';' + "
+                          "[Environment]::GetEnvironmentVariable('Path','User')"],
+                         capture_output=True, text=True)
+    return out.stdout.strip()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Cursor runs hooks through PowerShell on Windows")
+def test_cursor_launcher_runs_without_bash_on_path(human, tmp_path_factory):
+    # Git for Windows puts only git on PATH; the launcher reaches Git's own bash through a git alias.
+    path = windows_path()
+    clean = {k: v for k, v in os.environ.items() if k.upper() not in ("PATH", "CLAUDE_PROJECT_DIR", "CURSOR_PROJECT_DIR")}
+    clean["Path"] = path
+    probe = subprocess.run(["powershell", "-NoProfile", "-Command", "[bool](Get-Command git -ErrorAction SilentlyContinue)"],
+                           capture_output=True, text=True, env=clean)
+    if probe.stdout.strip() != "True":
+        pytest.skip("git is not on the Windows PATH")
+    payload = tmp_path_factory.mktemp("payload") / "in.json"
+    payload.write_text(json.dumps({"hook_event_name": "beforeSubmitPrompt", "prompt": "approve",
+                                   "workspace_roots": [cursor_root(human)]}), encoding="utf-8")
+    ps = (f"Get-Content '{payload}' -Raw | & {{ $input | {launcher('record-human-reply')} }}")
+    r = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True, env=clean, cwd=str(ROOT))
+    assert json.loads(r.stdout.lstrip("\ufeff")) == {"continue": True}, r.stderr
+    assert lines(human)[0]["approves"] is True
+
+
+# ---- block-coordinator-edits, Cursor payloads ----
+
+def cursor_guard(proj, tool, tool_input, cwd, sub=False):
+    d = {"conversation_id": "c1", "generation_id": "g1", "model": "claude-opus-5-5", "tool_name": tool,
+         "tool_input": tool_input, "tool_use_id": "t1", "cwd": "", "hook_event_name": "preToolUse",
+         "cursor_version": "3.25.9", "workspace_roots": [cursor_root(proj)]}
+    if sub:
+        d["parent_tool_call_id"] = "toolu_parent"
+    env = {k: v for k, v in os.environ.items() if k not in ("CLAUDE_PROJECT_DIR", "CURSOR_PROJECT_DIR")}
+    return subprocess.run([BASH, str(GUARD)], input=json.dumps(d), capture_output=True, text=True, env=env, cwd=str(cwd))
+
+
+def denied(r, needle):
+    out = json.loads(r.stdout)
+    assert r.returncode == 2 and out["permission"] == "deny", r
+    assert needle in out["user_message"] and out["agent_message"] == out["user_message"]
+    return out
+
+
+@pytest.fixture
+def plugin_dir(tmp_path_factory):
+    return tmp_path_factory.mktemp("plugin_root")  # Cursor runs plugin hooks from the plugin's folder
+
+
+def test_cursor_coordinator_denied_from_workspace_root(human, plugin_dir):
+    denied(cursor_guard(human, "Task", {"subagent_type": "implementer", "prompt": "x"}, plugin_dir), NEXT)
+    denied(cursor_guard(human, "Task", {"subagent_type": "generalPurpose", "prompt": "x"}, plugin_dir), NEXT)
+    denied(cursor_guard(human, "Shell", {"command": 'bash "$SL" dispatch --plan p.md', "cwd": ""}, plugin_dir), NEXT)
+    denied(cursor_guard(human, "Write", {"file_path": str(human / ".superlite" / "orchestrator.json")}, plugin_dir),
+           "sl orchestrator")
+    denied(cursor_guard(human, "Delete", {"file_path": str(human / ".superlite" / "human-replies.jsonl")}, plugin_dir),
+           "sl orchestrator")
+
+
+def test_cursor_research_and_reads_allowed(human, plugin_dir):
+    for t in ("explore", "Explore", "Plan", "cursor-guide"):
+        r = cursor_guard(human, "Task", {"subagent_type": t, "prompt": "x"}, plugin_dir)
+        assert r.returncode == 0 and r.stdout == "", t
+    for tool, ti in (("Shell", {"command": "git status", "cwd": ""}), ("Write", {"file_path": str(human / "hello.txt")}),
+                     ("Read", {"file_path": str(human / ".superlite" / "orchestrator.json")})):
+        r = cursor_guard(human, tool, ti, plugin_dir)
+        assert r.returncode == 0 and r.stdout == "", (tool, ti)
+
+
+def test_cursor_subagent_calls_pass(human, plugin_dir):
+    for tool, ti in (("Write", {"file_path": str(human / ".superlite" / "orchestrator.json")}),
+                     ("Shell", {"command": "echo a > src.py", "cwd": ""}),
+                     ("Task", {"subagent_type": "implementer", "prompt": "x"})):
+        r = cursor_guard(human, tool, ti, plugin_dir, sub=True)
+        assert r.returncode == 0 and r.stdout == "", (tool, ti)
+
+
+def test_cursor_active_run_keeps_project_code_from_the_coordinator(tmp_path, plugin_dir):
+    proj = make(tmp_path, "ai")
+    (proj / ".superlite" / "stable.json").write_text("{}")
+    denied(cursor_guard(proj, "Write", {"file_path": str(proj / "src" / "app.py")}, plugin_dir), "must not write project code")
+    denied(cursor_guard(proj, "Delete", {"file_path": str(proj / "src" / "app.py")}, plugin_dir), "must not write project code")
+    denied(cursor_guard(proj, "Shell", {"command": "echo x > src/app.py", "cwd": ""}, plugin_dir), "must not write project code")
+    for p in ("docs/plans/a.md", ".superlite/progress.md", "SPEC.md"):
+        r = cursor_guard(proj, "Write", {"file_path": str(proj / p)}, plugin_dir)
+        assert r.returncode == 0 and r.stdout == "", p
+    r = cursor_guard(proj, "Write", {"file_path": str(proj / "src" / "app.py")}, plugin_dir, sub=True)
+    assert r.returncode == 0 and r.stdout == ""
+
+
+def test_claude_denials_stay_on_stderr(human):
+    r = guard(human, "Agent", {"subagent_type": "superlite:implementer", "prompt": "x"})
+    assert r.returncode == 2 and r.stdout == "" and NEXT in r.stderr
 
 
 def test_latency(human):

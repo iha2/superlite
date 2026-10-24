@@ -6,7 +6,8 @@
 #   {"t":<epoch ms>,"approves":true|false,"text":"<first 160 chars of the prompt>"}
 # approves is true when the prompt contains an approval phrase (approve, approved, yes, go ahead,
 # go for it, looks good, lgtm, proceed, ship it, do it, it works, works for me, all good) and none
-# of: not, don't, dont, no, wait, stop, but, change, instead (case-insensitive, whole words). Only this hook writes the file.
+# of: not, don't, dont, no, wait, stop, but, change, instead (case-insensitive, whole words), has no
+# question mark, and is at most 12 words. Only this hook writes the file.
 # Bash builtins only (each external process costs ~250 ms on Windows). Never blocks: exit 0 always.
 
 IFS= read -r -d '' input   # builtin; returns 1 at EOF, which is fine
@@ -68,7 +69,8 @@ b='(^|[^[:alnum:]_])'; e='([^[:alnum:]_]|$)'
 re_yes="$b(approve|approved|yes|go[[:space:]]+ahead|go[[:space:]]+for[[:space:]]+it|looks[[:space:]]+good|lgtm|proceed|ship[[:space:]]+it|do[[:space:]]+it|it[[:space:]]+works|works[[:space:]]+for[[:space:]]+me|all[[:space:]]+good)$e"
 re_no="$b(not|don't|don’t|dont|no|wait|stop|but|change|instead)$e"
 approves=false
-[[ $lc =~ $re_yes ]] && ! [[ $lc =~ $re_no ]] && approves=true
+set -f; set -- $lc; set +f   # word count: an approval is a short reply, not a long message that mentions one
+[[ $lc =~ $re_yes ]] && ! [[ $lc =~ $re_no ]] && [[ $lc != *'?'* ]] && [ $# -le 12 ] && approves=true
 
 text="${text:0:160}"
 text="${text//\\/\\\\}"; text="${text//\"/\\\"}"

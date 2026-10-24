@@ -16,17 +16,22 @@
 #     except .superlite/sandboxes/** (the feature prototype's worktree is project code too).
 # Bash/PowerShell write detection is best-effort; when unsure, allow. Sessions without a .superlite
 # directory are never touched. Bash builtins only (no external process is spawned: each spawn costs
-# ~250 ms on Windows), cheap exits first. Exit 2 blocks (message on stderr); anything else,
-# including malformed input, exits 0 (fail open).
+# ~250 ms on Windows), cheap exits first. Exit 2 blocks (message on stderr; Cursor also gets
+# {"permission":"deny",...} on stdout); anything else, including malformed input, exits 0 (fail open).
+# Cursor (preToolUse) names tools Shell, Write, Delete and Task, marks subagent calls with
+# parent_tool_call_id, sends an empty cwd and the project as workspace_roots (/c:/path).
 
 IFS= read -r -d '' input   # builtin; returns 1 at EOF, which is fine
 
-re_agent='"agent_id"[[:space:]]*:[[:space:]]*"'
+re_agent='"(agent_id|parent_tool_call_id)"[[:space:]]*:[[:space:]]*"[^"]'
 [[ $input =~ $re_agent ]] && exit 0   # subagent call
 re_tool='"tool_name"[[:space:]]*:[[:space:]]*"([A-Za-z]+)"'
 [[ $input =~ $re_tool ]] || exit 0
 tool="${BASH_REMATCH[1]}"
-case "$tool" in Edit|Write|NotebookEdit|MultiEdit|Bash|PowerShell|Agent|Task) ;; *) exit 0 ;; esac
+case "$tool" in Edit|Write|NotebookEdit|MultiEdit|Delete|Bash|PowerShell|Shell|Agent|Task) ;; *) exit 0 ;; esac
+[ "$tool" = Shell ] && tool=Bash
+re_cursor='"hook_event_name"[[:space:]]*:[[:space:]]*"preToolUse"'
+cursor=0; [[ $input =~ $re_cursor ]] && cursor=1
 
 # jstr KEY: first JSON string value for KEY, still JSON-escaped, into REPLY (empty if absent).
 jstr() {
@@ -44,8 +49,22 @@ norm() {
   NORM="$p"
 }
 
-proj="${CLAUDE_PROJECT_DIR:-}"
+proj="${CLAUDE_PROJECT_DIR:-${CURSOR_PROJECT_DIR:-}}"
 if [ -z "$proj" ]; then jstr cwd; proj="${REPLY//\\\\//}"; fi
+if [ -z "$proj" ]; then   # Cursor: the first workspace root that holds a superlite run
+  re_roots='"workspace_roots"[[:space:]]*:[[:space:]]*\[([^]]*)\]'
+  re_item='^[^"]*"(([^"\\]|\\.)*)"(.*)$'
+  re_drive='^/([A-Za-z]:/.*)$'
+  if [[ $input =~ $re_roots ]]; then
+    rest="${BASH_REMATCH[1]}"
+    while [[ $rest =~ $re_item ]]; do
+      rest="${BASH_REMATCH[3]}"; r="${BASH_REMATCH[1]//\\\\//}"
+      [[ $r =~ $re_drive ]] && r="${BASH_REMATCH[1]}"
+      [ -n "$proj" ] || proj="$r"
+      [ -d "$r/.superlite" ] && { proj="$r"; break; }
+    done
+  fi
+fi
 [ -n "$proj" ] || proj="$PWD"
 sd="$proj/.superlite"
 [ -d "$sd" ] || exit 0
@@ -72,7 +91,7 @@ enforce=0
 if [ "$tool" = Agent ] || [ "$tool" = Task ]; then
   [ "$gated" = 1 ] || exit 0
   jstr subagent_type
-  case "$REPLY" in Explore|Plan|claude-code-guide) exit 0 ;; esac
+  case "$REPLY" in Explore|explore|Plan|claude-code-guide|cursor-guide) exit 0 ;; esac
   hit="Agent ${REPLY:-general-purpose}"; gatehit=1
 fi
 
@@ -174,20 +193,22 @@ hit="${hit:0:120}"; hit="${hit//[\"\\$'\n\r\t']/}"
 printf '{"kind":"rule-block","agent":"coordinator","tool":"%s","target":"%s"}\n' "$tool" "$hit" \
   >> "$sd/incidents.jsonl" 2>/dev/null
 
+nl=$'\n'
 if [ "$prot" = 1 ]; then
-  printf '%s\n' \
-    'Blocked: .superlite/orchestrator.json, .superlite/feature.json and .superlite/human-replies.jsonl are never written directly. Change the orchestrator state only with `sl orchestrator ...` (for example `sl orchestrator approve --review <path>`) and the prototype state only with `sl proto ...`; human-replies.jsonl is written only by the hook that records the human'"'"'s replies.' >&2
+  msg='Blocked: .superlite/orchestrator.json, .superlite/feature.json and .superlite/human-replies.jsonl are never written directly. Change the orchestrator state only with `sl orchestrator ...` (for example `sl orchestrator approve --review <path>`) and the prototype state only with `sl proto ...`; human-replies.jsonl is written only by the hook that records the human'"'"'s replies.'
 elif [ "$human" = 1 ]; then
-  printf '%s\n' \
-    'Human orchestrator: no build is orchestrated until the human approves the plan. Write the review plan docs/plans/<date>-<topic>.review.md (see skills/writing-plans/review-plan.md), show its path with a five-line summary, ask the human to reply approve, end your turn, then run sl orchestrator approve --review <path>. Small inline work without a plan needs only the human'"'"'s yes in chat.' >&2
+  msg='Human orchestrator: no build is orchestrated until the human approves the plan. Write the review plan docs/plans/<date>-<topic>.review.md (see skills/writing-plans/review-plan.md), show its path with a five-line summary, ask the human to reply approve, end your turn, then run sl orchestrator approve --review <path>. Small inline work without a plan needs only the human'"'"'s yes in chat.'
 elif [ "$tryout" = 1 ] && [ "$gatehit" = 1 ]; then
-  printf '%s\n' \
-    'Feature flow: the integration build waits for the human'"'"'s try-out of the prototype. Show how to try it (`sl proto tryout`), ask the human to reply "it works" or list changes, end your turn, then run `sl proto tryout --approve`. Changes go back to the prototype: `sl proto start --topic <topic>` reopens it for a fix round.' >&2
+  msg='Feature flow: the integration build waits for the human'"'"'s try-out of the prototype. Show how to try it (`sl proto tryout`), ask the human to reply "it works" or list changes, end your turn, then run `sl proto tryout --approve`. Changes go back to the prototype: `sl proto start --topic <topic>` reopens it for a fix round.'
 else
-  printf '%s\n' \
-    'Blocked: the superlite coordinator must not write project code. Dispatch it instead:' \
-    '- Fix: give a fixer a finding id F-<Tn>-<n> and the note path .superlite/fixes/<id>.md, tiered per skills/subagent-driven-development/fixing.md: known cause, one module -> fixer-sonnet; cross-module -> fixer-sonnet-high; unknown cause -> fixer-opus.' \
-    '- Wave 0 skeleton/stub/config files belong to an implementer-haiku task.' \
-    '- New code belongs to an implementer task. You may write only docs/plans/**, SPEC*.md, docs/**/*.md and .superlite/**.' >&2
+  msg='Blocked: the superlite coordinator must not write project code. Dispatch it instead:'"$nl"
+  msg+='- Fix: give a fixer a finding id F-<Tn>-<n> and the note path .superlite/fixes/<id>.md, tiered per skills/subagent-driven-development/fixing.md: known cause, one module -> fixer-sonnet; cross-module -> fixer-sonnet-high; unknown cause -> fixer-opus.'"$nl"
+  msg+='- Wave 0 skeleton/stub/config files belong to an implementer-haiku task.'"$nl"
+  msg+='- New code belongs to an implementer task. You may write only docs/plans/**, SPEC*.md, docs/**/*.md and .superlite/**.'
+fi
+printf '%s\n' "$msg" >&2
+if [ "$cursor" = 1 ]; then
+  m="${msg//\\/\\\\}"; m="${m//\"/\\\"}"; m="${m//$nl/\\n}"
+  printf '{"permission":"deny","user_message":"%s","agent_message":"%s"}\n' "$m" "$m"   # Cursor shows the agent user_message
 fi
 exit 2
