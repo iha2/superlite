@@ -8,3 +8,6 @@ dev = ["pytest"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/scripts"]
+markers = [
+    "live: one-turn agent instruction tests (not in testpaths; run: pytest tests/live -m live)",
+]

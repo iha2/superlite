@@ -3,8 +3,8 @@
   "version": 1,
   "default_tier": "sonnet",
   "tiers": {
-    "haiku": {"agent": "superlite:implementer-haiku", "prime": "mini", "max_tasks": 6, "max_context_k": 60, "max_idle_min": 50},
-    "sonnet": {"agent": "superlite:implementer", "prime": "slim", "max_tasks": 3, "max_context_k": 80, "max_idle_min": 50}
+    "haiku": {"agent": "superlite:implementer-haiku", "prime": "mini", "max_tasks": 20, "max_context_k": 60, "max_idle_min": 50},
+    "sonnet": {"agent": "superlite:implementer", "prime": "slim", "max_tasks": 20, "max_context_k": 80, "max_idle_min": 50}
   },
   "rules": [
     {"tier": "haiku", "when": {"mechanical": true, "critical_path": false}},
@@ -12,7 +12,6 @@
   ],
   "stats_gate": {"min_n": 8, "min_first_time_pass": 0.8},
   "lane": {"tier": "haiku"},
-  "batch": {"_comment": "dispatch groups ready tasks of one tier into one agent message: at most max_tasks, summed weight at most capacity. Weight by the heading's Complexity N: first band whose complexity_lte holds (no key = the rest). Unknown complexity counts as unknown_complexity. Critical-path tasks run alone when critical_path_solo. max_tasks 1 turns batching off.",
-            "max_tasks": 3, "capacity": 3, "unknown_complexity": 5, "critical_path_solo": true,
-            "weights": [{"complexity_lte": 3, "weight": 1}, {"complexity_lte": 5, "weight": 1.5}, {"weight": 3}]}
+  "batch": {"_comment": "dispatch uses split.choose (exact A*) for how many implementers and which ready tasks each holds. critical_path_solo keeps critical-path tasks alone. `sl dispatch --batch 1` forces one task per agent. Legacy max_tasks/capacity/weights are unused.",
+            "critical_path_solo": true}
 }

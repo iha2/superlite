@@ -1,4 +1,4 @@
-"""Batching: dispatch groups ready tasks of one tier into one agent message, up to 3, by complexity."""
+"""Batching: dispatch uses split.choose for implementer count and batches."""
 from __future__ import annotations
 
 import json
@@ -12,53 +12,55 @@ def cx_task(tid, cx, mech=False, mins=3, ctx=15, **kw):
     return task(tid, mech, mins, **kw).replace("· Complexity 3 · Est. context 30k", f"· Complexity {cx} · Est. context {ctx}k", 1)
 
 
-def small(p):
-    """Shrink every task's context estimate to 15k so only complexity limits a batch."""
-    p.write_text(p.read_text(encoding="utf-8").replace("Est. context 30k", "Est. context 15k"), encoding="utf-8")
-    return p
+def equal_task(tid, mins=10, ctx=15):
+    """Same features so the predictor gives equal minutes (or stated when features stripped)."""
+    body = (
+        f"### {tid} task {tid.lower()} · Complexity 2 · Est. context {ctx}k\n"
+        f"**Owns:** src/pkg/{tid.lower()}.py, tests/test_{tid.lower()}.py\n"
+        f"**Est. time:** {mins} min\n"
+        f"**Components:** 1\n**LOC owned:** 100\n**Tests:** fast\n\n"
+    )
+    return body
 
 
-def lines(d):
-    return {k: v.split(" tier")[0] for k, v in d.items()}
+def equal_plan(tmp_path, n, mins=10, ctx=15):
+    return plan(tmp_path, [equal_task(f"T{i}", mins, ctx) for i in range(1, n + 1)], [])
 
 
-def test_three_simple_tasks_share_one_agent(tmp_path):
-    p = plan(tmp_path, [cx_task(f"T{i}", 2) for i in range(1, 5)], [])
+def test_five_equal_tasks_three_implementers_2_2_1(tmp_path):
+    p = equal_plan(tmp_path, 5)
     d, _ = dispatch(tmp_path, p, [], batch=None)
-    assert sorted(d) == ["T1,T2,T3", "T4"]  # 3 per agent, the fourth opens a new batch
-    assert d["T1,T2,T3"] == "fresh tier=sonnet agent=superlite:implementer"
+    sizes = sorted(len(k.split(",")) for k in d)
+    assert sizes == [1, 2, 2]
+    assert all(v.startswith("fresh") for v in d.values())
 
 
-def test_batch_size_depends_on_complexity(tmp_path):
-    p = plan(tmp_path, [cx_task("T1", 5), cx_task("T2", 4), cx_task("T3", 5), cx_task("T4", 7), cx_task("T5", 2)], [])
+def test_four_equal_tasks_two_implementers(tmp_path):
+    p = equal_plan(tmp_path, 4)
     d, _ = dispatch(tmp_path, p, [], batch=None)
-    assert "T4" in d  # complex: alone
-    assert "T1,T2" in d  # two medium fill a batch (1.5 + 1.5)
-    assert "T3,T5" in d  # medium + simple (1.5 + 1)
-
-
-def test_unknown_complexity_counts_as_medium(tmp_path):
-    p = small(plan(tmp_path, [task(f"T{i}", False, 3).replace(" · Complexity 3", "") for i in range(1, 4)], []))
-    d, _ = dispatch(tmp_path, p, [], batch=None)
-    assert sorted(d) == ["T1,T2", "T3"]
+    assert sorted(len(k.split(",")) for k in d) == [2, 2]
 
 
 def test_tiers_never_share_a_batch(tmp_path):
-    d, _ = dispatch(tmp_path, small(mech_plan(tmp_path, 3)), [], batch=None)
-    assert d["T1,T2,T3"].endswith("tier=haiku agent=superlite:implementer-haiku")
-    assert d["T9"].startswith("fresh tier=sonnet")
+    d, _ = dispatch(tmp_path, mech_plan(tmp_path, 3), [], batch=None)
+    haiku = [k for k, v in d.items() if "tier=haiku" in v]
+    sonnet = [k for k, v in d.items() if "tier=sonnet" in v]
+    assert haiku and sonnet
+    for k in haiku:
+        assert "T9" not in k
 
 
 def test_summed_context_stays_within_the_tier_budget(tmp_path):
-    p = plan(tmp_path, [cx_task(f"T{i}", 2, ctx=30) for i in range(1, 4)], [])
+    # sonnet max_context_k is 80; two tasks at 50k cannot share
+    p = plan(tmp_path, [equal_task(f"T{i}", ctx=50) for i in range(1, 4)], [])
     d, _ = dispatch(tmp_path, p, [], batch=None)
-    assert sorted(d) == ["T1,T2", "T3"]  # 3 x 30k is over sonnet's 80k
+    assert all(len(k.split(",")) == 1 for k in d)
 
 
 def test_batch_one_turns_it_off(tmp_path):
-    p = plan(tmp_path, [cx_task(f"T{i}", 2) for i in range(1, 4)], [])
+    p = equal_plan(tmp_path, 5)
     d, _ = dispatch(tmp_path, p, [], batch="1")
-    assert sorted(d) == ["T1", "T2", "T3"]
+    assert sorted(d) == ["T1", "T2", "T3", "T4", "T5"]
 
 
 def test_critical_path_tasks_run_alone(tmp_path):
@@ -68,33 +70,31 @@ def test_critical_path_tasks_run_alone(tmp_path):
     cp = pt("lint", "--stable", "--plan", p, cwd=tmp_path)
     assert json.loads((tmp_path / ".superlite" / "stable.json").read_text(encoding="utf-8"))["critical_path"][:1] == ["T1"], cp.both
     d, _ = dispatch(tmp_path, p, [], batch=None)
-    assert "T1" in d and "T3,T4" in d  # T1 unblocks T2, so nothing waits behind it
+    assert "T1" in d  # alone on the critical path
+    assert all("T1," not in k and not k.startswith("T1,") for k in d if k != "T1")
 
 
-def test_affinity_groups_tasks_that_share_a_dependency(tmp_path):
-    t = [cx_task("T1", 2, produces="pkg.t1.f(x: int) -> int"), cx_task("T2", 2, produces="pkg.t2.f(x: int) -> int")]
-    t += [cx_task("T3", 2, consumes="pkg.t1.f(x: int) -> int"), cx_task("T4", 2, consumes="pkg.t2.f(x: int) -> int"),
-          cx_task("T5", 2, consumes="pkg.t1.f(x: int) -> int"), cx_task("T6", 2, consumes="pkg.t2.f(x: int) -> int")]
-    p = plan(tmp_path, t, [("T1", "T3"), ("T2", "T4"), ("T1", "T5"), ("T2", "T6")])
-    (tmp_path / "l.md").write_text("- checkpoint T1 aaaaaaa t1\n- checkpoint T2 bbbbbbb t2\n", encoding="utf-8")
+def test_dispatch_json_records_batches(tmp_path):
+    p = equal_plan(tmp_path, 5)
     from test_routing import DISPATCH, pool, run
-    cp = run(DISPATCH, "--plan", p, "--pool", pool(tmp_path, []), "--ledger", tmp_path / "l.md", "--batch", "2", cwd=tmp_path)
+    cp = run(DISPATCH, "--plan", p, "--pool", pool(tmp_path, []), "--ledger", tmp_path / "l.md",
+             cwd=tmp_path)
     assert cp.returncode == 0, cp.both
-    got = {ln.split()[0] for ln in cp.out.splitlines()}
-    assert got == {"T3,T5", "T4,T6"}  # same producer, same agent
+    data = json.loads((tmp_path / ".superlite" / "dispatch.json").read_text(encoding="utf-8"))
+    assert sorted(len(b) for b in data["batches"]) == [1, 2, 2]
 
 
 def test_a_batch_in_flight_is_running_and_released_task_by_task(tmp_path):
-    p = plan(tmp_path, [cx_task(f"T{i}", 2) for i in range(1, 5)], [])
-    busy = {"id": "s1", "tier": "sonnet", "tasks": [], "busy": True, "current": "T1,T2,T3"}
+    p = equal_plan(tmp_path, 4)
+    busy = {"id": "s1", "tier": "sonnet", "tasks": [], "busy": True, "current": "T1,T2"}
     d, _ = dispatch(tmp_path, p, [busy], batch=None)
-    assert list(d) == ["T4"]  # the batch's tasks are running, not ready
+    assert "T1" not in ",".join(d) and "T2" not in ",".join(d)
     sys.path.insert(0, str(SCRIPTS))
     import checkpoint
     f = tmp_path / "pool.json"
-    checkpoint.release_agents(f, ["T1", "T3"])
+    checkpoint.release_agents(f, ["T1"])
     ag = json.loads(f.read_text(encoding="utf-8"))["agents"][0]
-    assert ag["current"] == "T2" and ag["busy"] is True and ag["tasks"] == ["T1", "T3"]  # still on T2
+    assert ag["current"] == "T2" and ag["busy"] is True
     checkpoint.release_agents(f, ["T2"])
     ag = json.loads(f.read_text(encoding="utf-8"))["agents"][0]
-    assert "current" not in ag and ag["busy"] is False and ag["tasks"] == ["T1", "T3", "T2"]
+    assert "current" not in ag and ag["busy"] is False

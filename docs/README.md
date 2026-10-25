@@ -17,5 +17,5 @@ The README covers what superlite is, the results, and how to install and use it.
 | [Benchmark report](benchmark-report.md) | The full comparison table and observations |
 | [Current architecture](specs/2026-10-19-superlite-architecture-current.md) | The whole system on one page, with the model for each role and what is still being built |
 | [superlite vs superpowers](specs/2026-10-19-superlite-vs-superpowers.md) | Detailed comparison with diagrams and the benchmark numbers |
-| [Specs](specs/) | Design documents: architecture, flows, language adapters, the cost baseline, the coordinator-model decision |
-| [Plans](plans/) | Implementation plans, including the cost-parity and coordinator-health plans |
+| [Specs](specs/) | Design documents: architecture, flows, language adapters, the cost baseline, the coordinator-model decision, [implementer batch objective](specs/2026-10-25-implementer-batch-objective.md) |
+| [Plans](plans/) | Implementation plans, including implementer batches and the cost-parity and coordinator-health plans |

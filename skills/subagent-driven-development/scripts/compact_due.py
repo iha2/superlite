@@ -1,6 +1,6 @@
 """Session compact due check and host-neutral nudge text.
 
-    compact_due.is_due(sl_dir, now, window_s=2280) -> bool
+    compact_due.is_due(sl_dir, now, window_s=1800) -> bool
     compact_due.nudge_line() -> str
 
 Due when now - stamp >= window_s, where stamp is last-compact mtime if present,
@@ -15,7 +15,7 @@ from pathlib import Path  # O(1)
 
 __all__ = ["is_due", "nudge_line"]
 
-_DEFAULT_WINDOW_S = 2280.0  # ~38 min
+_DEFAULT_WINDOW_S = 1800.0  # 30 min
 
 
 def _launch_t(sl: Path) -> float:  # O(L)

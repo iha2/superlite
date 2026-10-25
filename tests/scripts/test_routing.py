@@ -156,11 +156,11 @@ def test_fresh_haiku_when_none_idle_eligible(tmp_path):
 
 
 def test_limits_retire_a_haiku_agent(tmp_path):
-    worn = {"id": "w", "tier": "haiku", "tasks": ["a", "b", "c", "d", "e", "f"]}  # max_tasks 6
+    worn = {"id": "w", "tier": "haiku", "tasks": [f"t{i}" for i in range(20)]}  # max_tasks 20
     big = {"id": "b", "tier": "haiku", "tasks": ["a"], "context_k": 59}  # + task context over max_context_k 60
     d, err = dispatch(tmp_path, mech_plan(tmp_path, 1), [worn, big])
     assert d["T1"].startswith("fresh tier=haiku")
-    assert "evict=w 6 tasks done" in err and "evict=b context over 60k" in err
+    assert "evict=w 20 tasks done" in err and "evict=b context over 60k" in err
 
 
 def test_choice_among_idle_haiku_agents_is_deterministic(tmp_path):

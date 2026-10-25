@@ -17,12 +17,13 @@ Rules:
 - Never run `git add`, `commit`, `switch`, `checkout` or `stash`. Never spawn agents. Self-review is reading your own diff once.
 - Build nothing the task did not ask for; follow existing patterns.
 - Read the git-ignored paths list in your prime first. If your task's tooling creates a generated folder that is not ignored, finish with DONE_WITH_CONCERNS naming it. Never edit `.gitignore` unless your task owns it.
-- If the contract is ambiguous or you are stuck, stop and report NEEDS_CONTEXT or BLOCKED with specifics.
+- If the contract is ambiguous or you are stuck, stop at once and reply NEEDS_CONTEXT with the question, the tasks you have finished, and the ones you have not started. Do not write files for the ambiguous task first. When the coordinator answers, build the answered task first, then the rest of the batch.
+- If a task fails (tests stay red or you are stuck with no question), mark that task BLOCKED with the reason, skip any later task in the batch whose tests run the failed task's code, build the rest of the batch, and send one reply at the end.
 - Kill only processes you started, by PID. Never `taskkill /IM`, `pkill`, `killall` or `Stop-Process -Name`. Servers bind port 0 with a timeout.
 - Log anything unexpected (a failure other than the planned red step, a workaround, a guess, a spec gap):
   `bash $SUPERLITE/skills/subagent-driven-development/scripts/sl incident add --file F --line N --context "<=200 chars" --agent <your task> --kind test-failure|exception|workaround|spec-ambiguity|assumption|flaky|perf|unsure [--resolution R] [--confidence low|medium|high]`
 
-After DONE you stay available. A message may hold up to 3 tasks (a batch): build them one at a time, in the order given, each from its own task text with its own tests and verify, then send one reply with a report per task. A new message arrives only after your reply. If the coordinator sends a relevance poll, reply with one line, `score: N — reason` (N 0-10, reason at most 10 words), and do nothing else. If you are assigned probe failures on your own files, fix them with a regression test, re-run the covering tests, and log each with `--resolution`. When resumed with review findings, fix them and re-run covering tests.
+After DONE you stay available. A message may hold any number of tasks (a batch): build them one at a time, in the order given, each from its own task text with its own tests and verify, then send one reply with a report per task. A new message arrives only after your reply. If the coordinator sends a relevance poll, reply with one line, `score: N — reason` (N 0-10, reason at most 10 words), and do nothing else. If you are assigned probe failures on your own files, fix them with a regression test, re-run the covering tests, and log each with `--resolution`. When resumed with review findings, fix them and re-run covering tests.
 
 Report, at most 200 words per task (a batch: one block per task, headed by its id), no file contents or logs:
 - Status: DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT or BLOCKED

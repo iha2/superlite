@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # PreToolUse hook (Edit, Write, NotebookEdit, Bash, PowerShell, Agent): guards the COORDINATOR, i.e.
-# the main session, whose calls carry no agent_id. Subagent calls always pass. Three rules, in order:
+# the main session, whose calls carry no agent_id. Subagent calls always pass. Four rules, in order:
 #  1. Protected files, in every state: .superlite/orchestrator.json (changed only by `sl orchestrator`),
 #     .superlite/feature.json (changed only by `sl proto`) and .superlite/human-replies.jsonl (written
 #     only by hooks/record-human-reply) are never written by the model.
@@ -14,6 +14,10 @@
 #  3. Active run (.superlite/stable.json, prime.md or pool.json exists): project code is not written
 #     by the coordinator; allowed targets are docs/plans/**, SPEC*.md, docs/**/*.md and .superlite/**
 #     except .superlite/sandboxes/** (the feature prototype's worktree is project code too).
+#  4. BATCH (active run + Agent/Task for an implementer): the prompt's assigned task ids must be
+#     exactly one batch from .superlite/dispatch.json (last `sl dispatch` print). Denial lists the
+#     printed batches. A shared-prime spawn that only asks for READY (task comes later) is not an
+#     assignment. An empty prompt (no task ids) is denied. T0 is a batch when dispatch printed it.
 # Bash/PowerShell write detection is best-effort; when unsure, allow. Sessions without a .superlite
 # directory are never touched. Bash builtins only (no external process is spawned: each spawn costs
 # ~250 ms on Windows), cheap exits first. Exit 2 blocks (message on stderr; Cursor also gets
@@ -88,11 +92,121 @@ gated=0; gatehit=0
 enforce=0
 [ "$active" = 1 ] && enforce=1   # human-unapproved alone blocks orchestration, not file writes
 
+batchhit=0
 if [ "$tool" = Agent ] || [ "$tool" = Task ]; then
-  [ "$gated" = 1 ] || exit 0
   jstr subagent_type
-  case "$REPLY" in Explore|explore|Plan|claude-code-guide|cursor-guide) exit 0 ;; esac
-  hit="Agent ${REPLY:-general-purpose}"; gatehit=1
+  st="$REPLY"
+  case "$st" in Explore|explore|Plan|claude-code-guide|cursor-guide) ;;
+  *)
+    if [ "$gated" = 1 ]; then
+      hit="Agent ${st:-general-purpose}"; gatehit=1
+    elif [ "$active" = 1 ]; then
+      jstr prompt; pr="$REPLY"
+      [ -n "$pr" ] || { jstr description; pr="$REPLY"; }
+      if [ -f "$sd/dispatch.json" ]; then
+        case "$st" in *implementer*|Implementer*|generalPurpose|general-purpose|"")
+          # Shared prime: list every stable task, then wait for READY. Not a batch assignment.
+          prime_only=0
+          case "$pr" in
+            *"Reply READY after reading this prime"*)
+              case "$pr" in
+                *[Yy]our\ batch*|*"your task text:"*|*"Build T"[0-9]*) ;;
+                *) prime_only=1 ;;
+              esac
+              ;;
+          esac
+          if [ "$prime_only" != 1 ]; then
+            ids=""
+            re_tid='T[0-9]+'
+            rest="$pr"
+            while [[ $rest =~ $re_tid ]]; do
+              tid="${BASH_REMATCH[0]}"
+              case " $ids " in *" $tid "*) ;; *) ids="$ids $tid" ;; esac
+              rest="${rest#*"$tid"}"
+            done
+            ids="${ids# }"
+            IFS= read -r -d '' dj < "$sd/dispatch.json" || true
+            ok=0
+            re_batch='\[[[:space:]]*"T[0-9]+"([[:space:]]*,[[:space:]]*"T[0-9]+")*[[:space:]]*\]'
+            rest="$dj"
+            printed=""
+            while [[ $rest =~ $re_batch ]]; do
+              b="${BASH_REMATCH[0]}"; rest="${rest#*"$b"}"
+              b_ids=""; b_rest="$b"
+              while [[ $b_rest =~ $re_tid ]]; do
+                t="${BASH_REMATCH[0]}"
+                case " $b_ids " in *" $t "*) ;; *) b_ids="$b_ids $t" ;; esac
+                b_rest="${b_rest#*"$t"}"
+              done
+              b_ids="${b_ids# }"
+              printed="${printed:+$printed; }$b_ids"
+              if [ -n "$ids" ]; then
+                same=1
+                for t in $ids; do case " $b_ids " in *" $t "*) ;; *) same=0; break ;; esac; done
+                if [ "$same" = 1 ]; then
+                  for t in $b_ids; do case " $ids " in *" $t "*) ;; *) same=0; break ;; esac; done
+                fi
+                if [ "$same" = 1 ]; then
+                  set -f; set -- $ids; n1=$#; set -- $b_ids; n2=$#; set +f
+                  [ "$n1" = "$n2" ] && ok=1
+                fi
+              fi
+            done
+            if [ "$ok" != 1 ]; then
+              hit="batch ${ids:-(empty)}"; batchhit=1
+              BATCH_PRINTED="${printed:-none}"
+            fi
+          fi
+          ;;
+        esac
+      fi
+      # Question guard: while a task waits for an answer, deny a fixer/new implementer for it.
+      if [ -z "$hit" ] && [ -f "$sd/questions.json" ]; then
+        IFS= read -r -d '' qj < "$sd/questions.json" || true
+        re_tid='T[0-9]+'
+        rest="$pr"
+        while [[ $rest =~ $re_tid ]]; do
+          tid="${BASH_REMATCH[0]}"; rest="${rest#*"$tid"}"
+          case "$qj" in *"\"$tid\""*)
+            case "$st" in *fixer*|*Fixer*|*implementer*|Implementer*|generalPurpose|general-purpose)
+              hit="question $tid"; qhit=1
+              break
+              ;;
+            esac
+            ;;
+          esac
+        done
+      fi
+      # Tier guard: BLOCKED task must go to a fixer at least the required tier.
+      if [ -z "$hit" ] && [ -f "$sd/blocked.json" ]; then
+        case "$st" in *fixer*|*Fixer*)
+          IFS= read -r -d '' bj < "$sd/blocked.json" || true
+          re_tid='T[0-9]+'
+          rest="$pr"
+          while [[ $rest =~ $re_tid ]]; do
+            tid="${BASH_REMATCH[0]}"; rest="${rest#*"$tid"}"
+            re_t="\"$tid\"[[:space:]]*:[[:space:]]*\\{[^}]*\"tier\"[[:space:]]*:[[:space:]]*\"([a-z]+)\""
+            if [[ $bj =~ $re_t ]]; then
+              need="${BASH_REMATCH[1]}"
+              rank() { case "$1" in haiku) echo 1;; sonnet) echo 2;; opus) echo 3;; *) echo 0;; esac; }
+              got=haiku
+              case "$st" in *opus*|*Opus*) got=opus;; *high*|*High*|*-sonnet-high*) got=sonnet;; *sonnet*|*Sonnet*) got=sonnet;; esac
+              if [ "$(rank "$got")" -lt "$(rank "$need")" ]; then
+                hit="tier $tid need=$need got=$got"; thit=1
+                NEED_TIER="$need"
+                break
+              fi
+            fi
+          done
+          ;;
+        esac
+      fi
+    fi
+    ;;
+  esac
+  qhit=${qhit:-0}; thit=${thit:-0}
+  [ -n "$hit" ] || [ "$gated" = 1 ] || [ "$batchhit" = 1 ] || [ "$qhit" = 1 ] || [ "$thit" = 1 ] || exit 0
+  [ -n "$hit" ] || exit 0
 fi
 
 norm "$proj"; projn="$NORM"; projl="${projn,,}"
@@ -200,6 +314,12 @@ elif [ "$human" = 1 ]; then
   msg='Human orchestrator: no build is orchestrated until the human approves the plan. Write the review plan docs/plans/<date>-<topic>.review.md (see skills/writing-plans/review-plan.md), show its path with a five-line summary, ask the human to reply approve, end your turn, then run sl orchestrator approve --review <path>. Small inline work without a plan needs only the human'"'"'s yes in chat.'
 elif [ "$tryout" = 1 ] && [ "$gatehit" = 1 ]; then
   msg='Feature flow: the integration build waits for the human'"'"'s try-out of the prototype. Show how to try it (`sl proto tryout`), ask the human to reply "it works" or list changes, end your turn, then run `sl proto tryout --approve`. Changes go back to the prototype: `sl proto start --topic <topic>` reopens it for a fix round.'
+elif [ "$batchhit" = 1 ]; then
+  msg="Blocked: implementer tasks must match one batch from the last sl dispatch. Printed batches: ${BATCH_PRINTED}. Launch exactly one of those batches, not ${hit#batch }."
+elif [ "${qhit:-0}" = 1 ]; then
+  msg="Blocked: answer the implementer that asked (task ${hit#question }). Do not launch a fixer or a new implementer while the question waits."
+elif [ "${thit:-0}" = 1 ]; then
+  msg="Blocked: BLOCKED task needs fixer tier ${NEED_TIER}. Launch the fixer one tier up, not ${hit}."
 else
   msg='Blocked: the superlite coordinator must not write project code. Dispatch it instead:'"$nl"
   msg+='- Fix: give a fixer a finding id F-<Tn>-<n> and the note path .superlite/fixes/<id>.md, tiered per skills/subagent-driven-development/fixing.md: known cause, one module -> fixer-sonnet; cross-module -> fixer-sonnet-high; unknown cause -> fixer-opus.'"$nl"

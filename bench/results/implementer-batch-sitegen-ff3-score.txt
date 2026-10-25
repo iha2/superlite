@@ -1,0 +1,559 @@
+{
+  "arm": "superlite",
+  "rep": "ff3",
+  "smoke": false,
+  "mode": "preapproved",
+  "wall_s": 1180.3,
+  "arm_wall_s": 1180.3,
+  "resumes": 0,
+  "decider_s": 0.0,
+  "decider_cost_usd": 0.0,
+  "cost_usd": 6.34,
+  "turns": 95,
+  "api_s": 1562.1,
+  "result_events": 15,
+  "completed_marker": true,
+  "last_subtype": "success",
+  "agent_dispatches": 15,
+  "dispatch_models": {
+    "(default)": 15
+  },
+  "coordinator_tool_calls": 81,
+  "sibling_first_call_hit_rate": 0.875,
+  "fork_dispatches": 0,
+  "reviewer_dispatches": 6,
+  "implementer_dispatches": 6,
+  "orchestrated": true,
+  "coordinator_calls": 75,
+  "coordinator_context_median": 132016,
+  "coordinator_context_max": 177473,
+  "max_concurrent_agents": 5,
+  "timeline": {
+    "plan_write_s": 73.0,
+    "first_implementer_s": 221.0,
+    "last_implementer_end_s": 539.9,
+    "last_build_end_s": 539.9,
+    "final_review_start_s": 680.8,
+    "final_review_end_s": 696.6,
+    "last_event_s": 1170.3
+  },
+  "queued_assignments": 0,
+  "agent_reuse_idle": 4,
+  "relevance_polls": 0,
+  "relevance_poll_s": null,
+  "reuse_limit_breaches": 0,
+  "idle_gaps_s": 184.5,
+  "critical_path_s": 636.7,
+  "critical_path_actual": 636.7,
+  "critical_path_predicted": null,
+  "tail_after_build_s": 630.5,
+  "last_build_end_s": 539.9,
+  "incidents": {
+    "count": 18,
+    "by_kind": {
+      "rule-block": 5,
+      "exception": 12,
+      "test-failure": 1
+    }
+  },
+  "graphify_used": false,
+  "final_review_s": 19.0,
+  "final_fix_s": 57.3,
+  "longest_task_s": 101.5,
+  "est_time_error": 0.623,
+  "predicted_total_s": null,
+  "actual_total_s": 1180.3,
+  "seam_checks": null,
+  "seam_mismatches": null,
+  "reviews_per_task": 0.8,
+  "reviews_batched": 0,
+  "review_cost_usd": 0.226,
+  "prime_hash_mismatches": 5,
+  "coordinator_turns": 75,
+  "coordinator_report_lag_s": 3.3,
+  "coordinator_report_lag_max_s": 9.3,
+  "unsafe_kill_commands": 0,
+  "tasks": [
+    {
+      "task": "T1",
+      "components": 1,
+      "loc": 60,
+      "tests": "fast",
+      "kind": "mechanical",
+      "model": "haiku",
+      "actual_s": 76.1,
+      "model_plan": "haiku",
+      "agent": "aeaac75192e6b5bb4",
+      "agent_model_used": "haiku",
+      "tier_planned": "haiku",
+      "tier_source": "rules",
+      "agent_type": "implementer-haiku",
+      "pool_violation": false,
+      "group": "implementer-haiku:haiku",
+      "dispatches": 2,
+      "start_s": 218.3,
+      "end_s": 297.2,
+      "duration_s": 44.1,
+      "tokens": {
+        "in": 24,
+        "out": 2039,
+        "cache_read": 119682,
+        "cache_write": 19474,
+        "cache_write_5m": 19474,
+        "cache_write_1h": 0
+      },
+      "cost_usd": 0.004653,
+      "tool_calls": 11,
+      "output_tokens_estimated": true,
+      "status": "DONE",
+      "status_reason": null,
+      "complete": true,
+      "rework_dispatches": 0,
+      "kind_miss_incidents": 0,
+      "fix_notes": 0,
+      "rework_s": 0,
+      "rework_cost": 0,
+      "first_time_pass": true,
+      "done_s": 297.2,
+      "start_lag_s": null,
+      "slack_s": 242.7,
+      "on_critical_path": false,
+      "haiku_on_critical_path": false
+    },
+    {
+      "task": "T2",
+      "components": 1,
+      "loc": 110,
+      "tests": "fast",
+      "kind": "mechanical",
+      "model": "haiku",
+      "actual_s": 191.6,
+      "model_plan": "haiku",
+      "agent": "aef4870e279ad9b72",
+      "agent_model_used": "haiku",
+      "tier_planned": "haiku",
+      "tier_source": "kind",
+      "agent_type": "implementer-haiku",
+      "pool_violation": false,
+      "group": "implementer-haiku:haiku",
+      "dispatches": 4,
+      "start_s": 218.3,
+      "end_s": 412.6,
+      "duration_s": 94.9,
+      "tokens": {
+        "in": 48,
+        "out": 4140,
+        "cache_read": 365082,
+        "cache_write": 30001,
+        "cache_write_5m": 30001,
+        "cache_write_1h": 0
+      },
+      "cost_usd": 0.009476,
+      "tool_calls": 21,
+      "output_tokens_estimated": true,
+      "status": null,
+      "status_reason": null,
+      "complete": true,
+      "rework_dispatches": 0,
+      "kind_miss_incidents": 0,
+      "fix_notes": 0,
+      "rework_s": 0,
+      "rework_cost": 0,
+      "first_time_pass": null,
+      "done_s": 412.6,
+      "start_lag_s": null,
+      "slack_s": 127.3,
+      "on_critical_path": false,
+      "haiku_on_critical_path": false
+    },
+    {
+      "task": "T3",
+      "components": 1,
+      "loc": 220,
+      "tests": "fast",
+      "kind": "design",
+      "model": "sonnet",
+      "actual_s": 82.6,
+      "model_plan": "sonnet",
+      "agent": "af2cda46abe3ab729",
+      "agent_model_used": "sonnet",
+      "tier_planned": "sonnet",
+      "tier_source": "kind",
+      "agent_type": "implementer",
+      "pool_violation": false,
+      "group": "implementer:sonnet",
+      "dispatches": 2,
+      "start_s": 291.6,
+      "end_s": 376.8,
+      "duration_s": 65.1,
+      "tokens": {
+        "in": 30,
+        "out": 3197,
+        "cache_read": 209908,
+        "cache_write": 17435,
+        "cache_write_5m": 17435,
+        "cache_write_1h": 0
+      },
+      "cost_usd": 0.096608,
+      "tool_calls": 13,
+      "output_tokens_estimated": true,
+      "status": null,
+      "status_reason": null,
+      "complete": true,
+      "rework_dispatches": 0,
+      "kind_miss_incidents": 0,
+      "fix_notes": 0,
+      "rework_s": 0,
+      "rework_cost": 0,
+      "first_time_pass": null,
+      "done_s": 376.8,
+      "start_lag_s": null,
+      "slack_s": 163.1,
+      "on_critical_path": false,
+      "haiku_on_critical_path": false
+    },
+    {
+      "task": "T4",
+      "components": 2,
+      "loc": 260,
+      "tests": "fast",
+      "kind": "design",
+      "model": "sonnet",
+      "actual_s": 186.6,
+      "model_plan": "sonnet",
+      "agent": "a551a08f19c7fabe4",
+      "agent_model_used": "sonnet",
+      "tier_planned": "sonnet",
+      "tier_source": "kind",
+      "agent_type": "implementer",
+      "pool_violation": false,
+      "group": "implementer:sonnet",
+      "dispatches": 3,
+      "start_s": 218.3,
+      "end_s": 408.0,
+      "duration_s": 139.0,
+      "tokens": {
+        "in": 26,
+        "out": 10757,
+        "cache_read": 185558,
+        "cache_write": 33388,
+        "cache_write_5m": 33388,
+        "cache_write_1h": 0
+      },
+      "cost_usd": 0.209648,
+      "tool_calls": 11,
+      "output_tokens_estimated": true,
+      "status": null,
+      "status_reason": null,
+      "complete": true,
+      "rework_dispatches": 0,
+      "kind_miss_incidents": 0,
+      "fix_notes": 0,
+      "rework_s": 0,
+      "rework_cost": 0,
+      "first_time_pass": null,
+      "done_s": 408.0,
+      "start_lag_s": null,
+      "slack_s": 131.9,
+      "on_critical_path": false,
+      "haiku_on_critical_path": false
+    },
+    {
+      "task": "T5",
+      "components": 2,
+      "loc": 300,
+      "tests": "fast",
+      "kind": "design",
+      "model": "sonnet",
+      "actual_s": 246.3,
+      "model_plan": "sonnet",
+      "agent": "a42641eaee8cc26a5",
+      "agent_model_used": "sonnet",
+      "tier_planned": "sonnet",
+      "tier_source": "kind",
+      "agent_type": "implementer",
+      "pool_violation": false,
+      "group": "implementer:sonnet",
+      "dispatches": 3,
+      "start_s": 291.6,
+      "end_s": 539.9,
+      "duration_s": 208.7,
+      "tokens": {
+        "in": 40,
+        "out": 21372,
+        "cache_read": 517311,
+        "cache_write": 45396,
+        "cache_write_5m": 45396,
+        "cache_write_1h": 0
+      },
+      "cost_usd": 0.379021,
+      "tool_calls": 18,
+      "output_tokens_estimated": true,
+      "status": null,
+      "status_reason": null,
+      "complete": true,
+      "rework_dispatches": 0,
+      "kind_miss_incidents": 0,
+      "fix_notes": 0,
+      "rework_s": 0,
+      "rework_cost": 0,
+      "first_time_pass": null,
+      "done_s": 539.9,
+      "start_lag_s": null,
+      "slack_s": 0.0,
+      "on_critical_path": true,
+      "haiku_on_critical_path": false
+    }
+  ],
+  "src_loc": 703,
+  "commits": 9,
+  "own_tests_summary": "259 passed in 0.95s",
+  "hidden_passed": 56,
+  "hidden_total": 56,
+  "hidden_by_file": {
+    "test_frontmatter": "9/9",
+    "test_markdown": "16/16",
+    "test_search": "9/9",
+    "test_slug": "5/5",
+    "test_templates": "17/17"
+  },
+  "mechanical": {
+    "plan_tasks": 5,
+    "plan_mechanical": 2,
+    "tasks_built": 5,
+    "by_kind": {
+      "mechanical": {
+        "tasks": 2,
+        "loc": 170,
+        "task_share": 0.4,
+        "loc_share": 0.179
+      },
+      "design": {
+        "tasks": 3,
+        "loc": 780,
+        "task_share": 0.6,
+        "loc_share": 0.821
+      }
+    },
+    "by_model": {
+      "haiku": {
+        "tasks": 2,
+        "loc": 170,
+        "task_share": 0.4,
+        "loc_share": 0.179
+      },
+      "sonnet": {
+        "tasks": 3,
+        "loc": 780,
+        "task_share": 0.6,
+        "loc_share": 0.821
+      }
+    },
+    "by_group": {
+      "implementer-haiku:haiku": {
+        "tasks": 2,
+        "loc": 170,
+        "task_share": 0.4,
+        "loc_share": 0.179
+      },
+      "implementer:sonnet": {
+        "tasks": 3,
+        "loc": 780,
+        "task_share": 0.6,
+        "loc_share": 0.821
+      }
+    },
+    "baseline": "sonnet",
+    "selector": "kind=mechanical",
+    "mechanical_by_model": {
+      "haiku": {
+        "tasks": 2,
+        "time_s": 139.0,
+        "cost_usd": 0.0142
+      }
+    },
+    "groups": {
+      "implementer-haiku:haiku": {
+        "tasks": 2,
+        "loc": 170,
+        "observed": 1,
+        "first_time_pass": 1,
+        "first_time_pass_rate": 1.0,
+        "incomplete": [],
+        "rework_s": 0,
+        "rework_cost_usd": 0,
+        "needs_context_or_blocked": 0,
+        "stuck_reasons": {},
+        "tool_calls_per_task": 16.0,
+        "time_s": 139.0,
+        "cost_usd": 0.0141,
+        "on_critical_path": 0,
+        "slack_s_mean": 185.0
+      },
+      "implementer:sonnet": {
+        "tasks": 3,
+        "loc": 780,
+        "observed": 0,
+        "first_time_pass": 0,
+        "first_time_pass_rate": null,
+        "incomplete": [],
+        "rework_s": 0,
+        "rework_cost_usd": 0,
+        "needs_context_or_blocked": 0,
+        "stuck_reasons": {},
+        "tool_calls_per_task": 14.0,
+        "time_s": 412.8,
+        "cost_usd": 0.6853,
+        "on_critical_path": 1,
+        "slack_s_mean": 98.3
+      }
+    },
+    "haiku": {
+      "tasks": 2,
+      "loc": 170,
+      "observed": 1,
+      "first_time_pass": 1,
+      "first_time_pass_rate": 1.0,
+      "incomplete": [],
+      "rework_s": 0,
+      "rework_cost_usd": 0,
+      "needs_context_or_blocked": 0,
+      "stuck_reasons": {},
+      "tool_calls_per_task": 16.0,
+      "time_s": 139.0,
+      "cost_usd": 0.0141,
+      "on_critical_path": 0,
+      "slack_s_mean": 185.0,
+      "sonnet_tool_calls_per_task": 14.0
+    },
+    "counterfactual": {
+      "LABEL": "COUNTERFACTUAL ESTIMATE, not measured: haiku tasks re-priced and re-timed as if run on sonnet. This re-prices tokens only: a different model also changes the number of steps and tokens.",
+      "baseline": "sonnet",
+      "subject_models": [
+        "haiku"
+      ],
+      "assumes": "same tokens; sonnet first-time pass (no rework); duration scaled by output tokens at models.json tps",
+      "tasks": [
+        {
+          "task": "T1",
+          "model": "haiku",
+          "actual_cost_usd": 0.0047,
+          "baseline_cost_usd": 0.0811,
+          "actual_s": 44.1,
+          "baseline_s": 56.0,
+          "haiku_cost_usd": 0.0047,
+          "sonnet_cost_usd": 0.0811,
+          "haiku_s": 44.1,
+          "sonnet_s": 56.0
+        },
+        {
+          "task": "T2",
+          "model": "haiku",
+          "actual_cost_usd": 0.0095,
+          "baseline_cost_usd": 0.153,
+          "actual_s": 94.9,
+          "baseline_s": 119.1,
+          "haiku_cost_usd": 0.0095,
+          "sonnet_cost_usd": 0.153,
+          "haiku_s": 94.9,
+          "sonnet_s": 119.1
+        }
+      ],
+      "baseline_minus_actual_cost_usd": 0.22,
+      "sonnet_minus_haiku_cost_usd": 0.22,
+      "saves_cost_usd": 0.22,
+      "haiku_saves_cost_usd": 0.22,
+      "sum_task_time_saved_s": 36.0,
+      "critical_path_saved_s": 0.0,
+      "off_critical_path_tasks": [
+        "T1",
+        "T2"
+      ]
+    },
+    "counterfactual_sonnet": {
+      "LABEL": "COUNTERFACTUAL ESTIMATE, not measured: haiku tasks re-priced and re-timed as if run on sonnet. This re-prices tokens only: a different model also changes the number of steps and tokens.",
+      "baseline": "sonnet",
+      "subject_models": [
+        "haiku"
+      ],
+      "assumes": "same tokens; sonnet first-time pass (no rework); duration scaled by output tokens at models.json tps",
+      "tasks": [
+        {
+          "task": "T1",
+          "model": "haiku",
+          "actual_cost_usd": 0.0047,
+          "baseline_cost_usd": 0.0811,
+          "actual_s": 44.1,
+          "baseline_s": 56.0,
+          "haiku_cost_usd": 0.0047,
+          "sonnet_cost_usd": 0.0811,
+          "haiku_s": 44.1,
+          "sonnet_s": 56.0
+        },
+        {
+          "task": "T2",
+          "model": "haiku",
+          "actual_cost_usd": 0.0095,
+          "baseline_cost_usd": 0.153,
+          "actual_s": 94.9,
+          "baseline_s": 119.1,
+          "haiku_cost_usd": 0.0095,
+          "sonnet_cost_usd": 0.153,
+          "haiku_s": 94.9,
+          "sonnet_s": 119.1
+        }
+      ],
+      "baseline_minus_actual_cost_usd": 0.22,
+      "sonnet_minus_haiku_cost_usd": 0.22,
+      "saves_cost_usd": 0.22,
+      "haiku_saves_cost_usd": 0.22,
+      "sum_task_time_saved_s": 36.0,
+      "critical_path_saved_s": 0.0,
+      "off_critical_path_tasks": [
+        "T1",
+        "T2"
+      ]
+    },
+    "other_haiku_dispatches": [
+      {
+        "description": "T0 Wave 0 skeleton",
+        "status": "DONE_WITH_CONCERNS",
+        "duration_s": 50.9,
+        "cost_usd": 0.004,
+        "tool_calls": 13
+      }
+    ],
+    "pool": {
+      "pool_violations": 0,
+      "violating_tasks": [],
+      "violations": [],
+      "haiku_on_critical_path": 0,
+      "haiku_on_critical_path_tasks": [],
+      "tier_sources": [
+        "kind",
+        "rules"
+      ],
+      "haiku_agents": 2,
+      "haiku_tasks_per_agent": {
+        "aeaac75192e6b5bb4": [
+          "T1"
+        ],
+        "aef4870e279ad9b72": [
+          "T2"
+        ]
+      },
+      "agent_tasks": {
+        "aeaac75192e6b5bb4": [
+          "T1"
+        ],
+        "aef4870e279ad9b72": [
+          "T2"
+        ]
+      },
+      "haiku_lane_reuse": 0,
+      "lane_reuse": 0,
+      "start_lag_s_by_model": {}
+    },
+    "baseline_tool_calls_per_task": 14.0
+  }
+}
