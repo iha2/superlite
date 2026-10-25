@@ -1,0 +1,11 @@
+{
+  "arm": "superlite",
+  "rep": "ff2",
+  "smoke": false,
+  "mode": "preapproved",
+  "wall_s": 691.6,
+  "arm_wall_s": 691.6,
+  "resumes": 0,
+  "decider_s": 0.0,
+  "decider_cost_usd": 0.0
+}

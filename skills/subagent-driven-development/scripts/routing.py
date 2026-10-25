@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # O(1)
 
 CONFIG = Path(__file__).resolve().parent.parent / "config" / "routing.json"  # O(1)
 FALLBACK = {"default_tier": "sonnet",  # built-in copy for a missing file | O(1)
-            "tiers": {"sonnet": {"agent": "superlite:implementer", "prime": "slim", "max_tasks": 3, "max_context_k": 80,
+            "tiers": {"sonnet": {"agent": "superlite:implementer", "prime": "slim", "max_tasks": 20, "max_context_k": 80,
                                  "max_idle_min": 50}},
             "rules": [{"tier": "sonnet", "when": {}}], "lane": {}}
 

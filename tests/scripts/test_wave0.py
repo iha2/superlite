@@ -113,6 +113,8 @@ def test_dispatch_lists_t0_first_until_committed(tmp_path):
     run(WAVE0, "--plan", p, cwd=tmp_path)
     cp = run(DISPATCH, "--plan", p, "--pool", tmp_path / "pool.json", "--ledger", tmp_path / "l.md", cwd=tmp_path)
     assert cp.out.splitlines()[0].startswith("T0 wave0 tier=haiku")
+    dj = json.loads((tmp_path / ".superlite" / "dispatch.json").read_text(encoding="utf-8"))
+    assert ["T0"] in dj["batches"]  # guard can match the wave0 line; T0 is not packed by choose
     (tmp_path / "pool.json").write_text(json.dumps({"agents": [{"id": "h", "tasks": ["T0"], "current": "T0", "busy": True}]}), encoding="utf-8")
     assert "T0" not in run(DISPATCH, "--plan", p, "--pool", tmp_path / "pool.json", "--ledger", tmp_path / "l.md", cwd=tmp_path).out
     (tmp_path / "pool.json").unlink()

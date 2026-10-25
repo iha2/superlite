@@ -431,9 +431,42 @@ def checkpoint_one(a, tid, info, own_files):  # O(m*o + py size) + git spawns (s
 commit_one = checkpoint_one  # old name, kept for one release | O(1)
 
 
+def _sl_state(plan, name):  # O(1)
+    try:  # O(1)
+        import plan_tools as pt  # O(1)
+        return pt.stable_root(plan) / ".superlite" / name  # O(1)
+    except Exception:  # noqa: BLE001 | O(1)
+        return Path(".superlite") / name  # O(1)
+
+
+def write_questions(plan, task, agent=""):  # O(1)
+    path = _sl_state(plan, "questions.json")  # O(1)
+    path.parent.mkdir(parents=True, exist_ok=True)  # O(1)
+    data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"waiting": {}}  # O(file)
+    data.setdefault("waiting", {})[task] = {"agent": agent}  # O(1)
+    path.write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")  # O(1)
+
+
+def clear_question(plan, task):  # O(1)
+    path = _sl_state(plan, "questions.json")  # O(1)
+    if not path.exists():  # O(1)
+        return  # O(1)
+    data = json.loads(path.read_text(encoding="utf-8"))  # O(file)
+    data.get("waiting", {}).pop(task, None)  # O(1)
+    path.write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")  # O(1)
+
+
+def write_blocked(plan, task, tier):  # O(1)
+    path = _sl_state(plan, "blocked.json")  # O(1)
+    path.parent.mkdir(parents=True, exist_ok=True)  # O(1)
+    data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"blocked": {}}  # O(file)
+    data.setdefault("blocked", {})[task] = {"tier": tier}  # O(1)
+    path.write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")  # O(1)
+
+
 def main(argv=None):  # O(L + t*(m*o)) + git spawns per task; one process for all tasks
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])  # O(1)
-    ap.add_argument("task", nargs="+", help="one or more task ids, checkpointed in order")  # O(1)
+    ap.add_argument("task", nargs="*", help="one or more task ids, checkpointed in order")  # O(1)
     ap.add_argument("--plan", default=nt.DEFAULT_PLAN)  # O(1)
     ap.add_argument("--ledger", default=DEFAULT_LEDGER)  # O(1)
     ap.add_argument("--log", default=DEFAULT_LOG)  # O(1)
@@ -445,7 +478,32 @@ def main(argv=None):  # O(L + t*(m*o)) + git spawns per task; one process for al
     ap.add_argument("--running", help="running tasks for --dispatch (default: from the pool)")  # O(1)
     ap.add_argument("--cap", type=int, default=10, help="cap for --dispatch")  # O(1)
     ap.add_argument("--batch", type=int, help="most tasks per agent message for --dispatch (default: config; 1 = off)")  # O(1)
+    ap.add_argument("--question", metavar="T", help="record that task T waits for a NEEDS_CONTEXT answer")  # O(1)
+    ap.add_argument("--answered", metavar="T", help="clear the question wait for task T")  # O(1)
+    ap.add_argument("--blocked", metavar="T", help="record that task T is BLOCKED")  # O(1)
+    ap.add_argument("--tier", help="required fixer tier for --blocked (haiku|sonnet|opus)")  # O(1)
+    ap.add_argument("--agent", default="", help="implementer id for --question")  # O(1)
     a = ap.parse_args(argv)  # O(1)
+
+    if a.question:  # O(1)
+        write_questions(a.plan, a.question, a.agent)  # O(1)
+        print(f"question {a.question}")  # O(1)
+        if not a.task:  # O(1)
+            return 0  # O(1)
+    if a.answered:  # O(1)
+        clear_question(a.plan, a.answered)  # O(1)
+        print(f"answered {a.answered}")  # O(1)
+        if not a.task:  # O(1)
+            return 0  # O(1)
+    if a.blocked:  # O(1)
+        if not a.tier:  # O(1)
+            nt.die("--blocked needs --tier")  # O(1)
+        write_blocked(a.plan, a.blocked, a.tier)  # O(1)
+        print(f"blocked {a.blocked} tier={a.tier}")  # O(1)
+        if not a.task:  # O(1)
+            return 0  # O(1)
+    if not a.task:  # O(1)
+        nt.die("checkpoint needs a task id (or --question/--answered/--blocked)")  # O(1)
 
     info = nt.parse_plan(a.plan)  # O(L) parse plan, once for every task
     if "T0" not in info:  # a Wave 0 task synthesized by `wave0` | O(1)

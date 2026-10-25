@@ -148,6 +148,80 @@ def test_hook_has_lf_endings():
     assert b"\r" not in HOOK.read_bytes()
 
 
+def test_batch_guard_denies_mismatched_implementer(proj):
+    (proj / ".superlite" / "dispatch.json").write_text(
+        json.dumps({"batches": [["T1", "T2"], ["T3"]], "lines": ["T1,T2 fresh", "T3 fresh"]}),
+        encoding="utf-8",
+    )
+    r = run(proj, "Task", {"subagent_type": "implementer", "prompt": "Build T1,T2,T3 now"})
+    assert r.returncode == 2
+    assert "Printed batches" in r.stderr
+    assert "T1 T2" in r.stderr or "T1,T2" in r.stderr.replace(",", " ")
+
+
+def test_batch_guard_allows_exact_batch(proj):
+    (proj / ".superlite" / "dispatch.json").write_text(
+        json.dumps({"batches": [["T1", "T2"], ["T3"]]}),
+        encoding="utf-8",
+    )
+    r = run(proj, "Task", {"subagent_type": "implementer", "prompt": "Your batch: T2 and T1 in order"})
+    assert r.returncode == 0, r.stderr
+
+
+def test_batch_guard_allows_prime_listing_all_tasks(proj):
+    """Fresh spawn pastes the shared prime (lists every stable task) and waits for READY."""
+    (proj / ".superlite" / "dispatch.json").write_text(
+        json.dumps({"batches": [["T1", "T2"], ["T3"], ["T4", "T5"]]}),
+        encoding="utf-8",
+    )
+    prime = (
+        "# superlite prime (slim)\n"
+        "### T1 Title\n### T2 Title\n### T3 Title\n### T4 Title\n### T5 Title\n"
+        "Reply READY after reading this prime, then wait for your task.\n"
+    )
+    r = run(proj, "Task", {"subagent_type": "implementer", "prompt": prime})
+    assert r.returncode == 0, r.stderr
+
+
+def test_batch_guard_denies_empty_implementer(proj):
+    (proj / ".superlite" / "dispatch.json").write_text(
+        json.dumps({"batches": [["T1", "T2"], ["T3"]]}),
+        encoding="utf-8",
+    )
+    r = run(proj, "Task", {"subagent_type": "implementer", "prompt": "Go implement whatever is ready"})
+    assert r.returncode == 2
+    assert "Printed batches" in r.stderr
+
+
+def test_batch_guard_allows_t0_wave0_line(proj):
+    (proj / ".superlite" / "dispatch.json").write_text(
+        json.dumps({"batches": [["T0"], ["T1", "T2"]], "lines": ["T0 wave0", "T1,T2 fresh"]}),
+        encoding="utf-8",
+    )
+    r = run(proj, "Task", {"subagent_type": "implementer-haiku", "prompt": "Wave 0 brief for T0 only"})
+    assert r.returncode == 0, r.stderr
+
+
+def test_question_guard_denies_fixer_while_waiting(proj):
+    (proj / ".superlite" / "questions.json").write_text(
+        json.dumps({"waiting": {"T2": {"agent": "a1"}}}),
+        encoding="utf-8",
+    )
+    r = run(proj, "Task", {"subagent_type": "fixer-sonnet", "prompt": "Fix T2 which is blocked"})
+    assert r.returncode == 2
+    assert "answer the implementer" in r.stderr.lower()
+
+
+def test_tier_guard_denies_low_fixer(proj):
+    (proj / ".superlite" / "blocked.json").write_text(
+        json.dumps({"blocked": {"T2": {"tier": "opus"}}}),
+        encoding="utf-8",
+    )
+    r = run(proj, "Task", {"subagent_type": "fixer-sonnet", "prompt": "Fix BLOCKED T2"})
+    assert r.returncode == 2
+    assert "opus" in r.stderr.lower()
+
+
 def test_typical_allowed_call_is_fast(proj):
     import time
 
