@@ -206,10 +206,14 @@ def test_schedule_critical_path(tmp_path):
     assert rep["critical_path_min"] == pytest.approx(5.0)
     assert rep["peak_width"] == 2
     assert rep["build_min"] == pytest.approx(5.0)
-    assert rep["total_min"] == pytest.approx(8.5)
-    text = pt("schedule", "--plan", p, "--target-min", 11).out
-    assert text.splitlines()[0] == ("critical path: T1 → T7 (5.0 min) · peak width 2 · predicted build 5.0 min "
-                                    "· predicted total ≈ 8.5 min (target ✓)")
+    assert rep["pre_build_min"] == pytest.approx(5.0)
+    assert rep["build_scale"] == pytest.approx(0.75)
+    assert rep["post_build_min"] == pytest.approx(10.0)
+    assert rep["total_min"] == pytest.approx(5.0 + 0.75 * 5.0 + 10.0)
+    text = pt("schedule", "--plan", p, "--target-min", 30).out
+    assert "predicted build 5.0 min" in text.splitlines()[0]
+    assert "predicted total ≈ 18.8 min" in text.splitlines()[0]
+    assert "(target ✓)" in text.splitlines()[0]
 
 
 def test_schedule_respects_cap_and_longest_first(tmp_path):
@@ -235,7 +239,7 @@ def test_schedule_waits_for_dependencies(tmp_path):
 def test_schedule_insert_replaces_previous(tmp_path):
     p = make_plan(tmp_path, [{"id": "T1", "time": 3}, {"id": "T2", "time": 2}], [("T1", "T2")])
     for _ in range(2):
-        cp = pt("schedule", "--plan", p, "--insert", "--target-min", 11)
+        cp = pt("schedule", "--plan", p, "--insert", "--target-min", 30)
         assert cp.returncode == 0, cp.both
     text = p.read_text(encoding="utf-8")
     assert text.count("%% schedule") == 1
@@ -253,15 +257,16 @@ def test_schedule_insert_replaces_previous(tmp_path):
 def test_schedule_target_from_header_and_flag_override(tmp_path):
     p = make_plan(tmp_path, [{"id": "T1", "time": 3}], header="**Target:** 4 min")
     assert sched(p)["target_min"] == 4.0
-    assert sched(p)["target_met"] is False  # 3.0 + 3.5 tail
-    assert sched(p, "--target-min", 7)["target_met"] is True
+    assert sched(p)["target_met"] is False  # setup + scaled build + wrap-up >> 4
+    assert sched(p, "--target-min", 30)["target_met"] is True
 
 
 def test_schedule_uses_predictor_without_stated_time(tmp_path):
     p = make_plan(tmp_path, [{"id": "T1", "features": "components=1 · loc=120 · tests=slow · model=sonnet"}])
     rep = sched(p)
     assert rep["tasks"]["T1"]["source"] == "features"
-    assert 2.3 <= rep["tasks"]["T1"]["min"] <= 2.7
+    # shipped check value 2.354 * time.scale 0.9
+    assert 2.0 <= rep["tasks"]["T1"]["min"] <= 2.3
 
 
 # ----------------------------------------------------------------- lint
@@ -283,7 +288,7 @@ def test_lint_warns_when_predicted_misses_target(tmp_path):
     p = chain_plan(tmp_path)
     cp = pt("lint", "--plan", p, "--target-min", 11)
     assert cp.returncode == 0, cp.both
-    assert ("MISSED TARGET: predicted 14.0 min vs target 11.0 min — critical path "
+    assert ("MISSED TARGET: predicted 22.9 min vs target 11.0 min — critical path "
             "T1 → T5 → T6 → T9") in cp.out
     assert "lint: ok" in cp.out
 
@@ -389,9 +394,9 @@ def test_predict_anchors_match_e2(tmp_path):
         {"id": "T4", "features": "components=1 · loc=150 · tests=fast"},
     ]
     data = predict_json("--plan", make_plan(tmp_path, tasks))["tasks"]
-    assert data["T1"]["est_time_min"] == pytest.approx(2.5, abs=0.15)
+    assert data["T1"]["est_time_min"] == pytest.approx(2.12, abs=0.15)  # 2.354 * scale 0.9
     for tid in ("T2", "T3", "T4"):
-        assert 1.6 <= data[tid]["est_time_min"] <= 2.3, (tid, data[tid])
+        assert 1.4 <= data[tid]["est_time_min"] <= 1.8, (tid, data[tid])
     assert data["T1"]["est_time_min"] > data["T3"]["est_time_min"]
 
 
@@ -399,7 +404,7 @@ def test_predict_reads_features_from_est_time_parenthetical():
     data = predict_json("--plan", FIXTURES / "minisheet.md")["tasks"]
     assert data["T7"]["features"] == {"components": 1, "loc": 120, "tests": "slow"}
     assert data["T7"]["stated_time_min"] == 2.5
-    assert data["T7"]["est_time_min"] == pytest.approx(2.5, abs=0.15)
+    assert data["T7"]["est_time_min"] == pytest.approx(2.12, abs=0.15)
     assert data["T7"]["est_context_k"] > 18
 
 
@@ -498,12 +503,13 @@ def test_predict_refit_needs_data(tmp_path):
 def test_schedule_target_accepts_both_header_forms(tmp_path):
     p1 = make_plan(tmp_path, [{"id": "T1", "time": 3}], header="**Target-min:** 4", name="a.md")
     p2 = make_plan(tmp_path, [{"id": "T1", "time": 3}], header="**Target:** 4 min", name="b.md")
-    p3 = make_plan(tmp_path, [{"id": "T1", "time": 3}], header="**Target-min:** 11", name="c.md")
+    p3 = make_plan(tmp_path, [{"id": "T1", "time": 3}], header="**Target-min:** 30", name="c.md")
     assert sched(p1)["target_min"] == 4.0 and sched(p1)["target_met"] is False
     assert sched(p2)["target_min"] == 4.0
     assert sched(p3)["target_met"] is True
     cp = pt("lint", "--plan", p1)
-    assert cp.returncode == 0 and "MISSED TARGET: predicted 6.5 min vs target 4.0 min" in cp.out
+    # 5 + 0.75*3 + 10 = 17.25
+    assert cp.returncode == 0 and "MISSED TARGET: predicted 17.2 min vs target 4.0 min" in cp.out
 
 
 SKILL_FIELDS = {"components": 1, "loc": 120, "tests": "slow", "model": "sonnet"}
@@ -531,7 +537,7 @@ def test_predictor_wins_over_stated_time_when_features_present(tmp_path):
     p = make_plan(tmp_path, [dict(id="T1", time=9, **SKILL_FIELDS), {"id": "T2", "time": 1.5}], [("T1", "T2")])
     rep = sched(p)
     assert rep["tasks"]["T1"]["source"] == "features"
-    assert rep["tasks"]["T1"]["min"] == pytest.approx(2.5, abs=0.15)  # not the stated 9
+    assert rep["tasks"]["T1"]["min"] == pytest.approx(2.12, abs=0.15)  # not the stated 9
     assert rep["tasks"]["T2"]["source"] == "stated" and rep["tasks"]["T2"]["min"] == 1.5  # no features: stated
     forced = sched(p, "--stated")
     assert forced["tasks"]["T1"]["min"] == 9 and forced["tasks"]["T1"]["source"] == "stated"

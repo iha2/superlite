@@ -1,0 +1,15 @@
+{
+  "_comment": "Actuals from sitegen-core-superlite-p2 try-out. Implementer walls from metrics launch/stop; wall from bench result.",
+  "wall_min": 9.68,
+  "api_min": 16.075,
+  "old_pred_total_min": 7.134,
+  "tasks": [
+    {"task": "T0", "pred_min": 2.70, "implementer_min": 4.11, "kind": "wave0"},
+    {"task": "T3", "pred_min": 3.61, "implementer_min": 2.06, "kind": "implementer"},
+    {"task": "T4", "pred_min": 2.71, "implementer_min": 1.22, "kind": "implementer"},
+    {"task": "T5", "pred_min": 2.74, "implementer_min": 1.27, "kind": "implementer"}
+  ],
+  "batches": [
+    {"tasks": ["T2", "T1"], "implementer_min": 2.09, "pred_sum_min": 6.49}
+  ]
+}

@@ -2,7 +2,7 @@
 **Goal:** a small spreadsheet engine with a JSON server.
 **Architecture:** parser and evaluator feed a workbook; the server wraps the workbook.
 **Tech stack:** Python 3.12, pytest.
-**Target:** 11 min
+**Target:** 25 min
 
 ## Main diagram
 

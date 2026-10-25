@@ -125,9 +125,10 @@ def speed_scale(model: str, models: dict, coef: dict) -> float:  # O(1)
 
 def time_from(feats: dict, model: str, models: dict, coef: dict) -> float:  # O(1)
     t = coef["time"]  # O(1)
-    return (t["base_min"] + t["per_component_min"] * feats["components"]  # O(1)
-            + (t["slow_tests_min"] if feats["tests"] == "slow" else 0.0)  # O(1)
-            + t["per_loc_min"] * feats["loc"] * speed_scale(model, models, coef))  # O(1)
+    raw = (t["base_min"] + t["per_component_min"] * feats["components"]  # O(1)
+           + (t["slow_tests_min"] if feats["tests"] == "slow" else 0.0)  # O(1)
+           + t["per_loc_min"] * feats["loc"] * speed_scale(model, models, coef))  # O(1)
+    return raw * float(t.get("scale", 1.0))  # O(1) mild global nudge from measured runs
 
 
 def context_from(task, feats: dict, coef: dict) -> int:  # O(1)
@@ -332,7 +333,8 @@ def refit(obs: list[dict], models: dict, coef: dict, ridge: float = 0.25) -> tup
     sol = [max(0.0, v) for v in sol]  # O(1)
     new = json.loads(json.dumps(coef))  # O(size of coef) JSON round trip
     new["time"] = {"base_min": round(sol[0], 4), "per_component_min": round(sol[1], 4),  # O(1)
-                   "per_loc_min": round(sol[2] / 100, 6), "slow_tests_min": round(sol[3], 4)}  # O(1)
+                   "per_loc_min": round(sol[2] / 100, 6), "slow_tests_min": round(sol[3], 4),  # O(1)
+                   "scale": 1.0}  # refit absorbs scale into the coefficients | O(1)
     new["size_band"] = refit_band(obs, coef)  # O(N log N)
     before = mean_abs_error(obs, models, coef)  # O(N*M)
     after = mean_abs_error(obs, models, new)  # O(N*M)

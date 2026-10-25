@@ -1,5 +1,5 @@
 {
-  "_comment": "Starting priors for predict.py. Refit with: predict.py --refit bench/results/*.json. Anchors: 1 component, ~120 LOC, slow tests = ~2.5 min; fast single-component tasks of 50-170 LOC = 1.6-2.3 min.",
+  "_comment": "Priors for predict.py. Task minutes: linear features x time.scale. Run total: pre_build + build_scale * build + post_build. Refit: predict.py --refit. Anchors: 1 component, ~120 LOC, slow, Sonnet = 2.354 min before scale.",
   "version": 1,
   "reference_model": "sonnet",
   "default_model": "sonnet",
@@ -12,7 +12,8 @@
     "base_min": 1.0813,
     "per_component_min": 0.405,
     "per_loc_min": 0.002178,
-    "slow_tests_min": 0.6068
+    "slow_tests_min": 0.6068,
+    "scale": 0.9
   },
   "context": {
     "prefix": 18000,
@@ -36,7 +37,11 @@
     "high_min": 6.0
   },
   "schedule": {
-    "tail_min": 3.5
+    "_comment": "Run clock: pre_build + build_scale * build + post_build. Tuned so all five combo leave-one-out totals beat build+3.5 (see predict-calibration.json).",
+    "pre_build_min": 5.0,
+    "build_scale": 0.75,
+    "post_build_min": 10.0,
+    "tail_min": 10.0
   },
   "fit": {
     "n": 19,
