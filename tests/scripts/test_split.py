@@ -110,10 +110,16 @@ def test_tenths_helper():
 
 
 def test_predictor_check_value():
-    # review plan: 1 component, 120 loc, slow, Sonnet -> 2.354 min
+    # review plan anchor: 1 component, 120 loc, slow, Sonnet -> 2.354 min before scale;
+    # shipped predictor.json applies time.scale (0.9) so the used minutes are 2.119.
+    # Pin the shipped file so a local history refit cannot move the check.
+    from pathlib import Path
+
     import predict
 
-    coef = predict.load_coef()
+    coef = predict.load_coef(Path("skills/subagent-driven-development/config/predictor.json"))
     models = predict.load_models()
     feats = {"components": 1, "loc": 120, "tests": "slow"}
-    assert abs(predict.time_from(feats, "sonnet", models, coef) - 2.354) < 1e-3
+    raw = 1.0813 + 0.405 + 0.6068 + 0.002178 * 120
+    assert abs(raw - 2.354) < 1e-3
+    assert abs(predict.time_from(feats, "sonnet", models, coef) - raw * 0.9) < 1e-3

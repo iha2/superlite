@@ -10,11 +10,11 @@ Dispatch takes every task's minutes from the predictor, not from a handwritten e
 
 `slow` is `0.6068` when the tests are slow, and `0` when they are fast. `output_tokens_per_second` is 80 for Sonnet, 150 for Haiku, and 45 for Opus. A task with nothing stated uses 1 component, 100 lines, and fast tests. A handwritten "Est. time" is kept only when those three fields are missing.
 
-Check: 1 component, 120 lines, slow tests, Sonnet is `1.0813 + 0.405 + 0.6068 + 0.002178 × 120 = 2.354` minutes.
+Check: 1 component, 120 lines, slow tests, Sonnet is `1.0813 + 0.405 + 0.6068 + 0.002178 × 120 = 2.354` minutes before `time.scale`. The shipped `predictor.json` multiplies by `scale` (0.9 today), so dispatch sees about `2.119` minutes for that task. A machine with enough local history may refit coefficients; packing tests pin the shipped file when they need a fixed number.
 
 Dispatch rounds each task's minutes to the nearest tenth of a minute (six seconds) and works in whole tenths, so every sum and comparison is exact. The predictor is far coarser than six seconds, so the rounding changes no decision that the minutes can support.
 
-The constants are a ridge regression fitted on 19 timed tasks. Measured runs miss by about a minute and a half per task on average, so the minutes order and pack the work; they never stop an implementer.
+The constants are a ridge regression on timed tasks (shipped priors, optionally refit from `~/.superlite/history.jsonl`). Measured runs miss by about a minute and a half per task on average, so the minutes order and pack the work; they never stop an implementer.
 
 ## The assignment
 
@@ -332,7 +332,7 @@ flowchart TB
 - Every instruction test below fails on the old instructions and ends Followed on the new ones, each within 30 seconds and $0.02, with its outcome and cost shown. A Guarded result passes but is listed for a clearer instruction.
 - Each guard denies its wrong call, names the right move, and lets the right call pass, tested without a model.
 - Compact stays every 30 minutes.
-- One component, 120 lines, slow tests, and Sonnet produce 2.354 minutes.
+- One component, 120 lines, slow tests, and Sonnet produce 2.354 minutes before scale (about 2.119 with shipped `scale` 0.9).
 
 ## Agent instruction tests
 The checks above test the scripts. These test the instructions the agents follow. Each test is small: it proves one rule from one instruction file, with one short agent call that finishes in seconds and costs about a cent. They are written while the feature is built, the same way as code tests: write the test, see it fail on the old instructions, change the instructions, see it pass.
