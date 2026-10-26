@@ -8,7 +8,7 @@ A lean build-lifecycle plugin: 10 skills in `skills/`, 7 agents in `agents/`, an
 
 ## Rules
 
-- Do not enable superlite alongside the plugin it was derived from (see the README note); they share skill names.
+- While a superlite run is in progress, superpowers (and anything with the same lifecycle skills) is suspended. `sl finish` releases it. See the README note.
 - `skills/using-superlite/SKILL.md` is injected into every session. Keep it under 1,500 characters.
 - Every harness integration must load `using-superlite` at session start. Acceptance test: open a clean session and send `Let's make a react todo list`; `brainstorming` must trigger before any code is written. Manually copied skills or per-session opt-in do not count.
 - Per-harness tool mappings live in `skills/using-superlite/references/<harness>-tools.md`. Each says how to run `agents/*.md` where plugin agents do not exist.

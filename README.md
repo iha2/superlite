@@ -105,7 +105,7 @@ superlite plans a build, splits it into tasks that can run side by side, hands e
 
 ### Not a rival to superpowers
 
-superlite is **not a competitor** to [superpowers](https://github.com/obra/superpowers). superpowers is a careful, collaborative workflow that keeps a human close to every step, and it is excellent at that. superlite starts from its ideas (the plugin layout, the session-start hook, the lifecycle skills, with credit) and tunes them for a different job: **autonomous development, at speed**. If you want to steer each step, use superpowers. If you want to hand over a spec and come back to working code, use superlite. Pick one per session.
+superlite is **not a competitor** to [superpowers](https://github.com/obra/superpowers). superpowers is a careful, collaborative workflow that keeps a human close to every step, and it is excellent at that. superlite starts from its ideas (the plugin layout, the session-start hook, the lifecycle skills, with credit) and tunes them for a different job: **autonomous development, at speed**. If you want to steer each step, use superpowers. If you want to hand over a spec and come back to working code, use superlite. A superlite run suspends superpowers until `sl finish`; after that, superpowers can be used again.
 
 ---
 
@@ -447,7 +447,7 @@ Analysis scripts:
 
 ## Note
 
-Do not enable superlite at the same time as superpowers. They share skill names and both inject session context, so they conflict.
+While a superlite run is in progress, superpowers is suspended (`sl orchestrator set` writes `.superlite/peers.json` and, on Claude Code, turns `superpowers@claude-plugins-official` off in `.claude/settings.local.json`). They share seven skill names and both inject session context. `sl finish` removes the marker and restores the previous setting, so superpowers or anything like it can be used again.
 
 ## License
 

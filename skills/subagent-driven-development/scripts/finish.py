@@ -211,6 +211,9 @@ def main(argv=None):  # O(R*w + I*w)
     a = ap.parse_args(argv)  # O(1)
     sys.stdout.reconfigure(encoding="utf-8")  # O(1)
     sys.stdout.write(summary(a.ledger, a.log, a.lint_log or str(Path(a.ledger).with_name("lint-log.jsonl")), a.plan))  # O(output)
+    import exclusive  # the run is done: peer plugins may load again | O(1)
+    root = Path(a.ledger).resolve().parent  # .superlite, or the ledger's directory | O(1)
+    print(exclusive.release(root if root.name == ".superlite" else root / ".superlite"))  # O(S)
     return 0  # O(1)
 
 

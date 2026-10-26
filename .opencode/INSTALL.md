@@ -39,8 +39,8 @@ registers all skills.
 Verify by asking: "Tell me about your superlite skills"
 
 OpenCode uses its own plugin install. If you also use Claude Code, Codex, or
-another harness, install Superlite separately for each one. Do not enable it
-alongside the plugin it was derived from; they share skill names.
+another harness, install Superlite separately for each one. A superlite run
+suspends the plugin it was derived from until `sl finish`; they share skill names.
 
 ## Usage
 

@@ -82,6 +82,18 @@ if [ -n "$cost_line" ]; then  # O(1)
 '"${cost_line}"  # O(s)
 fi  # O(1)
 
+# A superlite run suspends peer process plugins. The marker is removed by sl finish.
+peers_file=".superlite/peers.json"  # O(1)
+if [ -f "$peers_file" ]; then  # O(1)
+  IFS= read -r -d '' peers_body < "$peers_file" || true  # O(file)
+  re_susp='"suspended"[[:space:]]*:[[:space:]]*true'  # O(1)
+  if [[ $peers_body =~ $re_susp ]]; then  # O(file)
+    content="${content}"$'
+
+'"Peer process plugins are suspended for this superlite run: superpowers, and anything else that carries the same lifecycle skills. Do not load their skills. When this run finishes they can be used again."  # O(s)
+  fi  # O(1)
+fi  # O(1)
+
 escaped=$(escape_for_json "$content")  # O(s) + subshell
 session_context="You have superlite. Its 'superlite:using-superlite' skill follows; load other skills with the Skill tool.\n\n${escaped}"  # O(s)
 
