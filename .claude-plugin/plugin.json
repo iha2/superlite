@@ -6,5 +6,6 @@
     "name": "CWogu"
   },
   "license": "MIT",
-  "keywords": ["skills", "tdd", "debugging", "workflow"]
+  "keywords": ["skills", "tdd", "debugging", "workflow"],
+  "dependencies": ["superlite-agents"]
 }
