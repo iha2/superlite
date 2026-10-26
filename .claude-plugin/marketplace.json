@@ -15,10 +15,10 @@
       }
     },
     {
-      "name": "superlite-agents",
+      "name": "claude-agent-map",
       "description": "Read-only agent map pane for superlite runs: /superlite-agents",
       "version": "0.1.0",
-      "source": {"source": "github", "repo": "iha2/superlite-agents"},
+      "source": {"source": "github", "repo": "iha2/claude-agent-map"},
       "author": {
         "name": "CWogu"
       }

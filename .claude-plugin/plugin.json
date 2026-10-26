@@ -7,5 +7,5 @@
   },
   "license": "MIT",
   "keywords": ["skills", "tdd", "debugging", "workflow"],
-  "dependencies": ["superlite-agents"]
+  "dependencies": ["claude-agent-map"]
 }
