@@ -5,8 +5,7 @@
 <h1 align="center">superlite</h1>
 
 <p align="center">
-  <b>Hand an agent a spec. Come back to finished, tested work.</b><br>
-  An autonomous, feather-light build workflow for Claude Code.
+  <b>A software factory. Approve a plan once, then it builds the code.</b>
 </p>
 
 <p align="center">
