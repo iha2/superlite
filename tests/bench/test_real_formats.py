@@ -18,11 +18,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import harness  # noqa: E402
 from test_metrics import Log  # noqa: E402
 
-SCRIPTS = ROOT / "skills" / "subagent-driven-development" / "scripts"
+SCRIPTS = ROOT / "skills" / "swarm" / "scripts"
 REVIEW_BASIC = ROOT / "tests" / "scripts" / "fixtures" / "review_basic"
 CONSUMER_TEST = ("import os\n\n\ndef test_runs_against_real_producer():\n"
                  "    assert os.environ.get('SUPERLITE_REAL') == '1'\n")
-SL = "bash skills/subagent-driven-development/scripts/sl"       # how the skill invokes tools: no .py
+SL = "bash skills/swarm/scripts/sl"       # how the skill invokes tools: no .py
 
 
 def script(name, *args, cwd):

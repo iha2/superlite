@@ -274,7 +274,7 @@ elif [ -z "$hit" ]; then
     done <<< "$cmd"
     re_redir='[0-9]?>>?[[:space:]]*([^[:space:]<>&|;()]+)(.*)$'
     while IFS= read -r seg; do
-      case "$seg" in *'$SL'*|*'${SL}'*|*subagent-driven-development/scripts*) continue ;; esac
+      case "$seg" in *'$SL'*|*'${SL}'*|*swarm/scripts*) continue ;; esac
       rest="$seg"
       while [[ $rest =~ $re_redir ]]; do
         t="${BASH_REMATCH[1]}"; rest="${BASH_REMATCH[2]}"
@@ -311,7 +311,7 @@ nl=$'\n'
 if [ "$prot" = 1 ]; then
   msg='Blocked: .superlite/orchestrator.json, .superlite/feature.json and .superlite/human-replies.jsonl are never written directly. Change the orchestrator state only with `sl orchestrator ...` (for example `sl orchestrator approve --review <path>`) and the prototype state only with `sl proto ...`; human-replies.jsonl is written only by the hook that records the human'"'"'s replies.'
 elif [ "$human" = 1 ]; then
-  msg='Human orchestrator: no build is orchestrated until the human approves the plan. Write the review plan docs/plans/<date>-<topic>.review.md (see skills/writing-plans/review-plan.md), show its path with a five-line summary, ask the human to reply approve, end your turn, then run sl orchestrator approve --review <path>. Small inline work without a plan needs only the human'"'"'s yes in chat.'
+  msg='Human orchestrator: no build is orchestrated until the human approves the plan. Write the review plan docs/plans/<date>-<topic>.review.md (see skills/drafting/review-plan.md), show its path with a five-line summary, ask the human to reply approve, end your turn, then run sl orchestrator approve --review <path>. Small inline work without a plan needs only the human'"'"'s yes in chat.'
 elif [ "$tryout" = 1 ] && [ "$gatehit" = 1 ]; then
   msg='Feature flow: the integration build waits for the human'"'"'s try-out of the prototype. Show how to try it (`sl proto tryout`), ask the human to reply "it works" or list changes, end your turn, then run `sl proto tryout --approve`. Changes go back to the prototype: `sl proto start --topic <topic>` reopens it for a fix round.'
 elif [ "$batchhit" = 1 ]; then
@@ -322,7 +322,7 @@ elif [ "${thit:-0}" = 1 ]; then
   msg="Blocked: BLOCKED task needs fixer tier ${NEED_TIER}. Launch the fixer one tier up, not ${hit}."
 else
   msg='Blocked: the superlite coordinator must not write project code. Dispatch it instead:'"$nl"
-  msg+='- Fix: give a fixer a finding id F-<Tn>-<n> and the note path .superlite/fixes/<id>.md, tiered per skills/subagent-driven-development/fixing.md: known cause, one module -> fixer-sonnet; cross-module -> fixer-sonnet-high; unknown cause -> fixer-opus.'"$nl"
+  msg+='- Fix: give a fixer a finding id F-<Tn>-<n> and the note path .superlite/fixes/<id>.md, tiered per skills/swarm/fixing.md: known cause, one module -> fixer-sonnet; cross-module -> fixer-sonnet-high; unknown cause -> fixer-opus.'"$nl"
   msg+='- Wave 0 skeleton/stub/config files belong to an implementer-haiku task.'"$nl"
   msg+='- New code belongs to an implementer task. You may write only docs/plans/**, SPEC*.md, docs/**/*.md and .superlite/**.'
 fi

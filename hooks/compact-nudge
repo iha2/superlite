@@ -30,7 +30,7 @@ if [ -z "$root" ]; then
 fi
 root="${root//\\//}"
 py="${SUPERLITE_PYTHON:-python}"
-script="$root/skills/subagent-driven-development/scripts/compact_due.py"
+script="$root/skills/swarm/scripts/compact_due.py"
 
 line="$("$py" "$script" "$sl_dir" 2>/dev/null)" || exit 0
 [ -n "$line" ] || exit 0

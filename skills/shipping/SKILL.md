@@ -1,15 +1,15 @@
 ---
-name: finishing-a-development-branch
+name: shipping
 description: Use when implementation is complete, all tests pass, and you need to decide how to integrate the work
 ---
 
-# Finishing a Development Branch
+# Shipping
 
 Never push, merge or publish without the human. The human's choice is the only authorization.
 
 ## 1. Verify
 
-Run `bash <skill-dir>/../subagent-driven-development/scripts/sl run_tests --full` (it prints one line: `passed failed skipped seconds`). Skip it if the last full run was green and nothing has changed since (see `superlite:verification-before-completion`). If tests fail, report the failures and stop. Do not offer to merge failing work.
+Run `bash <skill-dir>/../swarm/scripts/sl run_tests --full` (it prints one line: `passed failed skipped seconds`). Skip it if the last full run was green and nothing has changed since (see `superlite:proof`). If tests fail, report the failures and stop. Do not offer to merge failing work.
 
 ## 2. Detect the base branch yourself
 
@@ -41,7 +41,7 @@ No further menus or typed confirmations. Act on the answer.
 
 ## 5. Execute the choice
 
-- **Merge locally:** if the work ran in a worktree, run the merge from the main checkout (where the base branch lives). Check out the base branch, merge the feature branch. If the merge was not a fast-forward or had conflicts, run `bash <skill-dir>/../subagent-driven-development/scripts/sl run_tests --full` again. Remove the worktree (step 6), then delete the feature branch with `git branch -d`.
+- **Merge locally:** if the work ran in a worktree, run the merge from the main checkout (where the base branch lives). Check out the base branch, merge the feature branch. If the merge was not a fast-forward or had conflicts, run `bash <skill-dir>/../swarm/scripts/sl run_tests --full` again. Remove the worktree (step 6), then delete the feature branch with `git branch -d`.
 - **Push and PR:** `git push -u origin <branch>`, then `gh pr create` with a title and a body holding the summary and test evidence. Report the PR URL. Keep the branch. Remove the worktree (step 6).
 - **Keep:** report the branch name. If the worktree is clean, remove it (step 6). If it has uncommitted work, leave it and report the path.
 

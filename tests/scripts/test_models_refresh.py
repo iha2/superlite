@@ -5,9 +5,9 @@ import sys
 from pathlib import Path
 
 SCRIPT = (Path(__file__).resolve().parents[2] / "skills"
-          / "subagent-driven-development" / "scripts" / "models_refresh.py")
+          / "swarm" / "scripts" / "models_refresh.py")
 DEFAULT = (Path(__file__).resolve().parents[2] / "skills"
-           / "subagent-driven-development" / "config" / "models.json")
+           / "swarm" / "config" / "models.json")
 sys.path.insert(0, str(SCRIPT.parent))
 models_refresh = importlib.import_module("models_refresh")
 

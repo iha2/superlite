@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPTS = ROOT / "skills" / "subagent-driven-development" / "scripts"
+SCRIPTS = ROOT / "skills" / "swarm" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 import dispatch  # noqa: E402
@@ -114,7 +114,7 @@ def test_model_price_tagged_project(tmp_path, monkeypatch):
     data = predict.load_models()
     assert data["models"]["haiku"]["input"] == 9
     assert data["models"]["haiku"]["source"] == "project"
-    shipped = predict.load_models(ROOT / "skills" / "subagent-driven-development" / "config" / "models.json")
+    shipped = predict.load_models(ROOT / "skills" / "swarm" / "config" / "models.json")
     assert shipped["models"]["haiku"]["input"] == 0.10
     assert "source" not in shipped["models"]["haiku"]
     prices = metrics.load_prices()

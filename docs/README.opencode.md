@@ -35,7 +35,7 @@ The plugin (`.opencode/plugins/superlite.js`, re-exported by the root `index.js`
 
 ```
 use skill tool to list skills
-use skill tool to load brainstorming
+use skill tool to load inventing
 ```
 
 ## Agents

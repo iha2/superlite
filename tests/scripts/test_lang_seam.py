@@ -7,8 +7,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPTS = ROOT / "skills" / "subagent-driven-development" / "scripts"
-PROBES = ROOT / "skills" / "subagent-driven-development" / "probes"
+SCRIPTS = ROOT / "skills" / "swarm" / "scripts"
+PROBES = ROOT / "skills" / "swarm" / "probes"
 sys.path.insert(0, str(SCRIPTS))
 sys.path.insert(0, str(PROBES))
 

@@ -13,8 +13,8 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPTS = ROOT / "skills" / "subagent-driven-development" / "scripts"
-CONFIG = ROOT / "skills" / "subagent-driven-development" / "config"
+SCRIPTS = ROOT / "skills" / "swarm" / "scripts"
+CONFIG = ROOT / "skills" / "swarm" / "config"
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "plans"
 PLAN_TOOLS = SCRIPTS / "plan_tools.py"
 PREDICT = SCRIPTS / "predict.py"
@@ -498,7 +498,7 @@ def test_predict_refit_needs_data(tmp_path):
     assert cp.returncode == 2 and "at least 4" in cp.err
 
 
-# ------------------------------------------------- writing-plans skill format
+# ------------------------------------------------- drafting skill format
 
 def test_schedule_target_accepts_both_header_forms(tmp_path):
     p1 = make_plan(tmp_path, [{"id": "T1", "time": 3}], header="**Target-min:** 4", name="a.md")

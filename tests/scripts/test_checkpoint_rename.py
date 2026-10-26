@@ -12,7 +12,7 @@ import pytest
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
-SCRIPTS = ROOT / "skills" / "subagent-driven-development" / "scripts"
+SCRIPTS = ROOT / "skills" / "swarm" / "scripts"
 PLAN_FIX = HERE / "fixtures" / "run_plan"
 sys.path.insert(0, str(SCRIPTS))
 

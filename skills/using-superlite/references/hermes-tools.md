@@ -30,8 +30,8 @@ When a skill mentions "your instructions file," on Hermes Agent this is **`AGENT
 Hermes Agent has a `skills` toolset with `skill_view` and `skills_list` tools. To invoke a superlite skill, use:
 
 ```
-skill_view("brainstorming")
-skill_view("test-driven-development")
+skill_view("inventing")
+skill_view("testing")
 ```
 
 If `skill_view` cannot find a superlite skill (it may not appear in the catalog until the plugin fully registers it), fall back to reading the SKILL.md directly:

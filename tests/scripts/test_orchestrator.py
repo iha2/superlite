@@ -137,11 +137,11 @@ def test_every_bench_prompt_says_the_orchestrator_is_ai():
 def test_skill_size_caps_and_the_new_names():
     skills = REPO / "skills"
     assert len((skills / "using-superlite" / "SKILL.md").read_text(encoding="utf-8")) <= 2000
-    assert len((skills / "subagent-driven-development" / "SKILL.md").read_text(encoding="utf-8")) <= 12500
-    brain = (skills / "brainstorming" / "SKILL.md").read_text(encoding="utf-8")
+    assert len((skills / "swarm" / "SKILL.md").read_text(encoding="utf-8")) <= 12500
+    brain = (skills / "inventing" / "SKILL.md").read_text(encoding="utf-8")
     assert "Human orchestrator: I approve the plan before it runs" in brain and "AI orchestrator: hands off, it does everything" in brain
     assert brain.count("AskUserQuestion") >= 1 and "ONE `AskUserQuestion` call" in brain
-    plans = (skills / "writing-plans" / "SKILL.md").read_text(encoding="utf-8")
+    plans = (skills / "drafting" / "SKILL.md").read_text(encoding="utf-8")
     assert "**Human orchestrator**" in plans and "**AI orchestrator**" in plans and "A human approves" not in plans
 
 
@@ -149,7 +149,7 @@ def test_skill_size_caps_and_the_new_names():
 
 import hashlib  # noqa: E402
 
-REVIEW = REPO / "skills" / "writing-plans" / "review-plan.md"
+REVIEW = REPO / "skills" / "drafting" / "review-plan.md"
 
 
 def review_file(tmp_path, name="plan.review.md"):
@@ -273,9 +273,9 @@ def test_review_plan_template_names_every_required_section_and_has_two_diagrams(
 
 def test_skills_mention_both_phases_and_keep_their_caps():
     skills = REPO / "skills"
-    plans = (skills / "writing-plans" / "SKILL.md").read_text(encoding="utf-8")
-    brain = (skills / "brainstorming" / "SKILL.md").read_text(encoding="utf-8")
-    sdd = (skills / "subagent-driven-development" / "SKILL.md").read_text(encoding="utf-8")
+    plans = (skills / "drafting" / "SKILL.md").read_text(encoding="utf-8")
+    brain = (skills / "inventing" / "SKILL.md").read_text(encoding="utf-8")
+    sdd = (skills / "swarm" / "SKILL.md").read_text(encoding="utf-8")
     for text in (plans, brain):
         assert ".review.md" in text and "review-plan.md" in text and "approve --review" in text
     assert "**Review plan:**" in plans and "machine plan" in plans and "machine plan" in brain
@@ -287,10 +287,10 @@ def test_skills_mention_both_phases_and_keep_their_caps():
 
 def test_texts_state_the_hard_rule_plain_text_approval_and_the_small_form():
     skills = REPO / "skills"
-    plans = (skills / "writing-plans" / "SKILL.md").read_text(encoding="utf-8")
-    brain = (skills / "brainstorming" / "SKILL.md").read_text(encoding="utf-8")
-    sdd = (skills / "subagent-driven-development" / "SKILL.md").read_text(encoding="utf-8")
-    ref = (skills / "subagent-driven-development" / "orchestrator.md").read_text(encoding="utf-8")
+    plans = (skills / "drafting" / "SKILL.md").read_text(encoding="utf-8")
+    brain = (skills / "inventing" / "SKILL.md").read_text(encoding="utf-8")
+    sdd = (skills / "swarm" / "SKILL.md").read_text(encoding="utf-8")
+    ref = (skills / "swarm" / "orchestrator.md").read_text(encoding="utf-8")
     review = REVIEW.read_text(encoding="utf-8")
     for text in (plans, brain):
         assert "not AskUserQuestion" in text and "END THE TURN" in text

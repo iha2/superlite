@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPTS = ROOT / "skills" / "subagent-driven-development" / "scripts"
+SCRIPTS = ROOT / "skills" / "swarm" / "scripts"
 HOOK = ROOT / "hooks" / "cost-report"
 CAPTURE = ROOT / "hooks" / "capture-host-usage"
 _GIT_BASH = r"C:\Program Files\Git\bin\bash.exe"

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "superlite",
   "displayName": "Superlite",
-  "version": "1.12.0",
+  "version": "2.0.1",
   "description": "Lightweight Claude Code skills for the build lifecycle: one approval gate, parallel waves, short reports",
   "compat": {
     "source": "native",
@@ -11,44 +11,44 @@
   "capabilities": {
     "skills": [
       {
-        "id": "brainstorming",
-        "path": "skills/brainstorming/SKILL.md"
+        "id": "inventing",
+        "path": "skills/inventing/SKILL.md"
       },
       {
         "id": "feature-prototype",
         "path": "skills/feature-prototype/SKILL.md"
       },
       {
-        "id": "finishing-a-development-branch",
-        "path": "skills/finishing-a-development-branch/SKILL.md"
+        "id": "shipping",
+        "path": "skills/shipping/SKILL.md"
       },
       {
         "id": "mvp-prototype",
         "path": "skills/mvp-prototype/SKILL.md"
       },
       {
-        "id": "subagent-driven-development",
-        "path": "skills/subagent-driven-development/SKILL.md"
+        "id": "swarm",
+        "path": "skills/swarm/SKILL.md"
       },
       {
-        "id": "systematic-debugging",
-        "path": "skills/systematic-debugging/SKILL.md"
+        "id": "diagnosis",
+        "path": "skills/diagnosis/SKILL.md"
       },
       {
-        "id": "test-driven-development",
-        "path": "skills/test-driven-development/SKILL.md"
+        "id": "testing",
+        "path": "skills/testing/SKILL.md"
       },
       {
         "id": "using-superlite",
         "path": "skills/using-superlite/SKILL.md"
       },
       {
-        "id": "verification-before-completion",
-        "path": "skills/verification-before-completion/SKILL.md"
+        "id": "proof",
+        "path": "skills/proof/SKILL.md"
       },
       {
-        "id": "writing-plans",
-        "path": "skills/writing-plans/SKILL.md"
+        "id": "drafting",
+        "path": "skills/drafting/SKILL.md"
       }
     ],
     "commands": [],

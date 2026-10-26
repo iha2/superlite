@@ -1,14 +1,14 @@
 ---
-name: subagent-driven-development
+name: swarm
 description: Use when executing a superlite plan that has a %% taskgraph. Runs a ready-queue scheduler over an idle agent pool, with scripts for the mechanical steps, selective reviews, and a packet-only final review.
 ---
 
-# Subagent-Driven Development
+# Swarm
 
 You are the coordinator. You decide, dispatch and rule; scripts do everything with a definite answer; agents design, write, review and fix. Read each script's one-line output. One line of narration per tool call.
 
 Shorthand (every agent brief states `SUPERLITE=<path>`):
-`SUPERLITE` = the plugin root, two levels above this skill's "Base directory for this skill: ..." path: `SUPERLITE="$(cd "<base dir>/../.." && pwd)"`, passing the base dir through `cygpath -u` first when that exists. `SL="$SUPERLITE/skills/subagent-driven-development/scripts/sl"`; always run it as `bash "$SL" ...`. `PLAN` = the plan file; pass `--plan $PLAN` everywhere. Exit 3 means no Python: `bash "$SL" incident add` it and continue.
+`SUPERLITE` = the plugin root, two levels above this skill's "Base directory for this skill: ..." path: `SUPERLITE="$(cd "<base dir>/../.." && pwd)"`, passing the base dir through `cygpath -u` first when that exists. `SL="$SUPERLITE/skills/swarm/scripts/sl"`; always run it as `bash "$SL" ...`. `PLAN` = the plan file; pass `--plan $PLAN` everywhere. Exit 3 means no Python: `bash "$SL" incident add` it and continue.
 
 **You never edit code or run raw `pytest`; fixes go to fixer agents: tiers, escalation and contract in `fixing.md` (Fixing). Never pass `model`.**
 
@@ -95,7 +95,7 @@ Hooks write `.superlite/metrics.jsonl`; details in `metrics.md`. `lint` and `dis
 
 ## Freeze, rulings, finish
 
-After a green suite: freeze. Archive `.superlite/incidents.jsonl` and `progress.md` next to the plan. Run `bash "$SL" finish --plan $PLAN`; print its rulings in your closing message under "Rulings I made", each with its cost. Its last block is the report summary: print it before any merge or PR option; full: `<plan>.report.md`. Then invoke `superlite:finishing-a-development-branch`.
+After a green suite: freeze. Archive `.superlite/incidents.jsonl` and `progress.md` next to the plan. Run `bash "$SL" finish --plan $PLAN`; print its rulings in your closing message under "Rulings I made", each with its cost. Its last block is the report summary: print it before any merge or PR option; full: `<plan>.report.md`. Then invoke `superlite:shipping`.
 
 ## Stop conditions
 

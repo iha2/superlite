@@ -257,4 +257,4 @@ def test_skill_command_design_and_tool_docs_agree():
     for f in ("SKILL.md", "page-template.html", "feedback-schema.md", "mock-patterns.md"):
         assert (SKILL / f).is_file(), f
     assert len((REPO / "skills" / "using-superlite" / "SKILL.md").read_text(encoding="utf-8")) <= 2000
-    assert len((REPO / "skills" / "subagent-driven-development" / "SKILL.md").read_text(encoding="utf-8")) <= 12500
+    assert len((REPO / "skills" / "swarm" / "SKILL.md").read_text(encoding="utf-8")) <= 12500

@@ -1,15 +1,15 @@
 ---
-name: verification-before-completion
+name: proof
 description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs
 ---
 
-# Verification Before Completion
+# Proof
 
 Evidence before claims. Never say "done", "fixed" or "passing" without fresh proof from this session.
 
 ## Acceptable evidence
 
-- The one-line summary (`passed failed skipped seconds`) from `bash <skill-dir>/../subagent-driven-development/scripts/sl run_tests --full` after the last change.
+- The one-line summary (`passed failed skipped seconds`) from `bash <skill-dir>/../swarm/scripts/sl run_tests --full` after the last change.
 - Or a focused run you executed yourself after the last change, covering exactly what you claim.
 - For a build, a lint or a type check: that command's exit status and summary line.
 - For a bug fix: the original reproduction now passing, plus its regression test.
@@ -24,7 +24,7 @@ Evidence before claims. Never say "done", "fixed" or "passing" without fresh pro
 
 ## Full-suite runs
 
-Run `bash <skill-dir>/../subagent-driven-development/scripts/sl run_tests --full` for full suites (or `--fast PATHS` for a focused run); it prints one summary line, so logs stay out of your context. Run it once per wave and once at the end, not after every small edit.
+Run `bash <skill-dir>/../swarm/scripts/sl run_tests --full` for full suites (or `--fast PATHS` for a focused run); it prints one summary line, so logs stay out of your context. Run it once per wave and once at the end, not after every small edit.
 
 ## Requirements and delegated work
 

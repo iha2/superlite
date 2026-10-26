@@ -4,7 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "subagent-driven-development" / "scripts"
+SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "swarm" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 import tail  # noqa: E402

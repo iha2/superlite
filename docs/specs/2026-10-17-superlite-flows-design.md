@@ -30,7 +30,7 @@ Superlite routes every non-trivial request into one of **four flows**. Each flow
 | **Bugfix** | Wrong behaviour | Repro command, root cause, regression test | 0 (attended: root cause shown before merge) | A **sandbox**, then merged back |
 | **Refactor** | Same behaviour, new structure | Current vs target diagram, must-not-change list | 1 | In place or a sandbox, the orchestrator's choice |
 
-All four flows end in the same execution engine: waves via `superlite:subagent-driven-development`, as specified in the 0.2 design.
+All four flows end in the same execution engine: waves via `superlite:swarm`, as specified in the 0.2 design.
 
 ## 2. The orchestrator is always the top-tier model
 
@@ -59,7 +59,7 @@ flowchart TD
   K -- behaviour added or changed --> F[Feature flow]
   K -- behaviour is wrong --> B[Bugfix flow]
   K -- structure only --> RF[Refactor flow]
-  MVP & F & B & RF --> W[Waves: subagent-driven-development]
+  MVP & F & B & RF --> W[Waves: swarm]
   W --> FIN[Finishing]
 ```
 
@@ -120,7 +120,7 @@ The user approves the prototype. Change requests go to the same worker via `Send
 
 After Gate 2, `git mv` both files into `.superlite/` (as `architecture.md` and `prototype.html`) and commit them. The generated app's README links to them.
 
-`writing-plans` then uses `architecture.md` as the spec and the prototype as the UI reference. The prototype's `MOCK` data becomes the app's seed data and test fixtures. Waves run without stopping.
+`drafting` then uses `architecture.md` as the spec and the prototype as the UI reference. The prototype's `MOCK` data becomes the app's seed data and test fixtures. Waves run without stopping.
 
 ## 5. Feature flow
 
@@ -150,7 +150,7 @@ flowchart LR
 ## 6. Bugfix flow
 
 1. **Sandbox first (§8).** The target is one repro command that fails in seconds: a focused test, a script, or a request against seeded data.
-2. **Root cause.** Per `superlite:systematic-debugging`, with probes inside the sandbox. Heavy logging and data mutation are fine there, because nothing touches the main checkout.
+2. **Root cause.** Per `superlite:diagnosis`, with probes inside the sandbox. Heavy logging and data mutation are fine there, because nothing touches the main checkout.
 3. **Fix.** Regression test (red), minimal fix (green), focused tests.
 4. **Merge back** as in the Feature flow.
    - Final review is worker tier, unless the fix touches auth, security, data integrity or concurrency; then it's top tier.

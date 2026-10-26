@@ -353,7 +353,7 @@ def _ctx(u: dict) -> int:
 
 
 # ---- 0.3 benchmark metrics (T7) -------------------------------------------------------------
-SKILL_DIR = ROOT / "skills" / "subagent-driven-development"
+SKILL_DIR = ROOT / "skills" / "swarm"
 MODELS_JSON = SKILL_DIR / "config" / "models.json"
 
 
@@ -1037,7 +1037,7 @@ def own_tests(run_dir: Path) -> dict:
 
 
 def _load_plan_tools():
-    sdir = str(ROOT / "skills" / "subagent-driven-development" / "scripts")
+    sdir = str(ROOT / "skills" / "swarm" / "scripts")
     if sdir not in sys.path:
         sys.path.insert(0, sdir)
     import plan_tools

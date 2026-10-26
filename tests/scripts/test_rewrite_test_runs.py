@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 HOOK = ROOT / "hooks" / "rewrite-test-runs"
 _GIT_BASH = r"C:\Program Files\Git\bin\bash.exe"
 BASH = _GIT_BASH if os.name == "nt" and os.path.exists(_GIT_BASH) else shutil.which("bash")
-SL = (ROOT / "skills" / "subagent-driven-development" / "scripts" / "sl").as_posix()
+SL = (ROOT / "skills" / "swarm" / "scripts" / "sl").as_posix()
 
 
 @pytest.fixture
@@ -140,7 +140,7 @@ def test_plugin_root_env_used(proj):
     env = {**os.environ, "CLAUDE_PROJECT_DIR": str(proj), "CLAUDE_PLUGIN_ROOT": "C:\\plug in"}
     raw = json.dumps({"tool_name": "Bash", "tool_input": {"command": "pytest"}})
     r = subprocess.run([BASH, str(HOOK)], input=raw, capture_output=True, text=True, env=env)
-    assert 'bash "C:/plug in/skills/subagent-driven-development/scripts/sl" run_tests --full' in rewritten(r, mode="full")
+    assert 'bash "C:/plug in/skills/swarm/scripts/sl" run_tests --full' in rewritten(r, mode="full")
 
 
 def test_hooks_json_registers_hook():

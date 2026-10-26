@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPTS = ROOT / "skills" / "subagent-driven-development" / "scripts"
+SCRIPTS = ROOT / "skills" / "swarm" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 import testcmd  # noqa: E402

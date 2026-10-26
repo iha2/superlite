@@ -1,4 +1,4 @@
-"""Bridge between the bench score JSONs and superlite's run history (skills/subagent-driven-development/scripts/history.py).
+"""Bridge between the bench score JSONs and superlite's run history (skills/swarm/scripts/history.py).
 
     python bench/history_import.py import bench/results/*.json [--history FILE]   score JSONs -> history rows (append-only, no duplicates)
     python bench/report_mechanical.py --history FILE                              the report, read from history instead of score files
@@ -16,7 +16,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-sys.path.insert(0, str(HERE.parent / "skills" / "subagent-driven-development" / "scripts"))
+sys.path.insert(0, str(HERE.parent / "skills" / "swarm" / "scripts"))
 import history  # noqa: E402
 import taskmetrics as tm  # noqa: E402
 

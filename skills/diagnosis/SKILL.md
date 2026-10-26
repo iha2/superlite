@@ -1,9 +1,9 @@
 ---
-name: systematic-debugging
+name: diagnosis
 description: Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes
 ---
 
-# Systematic Debugging
+# Diagnosis
 
 Find the root cause before fixing. A fix without a known cause is a guess, and guesses create new bugs. Do not stack several changes at once.
 
@@ -18,8 +18,8 @@ A typo, a missing import, a clear stack trace pointing at the faulty line, a fai
 3. **Trace the evidence.** In multi-component systems, log or inspect what enters and leaves each boundary to find which component breaks. For bad values, trace backward through the call chain to where the bad value originates and fix it there, not at the symptom. Compare with similar working code and list every difference.
 4. **Hypothesize.** State the single most likely root cause in one sentence: "X is wrong because Y". Base it on evidence, not hunch.
 5. **Probe.** Test the hypothesis with the smallest possible change or observation: one print, one assertion, one input. Change one thing at a time. Confirmed: go on. Refuted: form a new hypothesis from what you learned. Do not pile fixes on top.
-6. **Fix.** Write a failing regression test that captures the bug (see `superlite:test-driven-development`), apply one fix at the root cause, and run the focused tests. Do not bundle refactors or "while I'm here" changes.
-7. **Verify.** Confirm the original reproduction now passes and nothing nearby broke (focused run; the full suite goes through `bash <skill-dir>/../subagent-driven-development/scripts/sl run_tests --full` at the wave or branch end; focused: `--fast PATHS`; read its one-line summary).
+6. **Fix.** Write a failing regression test that captures the bug (see `superlite:testing`), apply one fix at the root cause, and run the focused tests. Do not bundle refactors or "while I'm here" changes.
+7. **Verify.** Confirm the original reproduction now passes and nothing nearby broke (focused run; the full suite goes through `bash <skill-dir>/../swarm/scripts/sl run_tests --full` at the wave or branch end; focused: `--fast PATHS`; read its one-line summary).
 
 ## When fixes fail
 

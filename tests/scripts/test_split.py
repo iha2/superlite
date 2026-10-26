@@ -117,7 +117,7 @@ def test_predictor_check_value():
 
     import predict
 
-    coef = predict.load_coef(Path("skills/subagent-driven-development/config/predictor.json"))
+    coef = predict.load_coef(Path("skills/swarm/config/predictor.json"))
     models = predict.load_models()
     feats = {"components": 1, "loc": 120, "tests": "slow"}
     raw = 1.0813 + 0.405 + 0.6068 + 0.002178 * 120

@@ -51,7 +51,7 @@ if [ -z "$root" ]; then
 fi
 root="${root//\\//}"
 py="${SUPERLITE_PYTHON:-python}"
-script="$root/skills/subagent-driven-development/scripts/cost_live.py"
+script="$root/skills/swarm/scripts/cost_live.py"
 
 line="$("$py" "$script" "$sl_dir" 2>/dev/null)" || line=""
 if [ -z "$line" ]; then

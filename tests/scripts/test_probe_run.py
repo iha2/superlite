@@ -1,4 +1,4 @@
-"""Tests for the probe runner (skills/subagent-driven-development/probes/probe_run.py).
+"""Tests for the probe runner (skills/swarm/probes/probe_run.py).
 
 Each test copies a tiny fixture project from tests/scripts/fixtures/probe_*/ into tmp_path and runs
 the runner against it as a subprocess, so nothing here touches the real tree.
@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
-RUNNER = REPO / "skills" / "subagent-driven-development" / "probes" / "probe_run.py"
+RUNNER = REPO / "skills" / "swarm" / "probes" / "probe_run.py"
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
@@ -298,7 +298,7 @@ def test_commit_mode_via_sl_launcher_and_default_paths(tmp_path):
     parser.write_text(parser.read_text() + "\n# touched\n")
     subprocess.run([*git, "add", "-A"], check=True)
     subprocess.run([*git, "commit", "-q", "-m", "second"], check=True)
-    sl = REPO / "skills" / "subagent-driven-development" / "scripts" / "sl"
+    sl = REPO / "skills" / "swarm" / "scripts" / "sl"
     p = subprocess.run(["bash", str(sl), "probe_run", "--checkpoint", "HEAD", "--categories", "state"],
                        cwd=proj, capture_output=True, text=True, timeout=300)
     assert p.returncode == 0, p.stdout + p.stderr
@@ -361,7 +361,7 @@ def test_checkout_commit_archive_fallback(tmp_path):
     assert not tree.exists()
 
 
-PT_REVIEW = REPO / "skills" / "subagent-driven-development" / "scripts" / "pt_review.py"
+PT_REVIEW = REPO / "skills" / "swarm" / "scripts" / "pt_review.py"
 
 
 def generated_server_project(tmp_path):

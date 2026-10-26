@@ -16,7 +16,7 @@ Today `/superlite:start` asks the user to pick a mode. Instead, superlite propos
   3. Size. A request that names one file or one function is Small; one that spans screens, data and services is Feature (existing code) or Regular (new).
 - The start menu shows the suggestion first, marked recommended, with the other fits after it. A user who typed a `/superlite:` command or named a mode skips the suggestion.
 
-**Where it goes.** `commands/start.md` (the menu), `skills/subagent-driven-development/scripts/suggest_flow.py`, and the session-start context: the pointer is the "Start menu" line of `skills/using-superlite/SKILL.md`, which session-start injects (it is now at 1999 of its 2000 characters), so session-start itself is unchanged.
+**Where it goes.** `commands/start.md` (the menu), `skills/swarm/scripts/suggest_flow.py`, and the session-start context: the pointer is the "Start menu" line of `skills/using-superlite/SKILL.md`, which session-start injects (it is now at 1999 of its 2000 characters), so session-start itself is unchanged.
 
 **As built.** `sl suggest_flow --text "<request>" [--root DIR] [--state "<state>"] [--json]`. A run in progress suggests `status` when the request asks where things stand, else `resume`. An empty folder suggests `mvp` for a bare idea or MVP words, `regular` for a "build" request or one that spans screens, data and services, and `small` for one small named piece; debug, feature and review are not offered there. On existing code the order is: debug (bug words or a stack trace; "error" or "exception" next to a change word such as "add" counts as a change), review, a new app beside it (mvp or regular), small (small words, or exactly one file or one function named, and not wide), then feature. A file is a path with a common source or config extension; technology names such as `next.js` are not files. The request table in `tests/scripts/test_suggest_flow.py` pins the behaviour.
 
@@ -39,7 +39,7 @@ flowchart TB
 
 ### Step 1: the feature plan
 
-The user is asked for the feature in their own words if the request is thin, with at most one batched question (the existing brainstorming rule). When `sl agent_specs status` is **on** (opt-in; default off; first session may `prefer on|off` into `~/.superlite/preferences.json`), write a durable **feature spec** (`docs/plans/<date>-<topic>.spec.md`) via `superlite:writing-specs` before or with the plan: a spec is what done looks like and why; a plan is how (one spec can outlive many plans). Open the spec in the harness when `open_in_harness` is on. Opus writes `docs/plans/<date>-<topic>.feature.md`:
+The user is asked for the feature in their own words if the request is thin, with at most one batched question (the existing inventing rule). When `sl agent_specs status` is **on** (opt-in; default off; first session may `prefer on|off` into `~/.superlite/preferences.json`), write a durable **feature spec** (`docs/plans/<date>-<topic>.spec.md`) via `superlite:writing-specs` before or with the plan: a spec is what done looks like and why; a plan is how (one spec can outlive many plans). Open the spec in the harness when `open_in_harness` is on. Opus writes `docs/plans/<date>-<topic>.feature.md`:
 
 - the goal and who it is for, in plain words;
 - what the user will see or do differently (screens, commands, endpoints, or outputs, by target kind, as in MVP mode);
@@ -103,14 +103,14 @@ The prototype worktree is removed at finish with `sl proto discard`, which first
 | `scripts/suggest_flow.py` | The flow suggestion (`sl suggest_flow`) |
 | `scripts/proto.py` | `sl proto start | tryout | status | discard`; writes `.superlite/feature.json` |
 | `skills/feature-prototype/SKILL.md` | How to cut the container: what to keep, what to stub, by target kind |
-| `skills/writing-plans/SKILL.md` | The `.feature.md` plan shape and the integration plan rules |
+| `skills/drafting/SKILL.md` | The `.feature.md` plan shape and the integration plan rules |
 | `hooks/block-coordinator-edits` | Blocks integration dispatch until the try-out is approved (human mode), as it blocks orchestration before plan approval |
 | `scripts/report.py` | The report split into prototype and integration |
 | tests | One per script, the hook's new state, and the command texts |
 
 ## Decisions (accepted, recorded)
 
-All four recommendations below were accepted. Where each is recorded: 1 in `skills/subagent-driven-development/orchestrator.md` (the one exception to "not asked again after approval"), `commands/feature.md` step 5 and the two hooks; 2 in `commands/feature.md` step 6 and the integration plan rules of `skills/writing-plans/SKILL.md` (no prototype stub in an `Owns` list); 3 in `skills/feature-prototype/SKILL.md` and `sl proto start --level`; 4 in the prototype plan rules (at most 8 tasks, about a quarter of the integration estimate) and the report's share against the cap.
+All four recommendations below were accepted. Where each is recorded: 1 in `skills/swarm/orchestrator.md` (the one exception to "not asked again after approval"), `commands/feature.md` step 5 and the two hooks; 2 in `commands/feature.md` step 6 and the integration plan rules of `skills/drafting/SKILL.md` (no prototype stub in an `Owns` list); 3 in `skills/feature-prototype/SKILL.md` and `sl proto start --level`; 4 in the prototype plan rules (at most 8 tasks, about a quarter of the integration estimate) and the report's share against the cap.
 
 The original questions:
 
