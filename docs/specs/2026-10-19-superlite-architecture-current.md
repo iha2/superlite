@@ -11,7 +11,7 @@ flowchart TB
     E1 --> E2{"Orchestrator"}
   end
   subgraph P["Plan  (coordinator: Opus, medium)"]
-    P1["brainstorming<br/>size the request"] --> P2{"Human?"}
+    P1["inventing<br/>size the request"] --> P2{"Human?"}
     P2 -- "human" --> P3["Review plan with diagrams<br/>approved by a real reply"]
     P2 -- "AI" --> P4["Agent plan: task graph,<br/>Produces/Consumes, e.g. examples"]
     P3 --> P4

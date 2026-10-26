@@ -1,15 +1,15 @@
 ---
-name: writing-plans
+name: drafting
 description: Use when you have an approved design or requirements for a multi-step task and need an implementation plan, before touching code.
 ---
 
-# Writing Plans
+# Drafting
 
 A plan is a set of contracts Sonnet implementers can execute without asking questions, and also the input to the 0.3 engine: a machine-readable task graph, interface stubs, per-task time predictions, a predicted schedule and probe plans. Write it so scripts can parse it. Code the implementer would write anyway burns Opus time and invites transcription errors.
 
-Any build with 2+ tasks runs through `superlite:subagent-driven-development`: load it before writing the plan. Never use `general-purpose` agents for build or review work.
+Any build with 2+ tasks runs through `superlite:swarm`: load it before writing the plan. Never use `general-purpose` agents for build or review work.
 
-Save to `docs/plans/YYYY-MM-DD-<topic>.md`. When called from `superlite:brainstorming`, append to its doc instead. If the spec covers independent subsystems, write one plan per subsystem.
+Save to `docs/plans/YYYY-MM-DD-<topic>.md`. When called from `superlite:inventing`, append to its doc instead. If the spec covers independent subsystems, write one plan per subsystem.
 
 ## Lint, extract what's stable, fix the rest
 
@@ -163,8 +163,8 @@ These are plan failures: "TBD", "TODO", "add error handling", "handle edge cases
 Run both. Replace `PLAN` and `SPEC` with the paths. `<superlite-root>` is two levels above this skill's "Base directory for this skill: ..." path (run it through `cygpath -u` first if that exists).
 
 ```
-bash "<superlite-root>/skills/subagent-driven-development/scripts/sl" plan_tools prune --plan PLAN
-bash "<superlite-root>/skills/subagent-driven-development/scripts/sl" plan_tools lint --plan PLAN --spec SPEC --stable
+bash "<superlite-root>/skills/swarm/scripts/sl" plan_tools prune --plan PLAN
+bash "<superlite-root>/skills/swarm/scripts/sl" plan_tools lint --plan PLAN --spec SPEC --stable
 ```
 
 `prune` drops the edges that examples make removable (consumer not yet dispatched), then runs `schedule --insert`, which writes the Gantt, its summary line (critical path, peak width, predicted total) and a `shape:` line under a `%% schedule` marker. Never hand-edit that block. `CHAIN [chain-xxxx]` is silenced only by `Ruling: sequential [chain-xxxx] - <why>` with the id lint printed; a ruling written before lint never matches.
@@ -188,7 +188,7 @@ Run it yourself, not as a subagent. Fix in place, with no re-review.
 
 ## Handoff
 
-Do not ask about an execution method: it is `superlite:subagent-driven-development` (its inline mode covers small plans). If called from brainstorming, return to it for the single approval; the stable set dispatches as soon as it is approved. Otherwise give the path and wait for the go-ahead, unless the user pre-approved, in which case record any open choice as `Ruling: ...` and proceed.
+Do not ask about an execution method: it is `superlite:swarm` (its inline mode covers small plans). If called from inventing, return to it for the single approval; the stable set dispatches as soon as it is approved. Otherwise give the path and wait for the go-ahead, unless the user pre-approved, in which case record any open choice as `Ruling: ...` and proceed.
 
 ## Red flags
 

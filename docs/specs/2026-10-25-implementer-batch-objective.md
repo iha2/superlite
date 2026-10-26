@@ -1,6 +1,6 @@
 # Implementer batch objective: keep `max(B+A, F/T)`
 
-Date: 2026-10-25. Decision after A/B on `sitegen-core`. Design authority for the formula lives in `docs/plans/2026-10-24-implementer-batch.review.md`. Code: `skills/subagent-driven-development/scripts/split.py` (`choose`).
+Date: 2026-10-25. Decision after A/B on `sitegen-core`. Design authority for the formula lives in `docs/plans/2026-10-24-implementer-batch.review.md`. Code: `skills/swarm/scripts/split.py` (`choose`).
 
 ## Decision
 
@@ -41,4 +41,4 @@ Finish-first remains a documented alternative in the review plan's "Decisions yo
 
 - Formula, scenarios, pseudocode: `docs/plans/2026-10-24-implementer-batch.review.md`
 - Feature acceptance (five equal → 2/2/1): `docs/plans/2026-10-24-implementer-batch.feature.md`
-- Coordinator dispatch wording: `skills/subagent-driven-development/SKILL.md`
+- Coordinator dispatch wording: `skills/swarm/SKILL.md`

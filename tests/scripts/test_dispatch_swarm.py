@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPTS = ROOT / "skills" / "subagent-driven-development" / "scripts"
+SCRIPTS = ROOT / "skills" / "swarm" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 import dispatch  # noqa: E402
 import host_models as hm  # noqa: E402
@@ -63,7 +63,7 @@ def test_main_appends_swarm_when_host(tmp_path, monkeypatch, capsys):
     (tmp_path / ".superlite").mkdir()
     plan = tmp_path / "plan.md"
     plan.write_text(PLAN_CURSOR, encoding="utf-8")
-    monkeypatch.setattr(hm, "CFG", ROOT / "skills" / "subagent-driven-development" / "config" / "hosts")
+    monkeypatch.setattr(hm, "CFG", ROOT / "skills" / "swarm" / "config" / "hosts")
     monkeypatch.setattr(
         dispatch,
         "run",

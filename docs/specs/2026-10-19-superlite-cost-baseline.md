@@ -1,7 +1,7 @@
 # superlite cost: baseline, drivers, levers
 
 Date: 2026-10-19. Goal: superlite cost per build at or below superpowers on the same task, without losing the speed or quality gains.
-Source: `bench/results/combo-*.json` (the sitegen + minisheet task, 177 hidden tests, headless Opus), `bench/results/routing-recommendation.md`, `skills/subagent-driven-development/config/models.json` prices. Costs are API-equivalent (`model_usage.costUSD`).
+Source: `bench/results/combo-*.json` (the sitegen + minisheet task, 177 hidden tests, headless Opus), `bench/results/routing-recommendation.md`, `skills/swarm/config/models.json` prices. Costs are API-equivalent (`model_usage.costUSD`).
 
 ## 1. Baseline
 

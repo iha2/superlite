@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 SCRIPTS = (Path(__file__).resolve().parents[2] / "skills"
-           / "subagent-driven-development" / "scripts")
+           / "swarm" / "scripts")
 sys.path.insert(0, str(SCRIPTS))
 graph = importlib.import_module("graph")
 

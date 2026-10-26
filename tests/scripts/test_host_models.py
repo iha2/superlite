@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPTS = ROOT / "skills" / "subagent-driven-development" / "scripts"
+SCRIPTS = ROOT / "skills" / "swarm" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 import host_models as hm  # noqa: E402
 
@@ -30,7 +30,7 @@ def test_resolve_writes_once(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     # point CFG at the real hosts file in the plugin tree under test
-    monkeypatch.setattr(hm, "CFG", ROOT / "skills" / "subagent-driven-development" / "config" / "hosts")
+    monkeypatch.setattr(hm, "CFG", ROOT / "skills" / "swarm" / "config" / "hosts")
     d1 = hm.resolve("cursor", str(plan))
     assert d1["host"] == "cursor"
     assert d1["jobs"]["mechanical"] == "composer-2.5-fast"

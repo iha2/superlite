@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-SCRIPTS = HERE.parents[1] / "skills" / "subagent-driven-development" / "scripts"
+SCRIPTS = HERE.parents[1] / "skills" / "swarm" / "scripts"
 SCRIPT = SCRIPTS / "agent_specs.py"
 
 

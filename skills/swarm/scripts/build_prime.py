@@ -61,7 +61,7 @@ Rules:
 - Code to the interfaces below and the Consumes and Produces lines of your task.
   Never change a signature without a coordinator ruling.
 - Your task text is in your task message, generated from the current plan. To read a neighbour, run
-  `bash $SUPERLITE/skills/subagent-driven-development/scripts/sl task Tn --plan PLAN` (SUPERLITE and PLAN
+  `bash $SUPERLITE/skills/swarm/scripts/sl task Tn --plan PLAN` (SUPERLITE and PLAN
   are in your task message): it prints Tn's block and the Produces lines of every task Tn consumes. Reply
   NEEDS_CONTEXT to the coordinator only when that does not answer it.
 - Log every unexpected failure, workaround or guess with `sl incident add`.

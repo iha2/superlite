@@ -53,7 +53,7 @@ if [ -z "$root" ]; then
   root="${self%/hooks/*}"
 fi
 root="${root//\\//}"
-sl_base="bash \"$root/skills/subagent-driven-development/scripts/sl\" run_tests"
+sl_base="bash \"$root/skills/swarm/scripts/sl\" run_tests"
 sl="$sl_base --full"
 
 # A test segment: optional env assignments and runner prefix, then a known runner.

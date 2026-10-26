@@ -21,16 +21,16 @@ Recommendation: **Sonnet runs the session; Opus is called for the two judgment j
 
 | Judgment | Where | Cost if wrong | Needs Opus? |
 |---|---|---|---|
-| Size the request, pick bounded vs architectural | brainstorming | wrong shape for the whole run | yes (planner) |
-| Write the plan: task graph, interfaces, `e.g.` examples, sizes | writing-plans | everything downstream; the largest lever on time and quality | yes (planner) |
+| Size the request, pick bounded vs architectural | inventing | wrong shape for the whole run | yes (planner) |
+| Write the plan: task graph, interfaces, `e.g.` examples, sizes | drafting | everything downstream; the largest lever on time and quality | yes (planner) |
 | Patch FIX tasks after `lint --stable` | SDD "Planning check" | lint re-run; mechanical mostly (the linter names the defect) | no, if the plan is sound |
 | `Ruling:` on open choices and spec conflicts | SDD "Rulings, not stalls" | varies; each states its own cost | yes when cost-if-wrong is high |
-| Scope-change detection: "a fix that changes scope or an interface the human saw goes back to the human" | writing-plans step 5 | breaks the human's approval | yes (subtle) |
+| Scope-change detection: "a fix that changes scope or an interface the human saw goes back to the human" | drafting step 5 | breaks the human's approval | yes (subtle) |
 | Fix tier choice (1/2/3), escalation after two failed rounds | `fixing.md` | one wasted round (~$0.1 to 0.3) | no: rule-based |
 | Review triage: seam, Complexity >= 5, Review Focus risk | SDD "Reviews" | missed or extra review | no: rule-based |
 | Dispatch, commit, probes, packet, finish | scripts | none: the script decides | no |
 | Stop conditions: destructive, security, outward actions | SDD "Stop conditions" | irreversible | yes |
-| Human-mode plan rewrite after approval | brainstorming / writing-plans | drifts from what was approved | yes (planner does it) |
+| Human-mode plan rewrite after approval | inventing / drafting | drifts from what was approved | yes (planner does it) |
 
 Four of ten are scripted or rule-based; the loop's relay work (the bulk of its turns) needs only reading comprehension.
 
@@ -62,7 +62,7 @@ Outcome values: `split` (Sonnet session, Opus planner and ruling advisor), `opus
 
 | Decision point | Inputs | Rule | Outcome |
 |---|---|---|---|
-| A. Request (brainstorming, before planning) | risk class; bounded vs architectural; orchestrator mode | risk class present -> `opus`. Bounded -> `sonnet`. Else -> `split` | printed recommendation; the start menu shows it |
+| A. Request (inventing, before planning) | risk class; bounded vs architectural; orchestrator mode | risk class present -> `opus`. Bounded -> `sonnet`. Else -> `split` | printed recommendation; the start menu shows it |
 | B. After first lint | stable share, FIX count, MISSED TARGET, task count | stable share < 0.6, or tasks > 25, or an unresolved MISSED TARGET -> recommend `opus` for the rest of the run (patching is design work again) | advisory line |
 | C. During the loop | the triggers below | any trigger -> ruling or patch goes to the Opus advisor; two triggers or a risk-class file touched -> recommend `/model opus` and log it | agent call, incident |
 
@@ -84,11 +84,11 @@ Each use logs `coordinator-escalation: <trigger>` as an incident, so the report 
 
 ### 5.3 Mechanisms (what to build, in order)
 
-1. **`agents/planner-opus.md`** (model opus, effort medium): runs `writing-plans` including the review plan, returns only the plan path and a five-line summary. In `split` the session writes no plan. Also the agent that does the human-mode rewrite after approval.
+1. **`agents/planner-opus.md`** (model opus, effort medium): runs `drafting` including the review plan, returns only the plan path and a five-line summary. In `split` the session writes no plan. Also the agent that does the human-mode rewrite after approval.
 2. **`agents/ruling-advisor.md`** (model opus, effort medium): one turn, input as in 5.2, output a ruling; no tools beyond reading. Cost per call about $0.03 to 0.08 from the small prompt.
 3. **`routing.json` `coordinator` block** (data, like the tiers): `{"default": "split", "rules": [{"when": {"risk": true}, "outcome": "opus"}, {"when": {"bounded": true}, "outcome": "sonnet"}], "escalate": {"seam_mismatches_gte": 2, "failed_rounds_gte": 2, "stable_share_lt": 0.6}}`; read by a new `sl route coordinator` that prints one line with the reasons.
 4. **Keep what already holds the rules:** the hooks (`block-coordinator-edits`, `rewrite-test-runs`, `record-human-reply`) and the scripts. A cheaper coordinator is viable *because* superlite moved rules from prompt text into code; do not loosen any of them.
-5. **Skill `model:` frontmatter**, only if the test in section 6 shows it holds for a whole headless run: put `model: opus` on `writing-plans`, which removes the need for the planner agent in some cases.
+5. **Skill `model:` frontmatter**, only if the test in section 6 shows it holds for a whole headless run: put `model: opus` on `drafting`, which removes the need for the planner agent in some cases.
 
 Do not do: a Haiku coordinator; a dispatch loop in a subagent; per-turn automatic model switching (not possible).
 

@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 HERE = Path(__file__).resolve().parent
-SCRIPTS = HERE.parents[1] / "skills" / "subagent-driven-development" / "scripts"
+SCRIPTS = HERE.parents[1] / "skills" / "swarm" / "scripts"
 FIX = HERE / "fixtures"
 sys.path.insert(0, str(SCRIPTS))
 

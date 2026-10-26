@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "subagent-driven-development" / "scripts"
+SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "swarm" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 import run_tests  # noqa: E402
 import testprobe as tp  # noqa: E402

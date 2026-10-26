@@ -223,7 +223,7 @@ def test_feature_command_has_the_six_steps():
     for n in range(1, 7):
         assert f"{n}. " in t
     assert "remove the integration worktree" in t and "does not leave a worktree it created" in t
-    finish = text("skills", "finishing-a-development-branch", "SKILL.md")
+    finish = text("skills", "shipping", "SKILL.md")
     assert "removes every worktree it created" in finish and "uncommitted work" in finish
     assert "Do not use `--force`" in finish
     assert "does not leave a worktree it created" in text("docs", "feature-flow.md")
@@ -242,19 +242,19 @@ def test_skills_and_docs_name_the_feature_flow():
         assert s in proto_skill, s
     for s in ("UI component set", "one-off markup", "not stubbed"):
         assert s in proto_skill, s
-    plans = text("skills", "writing-plans", "SKILL.md")
+    plans = text("skills", "drafting", "SKILL.md")
     for s in ("UI component set", "one-off markup"):
         for label, doc in (
             ("commands/feature.md", text("commands", "feature.md")),
             ("docs/feature-flow.md", text("docs", "feature-flow.md")),
-            ("skills/writing-plans/SKILL.md", plans),
+            ("skills/drafting/SKILL.md", plans),
         ):
             assert s in doc, (label, s)
     assert ".feature.md" in plans and "## Code map" in plans and "integration plan" in plans
-    assert "try-out" in text("skills", "subagent-driven-development", "orchestrator.md")
+    assert "try-out" in text("skills", "swarm", "orchestrator.md")
     for f in (("assets", "help.txt"), ("docs", "tools.md")):
         assert "sl proto" in text(*f) or "| `proto` |" in text(*f), f
         assert "suggest_flow" in text(*f), f
     assert "feature-flow.md" in text("docs", "README.md") and "Status: built" in text("docs", "feature-flow.md")
-    header = "".join(text("skills", "subagent-driven-development", "scripts", "sl").splitlines()[:12])
+    header = "".join(text("skills", "swarm", "scripts", "sl").splitlines()[:12])
     assert "suggest_flow, proto," in header

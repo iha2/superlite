@@ -1,14 +1,14 @@
 # Skills and agents
 
 - `using-superlite` (injected at session start)
-- `brainstorming`
-- `writing-plans`
-- `subagent-driven-development`
-- `test-driven-development`
-- `systematic-debugging`
+- `inventing`
+- `drafting`
+- `swarm`
+- `testing`
+- `diagnosis`
 - `feature-prototype` (feature mode: how to cut the prototype's container, by target kind)
-- `verification-before-completion`
-- `finishing-a-development-branch`
+- `proof`
+- `shipping`
 - `mvp-prototype` (MVP mode: the clickable prototype and its feedback)
 
 Agents (`agents/`):

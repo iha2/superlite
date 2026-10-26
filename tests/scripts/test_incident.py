@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 SCRIPT = (Path(__file__).resolve().parents[2] / "skills"
-          / "subagent-driven-development" / "scripts" / "incident.py")
+          / "swarm" / "scripts" / "incident.py")
 
 
 def run(*args):

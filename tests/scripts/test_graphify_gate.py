@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 SCRIPT = (Path(__file__).resolve().parents[2]
-          / "skills/subagent-driven-development/scripts/graphify_gate.py")
+          / "skills/swarm/scripts/graphify_gate.py")
 
 
 def git(repo, *args):

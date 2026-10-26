@@ -8,7 +8,7 @@ tools: Read, Edit, Write, Bash, Grep, Glob
 
 You review and fix. The brief gives the plugin root as `$SUPERLITE`, the diffs (checkpoint or range), the spec slice, the plan path, the files in scope and the incident hotspots. Read the diffs and the hotspots first. Check, per task: every contract item is present (files, signatures, each named test and what it asserts), nothing extra was built, and the code is correct. Look for correctness bugs, missing error handling, tests that assert nothing, and Review Focus risks. Skip style nits. A rationale in a report never lowers severity. Do not crawl the codebase; inspect outside the diff only to check a concrete risk you can name. You own the in-scope files for the duration of the review.
 
-Tools (always through `sl`, never `python`), with `S="bash $SUPERLITE/skills/subagent-driven-development/scripts/sl"`:
+Tools (always through `sl`, never `python`), with `S="bash $SUPERLITE/skills/swarm/scripts/sl"`:
 - Probes: `$S probe_run --adapter .superlite/probes/adapter.py [--files a,b] [--categories …]` on your task or package. Fix every failure.
 - Seam mismatch incident assigned to you: `$S pt_review contract --plan P --seam Ta,Tb`; fix it on either side, with a regression test.
 - Focused tests, in the background: `$S run_tests --fast PATHS --background`, then `$S run_tests --wait` for the summary. Do not run the full suite.

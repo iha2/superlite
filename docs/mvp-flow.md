@@ -89,7 +89,7 @@ skills/mvp-prototype/
   feedback-schema.md    the JSON above, with rules
   mock-patterns.md      mock styles for web, cli, library, api, other
 commands/mvp.md         the command
-skills/subagent-driven-development/scripts/mvp_check.py   sl tool: build, stamp, check, ai, fetch
+skills/swarm/scripts/mvp_check.py   sl tool: build, stamp, check, ai, fetch
 ```
 
 `mvp_check.py` is language-agnostic: it only reads the plan, the page and the JSON. Checks: the plan's target and feature fields, the page parses and its structural tags close, every feature id from the plan is in the mock (and no stray ids), the page has no external URLs or network calls, the feedback `prototype_sha` matches, and the schema is valid.

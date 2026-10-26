@@ -1,9 +1,9 @@
 ---
-name: test-driven-development
+name: testing
 description: Use when implementing any feature or bugfix, before writing implementation code
 ---
 
-# Test-Driven Development
+# Testing
 
 Write the test first. Watch it fail. Write the minimum code to pass. No production code without a failing test that demands it.
 
@@ -19,11 +19,11 @@ If you wrote code before the test, delete it and restart from the test. Do not k
 ## Scope of runs
 
 - Run only focused tests inside a task: the new test, then its file or module.
-- Do not run the full suite inside a task. The wave's `bash <skill-dir>/../subagent-driven-development/scripts/sl run_tests --full` run covers it; inside a task use `--fast PATHS`. When working inline without waves, run `--full` once at the end and read its one-line summary.
+- Do not run the full suite inside a task. The wave's `bash <skill-dir>/../swarm/scripts/sl run_tests --full` run covers it; inside a task use `--fast PATHS`. When working inline without waves, run `--full` once at the end and read its one-line summary.
 
 ## Bugfixes
 
-Reproduce the bug as a failing test first, see it fail, then fix. The test is the regression guard. Use `superlite:systematic-debugging` to find the root cause before writing the fix.
+Reproduce the bug as a failing test first, see it fail, then fix. The test is the regression guard. Use `superlite:diagnosis` to find the root cause before writing the fix.
 
 ## Good tests
 
@@ -49,4 +49,4 @@ Throwaway prototypes, generated code and pure configuration need no test-first. 
 - Focused tests are green, output clean.
 - Edge cases and errors covered.
 
-Cannot check every box: say which and why. Then see `superlite:verification-before-completion`.
+Cannot check every box: say which and why. Then see `superlite:proof`.

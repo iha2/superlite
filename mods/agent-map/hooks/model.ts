@@ -1,5 +1,5 @@
 // Pure parsing and merging for the agent map: no `$`, so tests call it directly.
-// Token counting follows skills/subagent-driven-development/scripts/metrics.py
+// Token counting follows skills/swarm/scripts/metrics.py
 // (transcript_segments): usage per assistant message, deduplicated by message id
 // keeping the largest value per field, output topped up from the text length.
 import type { LiveAgent, MetricsLaunch, MetricsStop, PoolEntry, Superlite, Tokens, Usage } from '../types'

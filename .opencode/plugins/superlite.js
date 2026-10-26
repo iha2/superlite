@@ -140,7 +140,7 @@ ${toolMapping}`);
 
 // --- Task-subagent (child session) detection --------------------------------
 //
-// The bootstrap drives coordinator workflows (brainstorming, planning, the
+// The bootstrap drives coordinator workflows (inventing, planning, the
 // approval gate). Injecting it into task subagent sessions would make workers
 // restart design cycles for work the parent already authorised. Detect child
 // sessions structurally: a parentID on the session is the child signal on both

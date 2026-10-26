@@ -27,7 +27,7 @@ Install it ([below](#install)), open a session in your project, and say what you
 |---|---|---|
 | **MVP, a new project** | "Build me a static site generator from this spec" | One batch of questions, a plan, then parallel tasks on Sonnet and Haiku, package reviews and one fresh final review |
 | **A feature on existing code** | "Add CSV export with column widths to the existing app" | Feature mode: it researches the code (Graphify on a large codebase, never installed without your yes), writes a feature plan you validate, builds a small prototype in its own worktree for you to try, then ports it into your code with frozen interfaces and seam checks. The report shows both builds |
-| **Debug** | "This test fails on leap days: find the root cause and fix it" | `systematic-debugging` finds the cause first; fixes go to fix-only agents by tier, each leaving a note, and escalate after two failed rounds |
+| **Debug** | "This test fails on leap days: find the root cause and fix it" | `diagnosis` finds the cause first; fixes go to fix-only agents by tier, each leaving a note, and escalate after two failed rounds |
 | **A small change** | "Rename `build` to `render` everywhere" | Small work stays inline, with a reviewer always |
 | **Review and harden** | "Review this branch and fix what you find" | Package reviewers fix their own findings; the final reviewer reports findings with tiers and never edits |
 | **You approve first** | "Build X. I will approve the plan" | A human orchestrator: you get a plain-language review plan with diagrams; nothing runs until you say yes |
@@ -92,7 +92,7 @@ You need Claude Code, git, Python 3.10 or newer (the tools are Python; the proje
 
 Or load a local checkout for one session: `claude --plugin-dir <path-to-superlite>`
 
-Open a fresh session: the superlite intro appears once. Then send `Let's make a react todo list`; a working install starts `brainstorming` before any code is written. Installs for Codex, Cursor, Gemini CLI, OpenCode and the other harnesses are in [Installation](#installation) below.
+Open a fresh session: the superlite intro appears once. Then send `Let's make a react todo list`; a working install starts `inventing` before any code is written. Installs for Codex, Cursor, Gemini CLI, OpenCode and the other harnesses are in [Installation](#installation) below.
 
 ---
 
@@ -137,14 +137,14 @@ How it works, in [docs/](docs/): [how a run works](docs/how-a-run-works.md) · [
 
 ## Configuration
 
-- **`detail` (plan switch).** `writing-plans` records `**Detail:** contracts | tests | full` in the plan header, and a task can override it. `contracts` gives files, signatures and named tests with exact values. `tests` (the default) adds the test code verbatim and leaves the implementation to the implementer. `full` includes implementation code too, for tricky algorithms. `brainstorming` asks for it in its single batched question, and picks the default itself when unattended.
+- **`detail` (plan switch).** `drafting` records `**Detail:** contracts | tests | full` in the plan header, and a task can override it. `contracts` gives files, signatures and named tests with exact values. `tests` (the default) adds the test code verbatim and leaves the implementation to the implementer. `full` includes implementation code too, for tricky algorithms. `inventing` asks for it in its single batched question, and picks the default itself when unattended.
 - **Final review.** The coordinator runs at medium effort. The final review is a fresh Opus `final-reviewer` at high effort: one turn, findings only, reading a review packet built from the logs, with a target under 30 s. It is not a fork, so `CLAUDE_CODE_FORK_SUBAGENT` is not needed.
 - **Implementer cache TTL.** Set `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL=1h` in the environment to keep an implementer's history cached when fix rounds arrive waves later. The agent files no longer set it: a nested `experimental:` block in agent frontmatter made Claude Code ignore `model:`.
 - **Context-budgeted sizing.** Each task in a plan carries an `Est. context` line, predicted from the lines it writes, the lines it reads and the docs it is handed, on top of the implementer's fixed ~18k prefix. Tasks predicted above 80k are split, tasks whose variable part is smaller than the prefix are flagged by lint with a NOTE to merge, tasks sit in a 1.5 to 6 minute band (`predictor.json`), there is no fixed wave size (the task graph sets the parallel width), and the whole plan stays under 15k chars because it doubles as the shared prime. The coefficients are fit on one project, so treat them as a guide.
 
 ## Installation
 
-Installation differs by harness. If you use more than one, install superlite separately for each one. Every integration loads `using-superlite` at session start; to verify, open a fresh session and send `Let's make a react todo list`. A working install triggers `brainstorming` before any code is written.
+Installation differs by harness. If you use more than one, install superlite separately for each one. Every integration loads `using-superlite` at session start; to verify, open a fresh session and send `Let's make a react todo list`. A working install triggers `inventing` before any code is written.
 
 Each harness has a tool-mapping file in `skills/using-superlite/references/` (Antigravity, Codex, Gemini, Hermes, Muse, Pi, plus Claude Code notes). Where a harness has no plugin agents, each agent in `agents/` (`implementer`, `implementer-haiku`, `package-reviewer`, `final-reviewer` and the three fixers) runs as that harness's generic subagent with `agents/<name>.md` as its instructions.
 
@@ -447,7 +447,7 @@ Analysis scripts:
 
 ## Note
 
-While a superlite run is in progress, superpowers is suspended (`sl orchestrator set` writes `.superlite/peers.json` and, on Claude Code, turns `superpowers@claude-plugins-official` off in `.claude/settings.local.json`). They share seven skill names and both inject session context. `sl finish` removes the marker and restores the previous setting, so superpowers or anything like it can be used again.
+While a superlite run is in progress, superpowers is suspended (`sl orchestrator set` writes `.superlite/peers.json` and, on Claude Code, turns `superpowers@claude-plugins-official` off in `.claude/settings.local.json`). The lifecycle skills are named `inventing`, `drafting`, `swarm`, `testing`, `diagnosis`, `proof`, and `shipping`, so a short-name lookup does not open the superpowers file. Both plugins still inject a session bootstrap. `sl finish` removes the marker and restores the previous setting, so superpowers or anything like it can be used again.
 
 ## License
 

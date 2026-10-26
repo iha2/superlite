@@ -10,8 +10,8 @@
   "repository": "https://github.com/iha2/superlite",
   "license": "MIT",
   "keywords": [
-    "brainstorming",
-    "subagent-driven-development",
+    "inventing",
+    "swarm",
     "skills",
     "planning",
     "tdd",
@@ -23,7 +23,7 @@
   "interface": {
     "displayName": "Superlite",
     "shortDescription": "Lean planning, TDD, debugging, and delivery workflows for coding agents",
-    "longDescription": "Use Superlite to guide agent work through brainstorming with one approval gate, contract-style implementation plans, parallel-wave subagent execution, test-driven development, systematic debugging, and finish-the-branch workflows.",
+    "longDescription": "Use Superlite to guide agent work through inventing with one approval gate, contract-style implementation plans, parallel-wave subagent execution, test-driven development, systematic debugging, and finish-the-branch workflows.",
     "developerName": "CWogu",
     "category": "Developer Tools",
     "capabilities": [

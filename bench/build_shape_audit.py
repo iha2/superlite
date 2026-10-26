@@ -35,7 +35,7 @@ sys.path.insert(0, str(HERE))
 import harness  # noqa: E402
 
 pt = harness._load_plan_tools()
-SL = ROOT / "skills" / "subagent-driven-development" / "scripts" / "sl"
+SL = ROOT / "skills" / "swarm" / "scripts" / "sl"
 SEQ = re.compile(r"^\s*[-*]?\s*Ruling:\s*sequential", re.I | re.M)
 TAG = re.compile(r"\(\s*(T\d+(?:\s*,\s*T\d+)*)\s*\)\s*$")
 

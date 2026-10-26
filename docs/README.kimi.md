@@ -57,4 +57,4 @@ Use Kimi Code's plugin manager (`/plugins`), select Superlite and update it. Sta
 
 - Plugin not loading: run `/plugins info superlite`, check diagnostics, make sure it is enabled, and start a fresh session with `/new`.
 - Old release installed: Kimi Code installs the latest GitHub release for a bare repository URL when one exists; install the branch explicitly to test unreleased changes.
-- Skills not triggering: confirm the plugin is enabled, start a fresh session, and try `Let's make a react todo list`. A working install loads `brainstorming` before writing code.
+- Skills not triggering: confirm the plugin is enabled, start a fresh session, and try `Let's make a react todo list`. A working install loads `inventing` before writing code.

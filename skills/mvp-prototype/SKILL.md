@@ -31,7 +31,7 @@ Write only the main area as an HTML fragment, `.superlite/mvp/mock.html`, in the
 [mock-patterns.md](mock-patterns.md). Then:
 
 ```bash
-bash <skill-dir>/../subagent-driven-development/scripts/sl mvp_check build --plan docs/plans/<date>-<topic>.mvp.md --mock .superlite/mvp/mock.html
+bash <skill-dir>/../swarm/scripts/sl mvp_check build --plan docs/plans/<date>-<topic>.mvp.md --mock .superlite/mvp/mock.html
 ```
 
 `build` fills [page-template.html](page-template.html) (side panel, footer, save logic) with the plan's features and your mock,
