@@ -91,8 +91,9 @@ if [ -f "$sd/orchestrator.json" ]; then
   re_human='"mode"[[:space:]]*:[[:space:]]*"human"'
   re_unappr='"approved"[[:space:]]*:[[:space:]]*false'
   [[ $oj =~ $re_human && $oj =~ $re_unappr ]] && human=1
-  if [ "$human" = 0 ] && [[ $oj =~ $re_human ]] && [ -f "$sd/feature.json" ]; then
-    IFS= read -r -d '' fj < "$sd/feature.json"
+  # feature.json is project-level (written by `sl proto`), never session-local.
+  if [ "$human" = 0 ] && [[ $oj =~ $re_human ]] && [ -f "$proj/.superlite/feature.json" ]; then
+    IFS= read -r -d '' fj < "$proj/.superlite/feature.json"
     re_tryout='"status"[[:space:]]*:[[:space:]]*"tryout"'
     [[ $fj =~ $re_tryout ]] && tryout=1
   fi
@@ -234,7 +235,13 @@ project_code() {
   esac
   case "$rel" in ''|.|..|../*) return 1 ;; esac
   pl="${rel,,}"
-  case "$pl" in .superlite/human-replies.jsonl|.superlite/orchestrator.json|.superlite/feature.json) prot=1; return 0 ;; esac
+  # Protected in every state: flat and session-local approval / reply / feature markers.
+  case "$pl" in
+    .superlite/human-replies.jsonl|.superlite/orchestrator.json|.superlite/feature.json|\
+    .superlite/sessions/*/human-replies.jsonl|.superlite/sessions/*/orchestrator.json|\
+    .superlite/sessions/*/feature.json)
+      prot=1; return 0 ;;
+  esac
   [ "$active" = 1 ] || return 1
   case "$rel" in
     .superlite/sandboxes/*) return 0 ;;
@@ -256,7 +263,7 @@ elif [ -z "$hit" ]; then
   cmd="${cmd//$'\x01'/\\}"
   lc="${cmd,,}"
   mentions=0
-  [[ $lc == *human-replies.jsonl* || $lc == *orchestrator.json* || $lc == *.superlite/feature.json* ]] && mentions=1
+  [[ $lc == *human-replies.jsonl* || $lc == *orchestrator.json* || $lc == *feature.json* ]] && mentions=1
   # sl tools that start a build are denied until the plan is approved.
   re_sl='(sl|\$SL|\$\{SL\}|scripts/sl)"?[[:space:]]+(dispatch|assign|wave0|checkpoint|commit_task|finish|build_prime)([[:space:]]|$)'
   if [ "$gated" = 1 ] && [[ $cmd =~ $re_sl ]]; then hit="sl ${BASH_REMATCH[2]}"; gatehit=1; fi

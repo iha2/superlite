@@ -1,7 +1,8 @@
 # `mvp-feedback.json`
 
 Written by the page's Save feedback (human) or by `sl mvp_check ai` (AI orchestrator). Read from
-`.superlite/mvp/mvp-feedback.json`; `sl mvp_check fetch` copies it in from Downloads when the browser saved it there.
+`$(sl session path)/mvp/mvp-feedback.json` (legacy flat: `.superlite/mvp/mvp-feedback.json`); `sl mvp_check fetch`
+copies it in from Downloads when the browser saved it there.
 
 ```json
 {

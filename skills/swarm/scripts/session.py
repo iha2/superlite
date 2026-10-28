@@ -10,17 +10,22 @@ Layout under the project `.superlite/`:
   sessions.json   registry {sessions, by_host, active}
   active          plain text id (hook-friendly fallback)
   sessions/<id>/  that session's run state (orchestrator, mvp, pool, …)
-  peers.json, worktrees/, sandboxes/  stay shared at the project `.superlite/`
+  peers.json, feature.json, worktrees/, sandboxes/  stay shared at the project `.superlite/`
 
-Resolution order for the state dir: $SUPERLITE_SESSION, then by_host[$SUPERLITE_HOST_SESSION],
-then registry/active, else the legacy flat `.superlite/` (no session started).
-`start` always creates a new id (unless --id reuses an empty slot). Sessions clean up after
-themselves: `end` (also run by `sl finish`) deletes `sessions/<id>/` and clears registry/active;
-starting again with the same `--host-session` ends that host's previous session first; an empty
-registry drops `sessions.json` and `active` so the tree is flat again. Stdlib only.
+Resolution order for the state dir:
+  1. session id encoded in the argument path (…/sessions/<id>/…)
+  2. $SUPERLITE_SESSION
+  3. by_host[$SUPERLITE_HOST_SESSION]
+  4. registry/active
+  5. legacy flat `.superlite/` when no session is active
+
+`start` always creates a new id (unless --id reuses a slot). Sessions clean up after themselves:
+`end` (also run by `sl finish`) deletes `sessions/<id>/`; same-host restart ends the previous
+tree first; an empty registry drops `sessions.json`/`active`. Registry updates are locked and
+atomic. `end --id` rejects anything that is not a session id (no path traversal). Stdlib only.
 """
 # Complexity notation:
-#   everything here is O(1) file work plus O(S) registry size
+#   everything here is O(1) file work plus O(S) registry size, plus lock wait under contention
 import argparse  # O(1)
 import json  # O(1)
 import os  # O(1)
@@ -34,7 +39,32 @@ from pathlib import Path  # O(1)
 REGISTRY = "sessions.json"  # O(1)
 ACTIVE = "active"  # O(1)
 SESSIONS = "sessions"  # O(1)
+LOCK = "sessions.lock"  # O(1)
 ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")  # O(1)
+
+if os.name == "nt":  # O(1)
+    import msvcrt  # O(1)
+
+    def _lock(f):  # O(1) per attempt
+        f.seek(0)  # O(1)
+        while True:  # O(attempts)
+            try:  # O(1)
+                msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)  # O(1)
+                return  # O(1)
+            except OSError:  # O(1)
+                time.sleep(0.01)  # O(1)
+
+    def _unlock(f):  # O(1)
+        f.seek(0)  # O(1)
+        msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)  # O(1)
+else:  # O(1)
+    import fcntl  # O(1)
+
+    def _lock(f):  # O(1)
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX)  # O(1)
+
+    def _unlock(f):  # O(1)
+        fcntl.flock(f.fileno(), fcntl.LOCK_UN)  # O(1)
 
 
 def _looks_like_container(sl: Path) -> bool:  # O(1)
@@ -44,15 +74,37 @@ def _looks_like_container(sl: Path) -> bool:  # O(1)
         (sl / "pool.json").is_file() or (sl / "prime.md").is_file() or (sl / "stable.json").is_file()  # O(1)
 
 
+def _is_repo_root(d: Path) -> bool:  # O(1)
+    """True for a git checkout root (`.git` directory) or linked worktree (`.git` file)."""
+    return (d / ".git").exists()  # O(1)
+
+
+def _ancestors_within_repo(start: Path) -> list[Path]:  # O(depth)
+    """start and its parents, stopping at the nearest git root (inclusive).
+
+    With no `.git` above start (e.g. a bare temp dir in tests), return only start —
+    never walk to the filesystem root and invent `/.superlite`.
+    """
+    out: list[Path] = []  # O(1)
+    for d in (start, *start.parents):  # O(depth)
+        out.append(d)  # O(1)
+        if _is_repo_root(d):  # O(1)
+            return out  # O(depth)
+    return [start]  # O(1)
+
+
 def _container_from_arg(plan_or_dir=None) -> Path:  # O(depth)
     """The project `.superlite` folder (never a sessions/<id> path, never a nested fake `.superlite`).
 
     A plan under `docs/plans/` binds to that package's `.superlite` (parent of `docs`), including a
     prototype sandbox's own tree — do not walk out to an outer checkout's `.superlite`.
+    From cwd with no markers, stop at the nearest git root so a fresh worktree does not inherit
+    the parent checkout's run.
     """
     if plan_or_dir is None:  # O(1)
         start = Path.cwd().resolve()  # O(1)
-        for d in (start, *start.parents):  # O(depth)
+        chain = _ancestors_within_repo(start)  # O(depth)
+        for d in chain:  # O(depth)
             if d.parent.name == SESSIONS and d.parent.parent.name == ".superlite":  # O(1)
                 return d.parent.parent  # O(1)
             if d.name == SESSIONS and d.parent.name == ".superlite":  # O(1)
@@ -64,11 +116,21 @@ def _container_from_arg(plan_or_dir=None) -> Path:  # O(depth)
             sl = d / ".superlite"  # O(1)
             if sl.is_dir() and _looks_like_container(sl):  # O(1)
                 return sl  # O(1)
-        return Path(".superlite")  # O(1)
+        # No .git above cwd (bare temp / nested folder): climb for an existing
+        # container so `sl` from a subfolder still finds the project run. Stop
+        # before the filesystem root — never invent `/.superlite`.
+        if not any(_is_repo_root(d) for d in chain):  # O(depth)
+            for d in start.parents:  # O(depth)
+                if d == d.parent:  # O(1)
+                    break  # O(1)
+                sl = d / ".superlite"  # O(1)
+                if sl.is_dir() and _looks_like_container(sl):  # O(1)
+                    return sl  # O(1)
+        return chain[-1] / ".superlite"  # nearest repo root, or cwd if no .git | O(1)
 
     p = Path(plan_or_dir).resolve()  # O(1)
     start = p if p.is_dir() else p.parent  # O(1)
-    # Session state path first
+    # Session state path first (before docs/plans so a plan inside a session stays there)
     for d in (start, *start.parents):  # O(depth)
         if d.parent.name == SESSIONS and d.parent.parent.name == ".superlite":  # O(1)
             return d.parent.parent  # O(1)
@@ -80,14 +142,14 @@ def _container_from_arg(plan_or_dir=None) -> Path:  # O(depth)
     for d in (start, *start.parents):  # O(depth)
         if d.name == "plans" and d.parent.name == "docs":  # O(1)
             return d.parent.parent / ".superlite"  # O(1)
-    # Explicit .superlite path, or nearest existing container, else beside the path
-    for d in (start, *start.parents):  # O(depth)
+    chain = _ancestors_within_repo(start)  # O(depth)
+    for d in chain:  # O(depth)
         if d.name == ".superlite":  # O(1)
             return d  # O(1)
         sl = d / ".superlite"  # O(1)
         if sl.is_dir() and _looks_like_container(sl):  # O(1)
             return sl  # O(1)
-    return start / ".superlite"  # O(1)
+    return chain[-1] / ".superlite"  # O(1)
 
 
 def project_sl(plan_or_dir=None) -> Path:  # O(1)
@@ -96,6 +158,17 @@ def project_sl(plan_or_dir=None) -> Path:  # O(1)
 
 def project_root(plan_or_dir=None) -> Path:  # O(1)
     return project_sl(plan_or_dir).parent  # O(1)
+
+
+def id_from_path(path) -> str | None:  # O(1)
+    """Session id when path is inside `.superlite/sessions/<id>/…`, else None."""
+    p = Path(path).resolve()  # O(1)
+    parts = p.parts  # O(d)
+    for i, part in enumerate(parts):  # O(d)
+        if part == SESSIONS and i + 1 < len(parts) and i > 0 and parts[i - 1] == ".superlite":  # O(1)
+            cand = parts[i + 1]  # O(1)
+            return cand if ID_RE.match(cand) else None  # O(1)
+    return None  # O(1)
 
 
 def _read_registry(base: Path) -> dict:  # O(S)
@@ -116,9 +189,14 @@ def _read_registry(base: Path) -> dict:  # O(S)
     return d  # O(1)
 
 
-def _write_registry(base: Path, data: dict) -> None:  # O(S)
+def _atomic_write_registry(base: Path, data: dict) -> None:  # O(S)
+    """Write sessions.json via a temp file + replace, then sync the active pointer."""
     base.mkdir(parents=True, exist_ok=True)  # O(1)
-    (base / REGISTRY).write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")  # O(S)
+    target = base / REGISTRY  # O(1)
+    tmp = base / f".{REGISTRY}.{os.getpid()}.tmp"  # O(1)
+    payload = json.dumps(data, indent=1) + "\n"  # O(S)
+    tmp.write_text(payload, encoding="utf-8")  # O(S)
+    os.replace(tmp, target)  # O(1) atomic on the same filesystem
     active = data.get("active")  # O(1)
     af = base / ACTIVE  # O(1)
     if active:  # O(1)
@@ -127,14 +205,27 @@ def _write_registry(base: Path, data: dict) -> None:  # O(S)
         af.unlink()  # O(1)
 
 
-def _new_id(base: Path) -> str:  # O(S)
+def _with_registry_lock(base: Path, fn):  # O(fn) + lock wait
+    """Run fn(reg) -> reg under an exclusive lock; write the returned registry atomically."""
+    base.mkdir(parents=True, exist_ok=True)  # O(1)
+    lock_path = base / LOCK  # O(1)
+    with open(lock_path, "a+", encoding="utf-8") as lf:  # O(1)
+        _lock(lf)  # O(1)
+        try:  # O(1)
+            reg = _read_registry(base)  # O(S)
+            new = fn(reg)  # O(fn)
+            if new is not None:  # O(1)
+                _atomic_write_registry(base, new)  # O(S)
+            return new if new is not None else reg  # O(1)
+        finally:  # O(1)
+            _unlock(lf)  # O(1)
+
+
+def _new_id(base: Path, reg: dict) -> str:  # O(1)
     stamp = datetime.now().strftime("%Y%m%dT%H%M%S")  # O(1)
-    suffix = f"{os.getpid():x}-{os.urandom(2).hex()}"  # O(1)
-    cand = f"{stamp}-{suffix}"  # O(1)
-    reg = _read_registry(base)  # O(S)
+    cand = f"{stamp}-{os.getpid():x}-{os.urandom(2).hex()}"  # O(1)
     while cand in reg["sessions"] or (base / SESSIONS / cand).exists():  # O(1)
         cand = f"{stamp}-{os.urandom(3).hex()}"  # O(1)
-        time.sleep(0)  # O(1)
     return cand  # O(1)
 
 
@@ -146,22 +237,30 @@ def _active_id(base: Path) -> str | None:  # O(S)
     reg = _read_registry(base)  # O(S)
     if host and host in reg["by_host"]:  # O(1)
         sid = reg["by_host"][host]  # O(1)
-        if (base / SESSIONS / sid).is_dir():  # O(1)
+        if isinstance(sid, str) and ID_RE.match(sid) and (base / SESSIONS / sid).is_dir():  # O(1)
             return sid  # O(1)
     active = reg.get("active")  # O(1)
-    if active and (base / SESSIONS / str(active)).is_dir():  # O(1)
+    if active and ID_RE.match(str(active)) and (base / SESSIONS / str(active)).is_dir():  # O(1)
         return str(active)  # O(1)
     try:  # O(1)
         aid = (base / ACTIVE).read_text(encoding="utf-8").strip()  # O(1)
     except OSError:  # O(1)
         aid = ""  # O(1)
-    if aid and (base / SESSIONS / aid).is_dir():  # O(1)
+    if aid and ID_RE.match(aid) and (base / SESSIONS / aid).is_dir():  # O(1)
         return aid  # O(1)
     return None  # O(1)
 
 
 def state_dir(plan_or_dir=None) -> Path:  # O(S)
-    """Directory that holds this run's orchestrator/mvp/pool (session or legacy flat)."""
+    """Directory that holds this run's orchestrator/mvp/pool (session or legacy flat).
+
+    An argument inside `sessions/<id>/` always selects that session, even when another is active.
+    """
+    if plan_or_dir is not None:  # O(1)
+        encoded = id_from_path(plan_or_dir)  # O(d)
+        if encoded:  # O(1)
+            base = project_sl(plan_or_dir)  # O(1)
+            return base / SESSIONS / encoded  # O(1)
     base = project_sl(plan_or_dir)  # O(1)
     sid = _active_id(base)  # O(S)
     if sid:  # O(1)
@@ -169,18 +268,27 @@ def state_dir(plan_or_dir=None) -> Path:  # O(S)
     return base  # O(1)
 
 
+def display_path(path, start=None) -> str:  # O(1)
+    """Prefer a cwd-relative posix path for CLI defaults/prints; absolute when outside cwd."""
+    p = Path(path).resolve()  # O(1)
+    base = Path(start or Path.cwd()).resolve()  # O(1)
+    try:  # O(1)
+        return p.relative_to(base).as_posix()  # O(1)
+    except ValueError:  # O(1)
+        return str(p)  # O(1)
+
+
 def current_id(plan_or_dir=None) -> str | None:  # O(S)
+    if plan_or_dir is not None:  # O(1)
+        encoded = id_from_path(plan_or_dir)  # O(d)
+        if encoded:  # O(1)
+            return encoded  # O(1)
     return _active_id(project_sl(plan_or_dir))  # O(S)
 
 
-def id_from_path(path) -> str | None:  # O(1)
-    """Session id when path is inside `.superlite/sessions/<id>/…`, else None."""
-    p = Path(path).resolve()  # O(1)
-    parts = p.parts  # O(d)
-    for i, part in enumerate(parts):  # O(d)
-        if part == SESSIONS and i + 1 < len(parts) and i > 0 and parts[i - 1] == ".superlite":  # O(1)
-            return parts[i + 1]  # O(1)
-    return None  # O(1)
+def registered_ids(plan_or_dir=None) -> list[str]:  # O(S)
+    """Session ids still registered under the project container."""
+    return list(_read_registry(project_sl(plan_or_dir))["sessions"])  # O(S)
 
 
 def start(plan_or_dir=None, host_session: str | None = None, session_id: str | None = None) -> tuple[str, Path]:  # O(S + tree)
@@ -191,29 +299,37 @@ def start(plan_or_dir=None, host_session: str | None = None, session_id: str | N
     """
     base = project_sl(plan_or_dir)  # O(1)
     base.mkdir(parents=True, exist_ok=True)  # O(1)
-    reg = _read_registry(base)  # O(S)
     host = (host_session or os.environ.get("SUPERLITE_HOST_SESSION") or "").strip() or None  # O(1)
-    sid = (session_id or "").strip()  # O(1)
-    if sid:  # O(1)
-        if not ID_RE.match(sid):  # O(1)
-            raise ValueError(f"invalid session id: {sid}")  # O(1)
-    else:  # O(1)
-        sid = _new_id(base)  # O(S)
-    # Restart cleanup: this host already owned a different session → end it first.
-    if host and host in reg["by_host"] and reg["by_host"][host] != sid:  # O(1)
-        end(plan_or_dir, session_id=reg["by_host"][host])  # O(tree)
-        reg = _read_registry(base)  # O(S)
-    path = base / SESSIONS / sid  # O(1)
-    path.mkdir(parents=True, exist_ok=True)  # O(1)
-    (path / "mvp").mkdir(exist_ok=True)  # O(1)
-    reg["sessions"][sid] = {  # O(1)
-        "created": datetime.now().isoformat(timespec="seconds"),  # O(1)
-        "host_session": host,  # O(1)
-    }  # O(1)
+    want = (session_id or "").strip()  # O(1)
+    if want and not ID_RE.match(want):  # O(1)
+        raise ValueError(f"invalid session id: {want}")  # O(1)
+
+    # Restart cleanup outside the write lock's critical path for the new id (end takes its own lock).
     if host:  # O(1)
-        reg["by_host"][host] = sid  # O(1)
-    reg["active"] = sid  # O(1)
-    _write_registry(base, reg)  # O(S)
+        prev = _read_registry(base)["by_host"].get(host)  # O(S)
+        if prev and prev != want and isinstance(prev, str) and ID_RE.match(prev):  # O(1)
+            end(plan_or_dir, session_id=prev)  # O(tree)
+
+    held: dict = {}  # O(1)
+
+    def mutate(reg: dict):  # O(1)
+        sid = want or _new_id(base, reg)  # O(1)
+        held["sid"] = sid  # O(1)
+        path = base / SESSIONS / sid  # O(1)
+        path.mkdir(parents=True, exist_ok=True)  # O(1)
+        (path / "mvp").mkdir(exist_ok=True)  # O(1)
+        held["path"] = path  # O(1)
+        reg["sessions"][sid] = {  # O(1)
+            "created": datetime.now().isoformat(timespec="seconds"),  # O(1)
+            "host_session": host,  # O(1)
+        }  # O(1)
+        if host:  # O(1)
+            reg["by_host"][host] = sid  # O(1)
+        reg["active"] = sid  # O(1)
+        return reg  # O(1)
+
+    _with_registry_lock(base, mutate)  # O(S)
+    sid, path = held["sid"], held["path"]  # O(1)
     os.environ["SUPERLITE_SESSION"] = sid  # so this process and children keep the same session | O(1)
     return sid, path  # O(1)
 
@@ -221,11 +337,10 @@ def start(plan_or_dir=None, host_session: str | None = None, session_id: str | N
 def end(plan_or_dir=None, session_id: str | None = None) -> str:  # O(tree)
     """Delete sessions/<id> and clear registry pointers. Returns a one-line status.
 
-    Resolves id from (1) explicit session_id, (2) active/env, (3) plan_or_dir when it points
-    inside a sessions/<id> tree (so `finish` cleans up from the ledger path alone).
+    Resolves id from (1) explicit session_id, (2) path-encoded id, (3) active/env.
+    Rejects ids that do not match ID_RE before any delete (blocks `end --id ../../src`).
     """
     base = project_sl(plan_or_dir)  # O(1)
-    reg = _read_registry(base)  # O(S)
     sid = (session_id or "").strip()  # O(1)
     if not sid and plan_or_dir is not None:  # O(1)
         sid = id_from_path(plan_or_dir) or ""  # O(d)
@@ -233,35 +348,49 @@ def end(plan_or_dir=None, session_id: str | None = None) -> str:  # O(tree)
         sid = (_active_id(base) or "").strip()  # O(S)
     if not sid:  # O(1)
         return "session: none"  # O(1)
+    if not ID_RE.match(sid):  # O(1)
+        raise ValueError(f"invalid session id: {sid}")  # O(1)
+
     path = base / SESSIONS / sid  # O(1)
+    # Refuse to delete anything outside sessions/<id> (defense in depth with ID_RE)
+    try:  # O(1)
+        path.resolve().relative_to((base / SESSIONS).resolve())  # O(1)
+    except ValueError:  # O(1)
+        raise ValueError(f"invalid session id: {sid}") from None  # O(1)
+
+    def mutate(reg: dict):  # O(1)
+        reg["sessions"].pop(sid, None)  # O(1)
+        reg["by_host"] = {h: s for h, s in reg["by_host"].items() if s != sid}  # O(H)
+        if reg.get("active") == sid:  # O(1)
+            reg["active"] = None  # O(1)
+        return reg  # O(1)
+
+    reg = _with_registry_lock(base, mutate)  # O(S)
     if path.is_dir():  # O(1)
         shutil.rmtree(path, ignore_errors=True)  # O(tree)
-    reg["sessions"].pop(sid, None)  # O(1)
-    reg["by_host"] = {h: s for h, s in reg["by_host"].items() if s != sid}  # O(H)
-    if reg.get("active") == sid:  # O(1)
-        reg["active"] = None  # O(1)
     if os.environ.get("SUPERLITE_SESSION") == sid:  # O(1)
         os.environ.pop("SUPERLITE_SESSION", None)  # O(1)
-    # Fully flat again when nothing remains: drop registry + active + empty sessions/
     if not reg["sessions"]:  # O(1)
-        for name in (REGISTRY, ACTIVE):  # O(1)
+        for name in (REGISTRY, ACTIVE, LOCK):  # O(1)
             f = base / name  # O(1)
             if f.is_file():  # O(1)
-                f.unlink()  # O(1)
+                try:  # O(1)
+                    f.unlink()  # O(1)
+                except OSError:  # O(1)
+                    pass  # O(1)
         sroot = base / SESSIONS  # O(1)
         if sroot.is_dir() and not any(sroot.iterdir()):  # O(1)
             sroot.rmdir()  # O(1)
-        return f"session: ended {sid}"  # O(1)
-    _write_registry(base, reg)  # O(S)
-    sroot = base / SESSIONS  # O(1)
-    if sroot.is_dir() and not any(sroot.iterdir()):  # O(1)
-        sroot.rmdir()  # O(1)
+    else:  # O(1)
+        sroot = base / SESSIONS  # O(1)
+        if sroot.is_dir() and not any(sroot.iterdir()):  # O(1)
+            sroot.rmdir()  # O(1)
     return f"session: ended {sid}"  # O(1)
 
 
 def status_line(plan_or_dir=None) -> str:  # O(S)
     base = project_sl(plan_or_dir)  # O(1)
-    sid = _active_id(base)  # O(S)
+    sid = current_id(plan_or_dir) if plan_or_dir is not None else _active_id(base)  # O(S)
     reg = _read_registry(base)  # O(S)
     n = len(reg["sessions"])  # O(1)
     if not sid:  # O(1)
@@ -294,7 +423,11 @@ def main(argv=None) -> int:  # O(S)
         print(f"SUPERLITE_SESSION={sid}")  # O(1)
         return 0  # O(1)
     if a.cmd == "end":  # O(1)
-        print(end(a.plan, session_id=getattr(a, "id", None)))  # O(tree)
+        try:  # O(1)
+            print(end(a.plan, session_id=getattr(a, "id", None)))  # O(tree)
+        except ValueError as err:  # O(1)
+            print(f"session: {err}", file=sys.stderr)  # O(1)
+            return 2  # O(1)
         return 0  # O(1)
     if a.cmd == "path":  # O(1)
         print(state_dir(a.plan))  # O(S)

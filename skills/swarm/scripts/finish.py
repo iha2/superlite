@@ -213,15 +213,15 @@ def main(argv=None):  # O(R*w + I*w)
     import exclusive  # the run is done: peer plugins may load again | O(1)
     import session as sl_session  # O(1)
     if a.ledger == DEFAULT_LEDGER:  # O(1)
-        a.ledger = str(sl_session.state_dir(a.plan) / "progress.md")  # O(S)
+        a.ledger = sl_session.display_path(sl_session.state_dir(a.plan) / "progress.md")  # O(S)
     if a.log == DEFAULT_LOG:  # O(1)
-        a.log = str(Path(a.ledger).with_name("incidents.jsonl"))  # O(1)
+        a.log = sl_session.display_path(Path(a.ledger).with_name("incidents.jsonl"))  # O(1)
     sys.stdout.write(summary(a.ledger, a.log, a.lint_log or str(Path(a.ledger).with_name("lint-log.jsonl")), a.plan))  # O(output)
-    # Ledger may live in .superlite/ or .superlite/sessions/<id>/; peers stay on the project container.
-    # Sessions always clean up here: end resolves the id from the ledger path even if active was cleared.
-    anchor = a.plan or Path(a.ledger).resolve()  # O(1)
-    print(exclusive.release(sl_session.project_sl(anchor)))  # O(S)
-    print(sl_session.end(anchor))  # O(tree) → "session: ended <id>" or "session: none"
+    # Cleanup always follows the ledger being summarized (not --plan), so finishing A cannot delete B.
+    ledger_path = Path(a.ledger).resolve()  # O(1)
+    owner = sl_session.id_from_path(ledger_path) or sl_session.current_id(a.plan)  # O(S)
+    print(exclusive.release(ledger_path, owner=owner))  # O(S) keeps peers suspended while other sessions own it
+    print(sl_session.end(ledger_path))  # O(tree) → "session: ended <id>" or "session: none"
     return 0  # O(1)
 
 

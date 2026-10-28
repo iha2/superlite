@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Cursor stop / afterAgentResponse (and Claude Stop when it sends usage): append one
-# host_usage record to <project>/.superlite/metrics.jsonl with the host's own token
+# host_usage record to the session (or legacy flat) metrics.jsonl with the host's own token
 # fields. Never invent zeros: if no token/cost fields are present, write nothing.
 # Active when a superlite session marker exists. Exit 0 always (fail open).
 
@@ -44,8 +44,12 @@ if [ -z "$proj" ]; then
   fi
 fi
 [ -n "$proj" ] || proj="$PWD"
-sd="$proj/.superlite"
-[ -f "$sd/stable.json" ] || [ -f "$sd/prime.md" ] || [ -f "$sd/pool.json" ] || [ -f "$sd/orchestrator.json" ] || [ -f "$sd/feature.json" ] || exit 0
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=./_sl_state_dir.sh
+. "$HOOK_DIR/_sl_state_dir.sh"
+sl_resolve_state_dir "$proj"
+# Session markers, or project-level feature.json (sl proto; never session-local).
+sl_run_marker "$sd" || [ -f "$proj/.superlite/feature.json" ] || exit 0
 
 # Real host/model fields only — do not default missing ones to invent a $0 row.
 jnum input_tokens; in_t="$REPLY"

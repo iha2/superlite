@@ -40,8 +40,17 @@ if [ -z "$proj" ]; then
   fi
 fi
 [ -n "$proj" ] || proj="$PWD"
-sl_dir="${proj}/.superlite"
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=./_sl_state_dir.sh
+. "$HOOK_DIR/_sl_state_dir.sh"
+sl_resolve_state_dir "$proj"
+sl_dir="$sd"
 [ -d "$sl_dir" ] || { [ "$is_cursor" = 1 ] && printf '{"continue":true}\n'; exit 0; }
+# Active run: session markers, or project-level feature.json.
+sl_run_marker "$sd" || [ -f "$proj/.superlite/feature.json" ] || {
+  [ "$is_cursor" = 1 ] && printf '{"continue":true}\n'
+  exit 0
+}
 
 root="${CLAUDE_PLUGIN_ROOT:-${CURSOR_PLUGIN_ROOT:-}}"
 if [ -z "$root" ]; then
@@ -50,8 +59,15 @@ if [ -z "$root" ]; then
   root="${self%/hooks/*}"
 fi
 root="${root//\\//}"
-py="${SUPERLITE_PYTHON:-python}"
 script="$root/skills/swarm/scripts/cost_live.py"
+# Prefer SUPERLITE_PYTHON; else the first of python3/python that runs (matches `sl`).
+py="${SUPERLITE_PYTHON:-}"
+if [ -z "$py" ]; then
+  for cand in python3 python; do
+    if command -v "$cand" >/dev/null 2>&1; then py="$cand"; break; fi
+  done
+fi
+[ -n "$py" ] || py=python3
 
 line="$("$py" "$script" "$sl_dir" 2>/dev/null)" || line=""
 if [ -z "$line" ]; then

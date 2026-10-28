@@ -57,8 +57,8 @@ def running_from_pool(pool, committed=()):  # O(a)
 def stable_cp(plan):  # O(stable.json)
     """Critical-path task ids that `lint --stable` saved, else none."""
     try:  # O(1)
-        import plan_tools as pt  # O(1) lazy
-        return set(json.loads((pt.stable_root(plan) / ".superlite" / "stable.json").read_text(encoding="utf-8")).get("critical_path") or [])  # O(file)
+        import session as sl_session  # O(1)
+        return set(json.loads((sl_session.state_dir(plan) / "stable.json").read_text(encoding="utf-8")).get("critical_path") or [])  # O(file)
     except Exception:  # noqa: BLE001 | no stable.json: no task is held alone for it | O(1)
         return set()  # O(1)
 
@@ -122,8 +122,8 @@ def make_batches(ready, tier, info, times, max_ctx, cp=(), busy_left=(), solo_mo
 def write_dispatch_json(plan, lines):  # O(R)
     """Record the batches this call printed so the batch guard can match them."""
     try:  # O(1)
-        import plan_tools as pt  # O(1)
-        root = pt.stable_root(plan) / ".superlite"  # O(1)
+        import session as sl_session  # O(1)
+        root = sl_session.state_dir(plan)  # same dir the coordinator hook reads | O(S)
         root.mkdir(parents=True, exist_ok=True)  # O(1)
         # Include T0 when printed (wave0 line): guard matches it as its own batch. T0 is never
         # packed by split.choose; it only appears here if dispatch prepended the wave0 line.
@@ -263,6 +263,12 @@ def main(argv=None):  # O(c + L + n + e + R*a*(F + o))
     ap.add_argument("--cap", type=int, default=None, help="default: superlite.json cap, else 10")  # O(1)
     ap.add_argument("--batch", type=int, help="most tasks per agent message (default: config batch.max_tasks; 1 = off)")  # O(1)
     a = ap.parse_args(argv)  # O(1)
+    import session as sl_session  # O(1)
+    sd = sl_session.state_dir(a.plan)  # O(S)
+    if a.pool == ".superlite/pool.json":  # O(1)
+        a.pool = sl_session.display_path(sd / "pool.json")  # O(1)
+    if a.ledger == ct.DEFAULT_LEDGER:  # O(1)
+        a.ledger = sl_session.display_path(sd / "progress.md")  # O(1)
     import project_config  # O(1)
     try:  # bad superlite.json fails closed before any dispatch | O(1)
         cap = project_config.effective_cap(a.cap, Path(".").resolve())  # O(file)

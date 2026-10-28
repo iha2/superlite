@@ -8,10 +8,10 @@
 `on` (also run by `sl orchestrator set`) writes `.superlite/peers.json` and, on a
 Claude Code project, sets enabledPlugins["superpowers@claude-plugins-official"]
 to false in `.claude/settings.local.json`. Other keys in that file stay. The
-previous value is kept in peers.json. `off` (also run by `sl finish`) removes
-the marker and restores that value, so superpowers and anything like it can be
-used again. A second `on` does not overwrite the saved value. Unreadable
-settings are left untouched. Stdlib only.
+previous value is kept in peers.json. Owners (session ids, or "legacy") are
+tracked so `off` / `sl finish` only restores peers when the last owning session
+ends. A second `on` from the same or another session does not overwrite the saved
+value. Unreadable settings are left untouched. Stdlib only.
 """
 # Complexity notation:
 #   everything here is O(1) file work, plus O(S) to read and write the settings file
@@ -112,35 +112,62 @@ def write_enabled(plan_or_dir, value) -> None:  # O(S)
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")  # O(S)
 
 
-def suspend(plan_or_dir=None) -> str:  # O(S)
-    """Mark peer plugins suspended. A second call keeps the saved previous flag."""
+def _owner_id(plan_or_dir=None, owner=None) -> str:  # O(S)
+    """Session id that owns this suspend, or 'legacy' for a flat / unsessioned run."""
+    if owner:  # O(1)
+        return str(owner)  # O(1)
+    return sl_session.current_id(plan_or_dir) or "legacy"  # O(S)
+
+
+def suspend(plan_or_dir=None, owner=None) -> str:  # O(S)
+    """Mark peer plugins suspended. A second call keeps the saved previous flag and adds the owner."""
+    oid = _owner_id(plan_or_dir, owner)  # O(S)
     cur = read_peers(plan_or_dir)  # O(file)
+    d = sl_session.project_sl(plan_or_dir)  # O(1)
+    d.mkdir(parents=True, exist_ok=True)  # O(1)
     if cur and cur.get("suspended") is True:  # O(1)
+        owners = [x for x in (cur.get("owners") or []) if isinstance(x, str)]  # O(o)
+        if oid not in owners:  # O(o)
+            owners.append(oid)  # O(1)
+            cur["owners"] = owners  # O(1)
+            (d / FILE).write_text(json.dumps(cur, indent=1) + "\n", encoding="utf-8")  # O(1)
         return SUSPENDED  # O(1)
     skip, previous = current_enabled(plan_or_dir)  # O(S)
     state = {  # O(1)
         "suspended": True,  # O(1)
         "peers": [PEER_NAME],  # O(1)
+        "owners": [oid],  # O(1)
         "since": datetime.now().isoformat(timespec="seconds"),  # O(1)
         "claude_plugin": PEER_ID,  # O(1)
         "settings_skip": skip,  # O(1)
         "previous_enabled": previous,  # O(1)
     }  # O(1)
-    d = sl_session.project_sl(plan_or_dir)  # O(1)
-    d.mkdir(parents=True, exist_ok=True)  # O(1)
     if not skip:  # O(1)
         write_enabled(plan_or_dir, False)  # O(S)
     (d / FILE).write_text(json.dumps(state, indent=1) + "\n", encoding="utf-8")  # O(1)
     return SUSPENDED  # O(1)
 
 
-def release(plan_or_dir=None) -> str:  # O(S)
-    """Clear the suspension and restore the peer plugin flag saved at suspend."""
+def release(plan_or_dir=None, owner=None) -> str:  # O(S)
+    """Drop one owner; restore peers only when no owning session remains."""
+    oid = _owner_id(plan_or_dir, owner)  # O(S)
     cur = read_peers(plan_or_dir)  # O(file)
     path = peers_path(plan_or_dir)  # O(1)
+    if not cur or cur.get("suspended") is not True:  # O(1)
+        if path.is_file():  # O(1)
+            path.unlink()  # O(1)
+        return CLEAR  # O(1)
+    owners = [x for x in (cur.get("owners") or []) if isinstance(x, str)]  # O(o)
+    if not owners:  # pre-owners peers.json: treat as single owner | O(1)
+        owners = [oid]  # O(1)
+    owners = [x for x in owners if x != oid]  # O(o)
+    if owners:  # O(1)
+        cur["owners"] = owners  # O(1)
+        path.write_text(json.dumps(cur, indent=1) + "\n", encoding="utf-8")  # O(1)
+        return f"peers: still suspended ({len(owners)} other session(s))"  # O(1)
     if path.is_file():  # O(1)
         path.unlink()  # O(1)
-    if cur and cur.get("suspended") is True and not cur.get("settings_skip"):  # O(1)
+    if not cur.get("settings_skip"):  # O(1)
         write_enabled(plan_or_dir, cur.get("previous_enabled"))  # None deletes the key | O(S)
     return CLEAR  # O(1)
 

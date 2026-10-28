@@ -38,11 +38,11 @@ FEEDBACK = ".superlite/mvp/mvp-feedback.json"  # O(1)
 
 
 def default_page() -> str:  # O(S)
-    return str(sl_session.state_dir() / "mvp" / "prototype.html")  # O(S)
+    return sl_session.display_path(sl_session.state_dir() / "mvp" / "prototype.html")  # O(S)
 
 
 def default_feedback() -> str:  # O(S)
-    return str(sl_session.state_dir() / "mvp" / "mvp-feedback.json")  # O(S)
+    return sl_session.display_path(sl_session.state_dir() / "mvp" / "mvp-feedback.json")  # O(S)
 KINDS = {"web", "cli", "library", "api", "other"}  # O(1)
 SIZES = {"S", "M", "L"}  # O(1)
 PRIORITIES = {"must", "should", "could"}  # O(1)

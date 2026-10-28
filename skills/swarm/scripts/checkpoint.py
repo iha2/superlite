@@ -432,9 +432,10 @@ commit_one = checkpoint_one  # old name, kept for one release | O(1)
 
 
 def _sl_state(plan, name):  # O(1)
+    """Session (or legacy flat) path for questions.json / blocked.json — same dir the hooks read."""
     try:  # O(1)
-        import plan_tools as pt  # O(1)
-        return pt.stable_root(plan) / ".superlite" / name  # O(1)
+        import session as sl_session  # O(1)
+        return sl_session.state_dir(plan) / name  # O(S)
     except Exception:  # noqa: BLE001 | O(1)
         return Path(".superlite") / name  # O(1)
 
@@ -484,6 +485,14 @@ def main(argv=None):  # O(L + t*(m*o)) + git spawns per task; one process for al
     ap.add_argument("--tier", help="required fixer tier for --blocked (haiku|sonnet|opus)")  # O(1)
     ap.add_argument("--agent", default="", help="implementer id for --question")  # O(1)
     a = ap.parse_args(argv)  # O(1)
+    import session as sl_session  # ledger/log/pool follow the active session | O(1)
+    sd = sl_session.state_dir(a.plan)  # O(S)
+    if a.ledger == DEFAULT_LEDGER:  # O(1)
+        a.ledger = sl_session.display_path(sd / "progress.md")  # O(1)
+    if a.log == DEFAULT_LOG:  # O(1)
+        a.log = sl_session.display_path(sd / "incidents.jsonl")  # O(1)
+    if a.pool == ".superlite/pool.json":  # O(1)
+        a.pool = sl_session.display_path(sd / "pool.json")  # O(1)
 
     if a.question:  # O(1)
         write_questions(a.plan, a.question, a.agent)  # O(1)

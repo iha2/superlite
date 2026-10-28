@@ -5,8 +5,9 @@ description: Use in MVP mode (/superlite:mvp), after the .mvp.md feature plan is
 
 # MVP prototype
 
-One self-contained page, `.superlite/mvp/prototype.html`: raw HTML and JS, no build step, no network, fake data. It is a spec
-for behavior, not product code. Design: `docs/mvp-flow.md`. Tools: `sl mvp_check` (see below).
+One self-contained page under the active session (`$(sl session path)/mvp/prototype.html`, or legacy
+`.superlite/mvp/prototype.html` when no session): raw HTML and JS, no build step, no network, fake data. It is a spec
+for behavior, not product code. Design: `docs/mvp-flow.md`. Tools: `sl mvp_check` (defaults follow the session).
 
 ## 1. The plan the page is built from
 
@@ -27,11 +28,12 @@ Features considered and left out go under `## Left out` as plain bullets, with n
 
 ## 2. Write the mock, not the page
 
-Write only the main area as an HTML fragment, `.superlite/mvp/mock.html`, in the style for the target from
-[mock-patterns.md](mock-patterns.md). Then:
+Write only the main area as an HTML fragment at `$(sl session path)/mvp/mock.html` (legacy: `.superlite/mvp/mock.html`),
+in the style for the target from [mock-patterns.md](mock-patterns.md). Then:
 
 ```bash
-bash <skill-dir>/../swarm/scripts/sl mvp_check build --plan docs/plans/<date>-<topic>.mvp.md --mock .superlite/mvp/mock.html
+MVP=$(bash <skill-dir>/../swarm/scripts/sl session path)/mvp
+bash <skill-dir>/../swarm/scripts/sl mvp_check build --plan docs/plans/<date>-<topic>.mvp.md --mock "$MVP/mock.html"
 ```
 
 `build` fills [page-template.html](page-template.html) (side panel, footer, save logic) with the plan's features and your mock,
@@ -63,8 +65,8 @@ plan, then `build` again. After any hand edit of the page run `sl mvp_check stam
 Show the path, a five-line summary (goal, target, features in, features out, rough time and cost) and: open the page, cut or
 reorder features, edit labels, leave notes, press Save feedback, then reply in chat. END THE TURN. The chat reply
 approves, never the file. If you understand that reply as approval, send approve: `sl orchestrator approve --review docs/plans/<date>-<topic>.mvp.md`, then
-`sl mvp_check fetch` (the project file, else the newest `mvp-feedback*.json` in Downloads, copied in; if none, ask the user to
-paste the Copy feedback block and save it yourself to `.superlite/mvp/mvp-feedback.json`), then
+`sl mvp_check fetch` (the session feedback file, else the newest `mvp-feedback*.json` in Downloads, copied in; if none, ask the user to
+paste the Copy feedback block and save it yourself to `$(sl session path)/mvp/mvp-feedback.json`), then
 `sl mvp_check check --plan <mvp.md> --require-feedback`. A sha mismatch means the file came from an older page: ask once for a
 fresh save. From here on the human is not asked again: a scope change is a `Ruling: [scope] ...` line, listed by `sl finish` under
 "Changed from the approved plan".
@@ -85,5 +87,6 @@ fix the plan, never the feedback.
 
 ## 7. At finish
 
-Delete `.superlite/mvp/` unless the target includes `web` and the feedback says `keep_as_frontend: true`; then the page is the
-first producer task's starting file, converted to the plan's framework by that task.
+`sl finish` deletes the session tree (including `mvp/`) unless the target includes `web` and the feedback says
+`keep_as_frontend: true`; then copy the page out before finish — it is the first producer task's starting file, converted to
+the plan's framework by that task.

@@ -148,6 +148,11 @@ def test_xcsift_json_counts_passed_tests_array_not_summary_object(tmp_path):
     # Integer form also works
     got2 = testcmd.parse_output(json.dumps({"passed_tests": 10, "failed_tests": 2, "skipped_tests": 0}), 1)
     assert got2["passed"] == 10 and got2["failed"] == 2
+    # Mixed int counts + detail arrays (xcsift) must not zero the int fields
+    got3 = testcmd.parse_output(json.dumps({
+        "passed_tests": 132, "failed_tests": [], "skipped_tests": 3,
+    }), 0)
+    assert got3["passed"] == 132 and got3["failed"] == 0 and got3["skipped"] == 3
 
 
 def test_non_python_project_never_asks_for_pytest(tmp_path):

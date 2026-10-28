@@ -125,3 +125,124 @@ def test_end_from_ledger_path_without_active_pointer(tmp_path, monkeypatch):
     assert "ended" in sl_session.end(path / "progress.md")
     assert not path.exists()
     assert not (tmp_path / ".superlite" / "sessions.json").exists()
+
+
+def test_end_rejects_path_traversal_ids(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    import sys
+    sys.path.insert(0, str(SCRIPTS))
+    import session as sl_session
+    sl_session.start(tmp_path, host_session="safe")
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "keep.txt").write_text("safe", encoding="utf-8")
+    (tmp_path / ".superlite" / "sessions").mkdir(exist_ok=True)
+    with pytest.raises(ValueError, match="invalid session id"):
+        sl_session.end(tmp_path, session_id="../../src")
+    assert (src / "keep.txt").read_text(encoding="utf-8") == "safe"
+    bad = run(SESSION, "end", "--id", "../../src", cwd=tmp_path)
+    assert bad.returncode == 2 and "invalid session id" in bad.err
+
+
+def test_path_encoded_session_wins_over_active(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    import sys
+    sys.path.insert(0, str(SCRIPTS))
+    import session as sl_session
+    sid_a, path_a = sl_session.start(tmp_path, host_session="a")
+    monkeypatch.delenv("SUPERLITE_SESSION", raising=False)
+    sid_b, path_b = sl_session.start(tmp_path, host_session="b")
+    monkeypatch.setenv("SUPERLITE_SESSION", sid_b)
+    plan_a = path_a / "plan.md"
+    plan_a.write_text("# a\n", encoding="utf-8")
+    assert sl_session.state_dir(plan_a) == path_a
+    assert sl_session.current_id(plan_a) == sid_a
+    assert sl_session.state_dir() == path_b
+
+
+def test_fresh_worktree_does_not_inherit_parent_superlite(tmp_path):
+    import sys
+    sys.path.insert(0, str(SCRIPTS))
+    import session as sl_session
+    parent = tmp_path / "main"
+    parent.mkdir()
+    (parent / ".git").mkdir()
+    (parent / ".superlite").mkdir()
+    (parent / ".superlite" / "orchestrator.json").write_text('{"mode":"ai"}\n', encoding="utf-8")
+    wt = parent / ".superlite" / "worktrees" / "topic"
+    wt.mkdir(parents=True)
+    (wt / ".git").write_text("gitdir: ../../.git/worktrees/topic\n", encoding="utf-8")
+    assert sl_session.project_sl(wt) == wt / ".superlite"
+    assert sl_session.project_sl(wt) != parent / ".superlite"
+
+
+def test_stable_and_dispatch_writers_match_readers(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    import sys
+    sys.path.insert(0, str(SCRIPTS))
+    import session as sl_session
+    import next_tasks as nt
+    import dispatch
+    sid, path = sl_session.start(tmp_path, host_session="stable")
+    monkeypatch.setenv("SUPERLITE_SESSION", sid)
+    (path / "stable.json").write_text(json.dumps({
+        "stable": ["T1", "T2"], "critical_path": ["T1"], "tiers": {"T1": "sonnet"},
+    }) + "\n", encoding="utf-8")
+    plan = tmp_path / "docs" / "plans" / "p.md"
+    plan.parent.mkdir(parents=True)
+    plan.write_text("# p\n", encoding="utf-8")
+    assert nt.stable_filter(plan) == {"T1", "T2"}
+    assert dispatch.stable_cp(plan) == {"T1"}
+    dispatch.write_dispatch_json(plan, [("T1", "fresh tier=sonnet")])
+    assert (path / "dispatch.json").is_file()
+    data = json.loads((path / "dispatch.json").read_text(encoding="utf-8"))
+    assert data["batches"] == [["T1"]]
+
+
+def test_peers_release_only_after_last_owner(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    import sys
+    sys.path.insert(0, str(SCRIPTS))
+    import exclusive
+    import session as sl_session
+    sid_a, _ = sl_session.start(tmp_path, host_session="pa")
+    exclusive.suspend(tmp_path, owner=sid_a)
+    monkeypatch.delenv("SUPERLITE_SESSION", raising=False)
+    sid_b, path_b = sl_session.start(tmp_path, host_session="pb")
+    exclusive.suspend(tmp_path, owner=sid_b)
+    peers = json.loads((tmp_path / ".superlite" / "peers.json").read_text(encoding="utf-8"))
+    assert set(peers["owners"]) == {sid_a, sid_b}
+    msg = exclusive.release(tmp_path, owner=sid_a)
+    assert "still suspended" in msg
+    assert (tmp_path / ".superlite" / "peers.json").is_file()
+    assert exclusive.release(path_b, owner=sid_b) == exclusive.CLEAR
+    assert not (tmp_path / ".superlite" / "peers.json").is_file()
+
+
+def test_cwd_subfolder_finds_parent_superlite_without_git(tmp_path, monkeypatch):
+    """`sl` from a nested folder still sees the project run when there is no .git marker."""
+    import sys
+    sys.path.insert(0, str(SCRIPTS))
+    import session as sl_session
+    (tmp_path / ".superlite").mkdir()
+    (tmp_path / ".superlite" / "orchestrator.json").write_text('{"mode":"ai"}\n', encoding="utf-8")
+    sub = tmp_path / "movedocs" / "api"
+    sub.mkdir(parents=True)
+    monkeypatch.chdir(sub)
+    assert sl_session.project_sl() == tmp_path / ".superlite"
+    assert sl_session.state_dir() == tmp_path / ".superlite"
+
+
+def test_feature_status_reads_project_feature_json(tmp_path, monkeypatch):
+
+    monkeypatch.chdir(tmp_path)
+    import sys
+    sys.path.insert(0, str(SCRIPTS))
+    import session as sl_session
+    import orchestrator
+    sid, path = sl_session.start(tmp_path, host_session="feat")
+    monkeypatch.setenv("SUPERLITE_SESSION", sid)
+    (path / "feature.json").write_text(json.dumps({"status": "tryout"}) + "\n", encoding="utf-8")
+    assert orchestrator.feature_status(tmp_path) is None
+    (tmp_path / ".superlite" / "feature.json").write_text(json.dumps({"status": "tryout"}) + "\n", encoding="utf-8")
+    assert orchestrator.feature_status(tmp_path) == "tryout"

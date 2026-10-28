@@ -119,8 +119,8 @@ KIND_MISS = re.compile(r"kind-miss\s+(T\d+[A-Za-z]?)")  # O(1)
 
 def missed_tasks(plan_path: str) -> set:  # O(incident log)
     """Tasks with a `kind-miss Tn` incident: they never go to the haiku tier again."""
-    import plan_tools as pt  # O(1)
-    f = pt.stable_root(plan_path) / ".superlite" / "incidents.jsonl"  # O(1)
+    import session as sl_session  # O(1)
+    f = sl_session.state_dir(plan_path) / "incidents.jsonl"  # O(S)
     out = set()  # O(1)
     if f.is_file():  # O(1)
         for ln in f.read_text(encoding="utf-8", errors="replace").splitlines():  # O(I)
@@ -140,8 +140,8 @@ def read_tiers(plan_path: str, cfg=None) -> dict:  # stable.json or a computatio
 
 
 def _read_tiers(plan_path: str, cfg=None) -> dict:  # O(stable.json) or a computation
-    import plan_tools as pt  # O(1)
-    f = pt.stable_root(plan_path) / ".superlite" / "stable.json"  # O(1)
+    import session as sl_session  # O(1)
+    f = sl_session.state_dir(plan_path) / "stable.json"  # same file lint --stable writes | O(S)
     try:  # O(1)
         t = json.loads(f.read_text(encoding="utf-8")).get("tiers")  # O(file)
     except (OSError, ValueError):  # O(1)
@@ -178,8 +178,8 @@ def miss(argv) -> int:  # O(1) + one log append
     ap.add_argument("--reason", default="NEEDS_CONTEXT, BLOCKED or red")  # O(1)
     a = ap.parse_args(argv)  # O(1)
     import next_tasks as nt  # O(1)
-    import plan_tools as pt  # O(1)
-    log = pt.stable_root(a.plan) / ".superlite" / "incidents.jsonl"  # O(1)
+    import session as sl_session  # O(1)
+    log = sl_session.state_dir(a.plan) / "incidents.jsonl"  # O(S)
     log.parent.mkdir(parents=True, exist_ok=True)  # O(1)
     nt.add_incidents(str(log), [("-", 0, f"kind-miss {a.task}: {a.reason}", "assumption", "coordinator", "")])  # O(1)
     d = load_cfg().get("default_tier", "sonnet")  # O(file)

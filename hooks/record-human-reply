@@ -68,8 +68,9 @@ re_human='"mode"[[:space:]]*:[[:space:]]*"human"'
 re_unappr='"approved"[[:space:]]*:[[:space:]]*false'
 [[ $oj =~ $re_human ]] || exit 0
 if ! [[ $oj =~ $re_unappr ]]; then
-  [ -f "$sd/feature.json" ] || exit 0
-  IFS= read -r -d '' fj < "$sd/feature.json"
+  # feature.json is project-level (written by `sl proto`), never session-local.
+  [ -f "$proj/.superlite/feature.json" ] || exit 0
+  IFS= read -r -d '' fj < "$proj/.superlite/feature.json"
   re_tryout='"status"[[:space:]]*:[[:space:]]*"tryout"'
   [[ $fj =~ $re_tryout ]] || exit 0
 fi

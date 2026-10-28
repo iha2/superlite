@@ -82,9 +82,13 @@ def gate(plan_or_dir=None, tool: str = "") -> str | None:  # O(file)
 
 
 def feature_status(plan_or_dir=None) -> str | None:  # O(file)
-    """The prototype status in `.superlite/feature.json` (written by `sl proto`), or None; unreadable means None (fail open)."""
+    """The prototype status in the project `.superlite/feature.json` (written by `sl proto`), or None.
+
+    Feature state is always project-level (shared with sandboxes/worktrees), never session-local,
+    so an active session cannot miss a tryout gate that `sl proto` recorded on the container.
+    """
     try:  # O(1)
-        d = json.loads((sl_dir(plan_or_dir) / FEATURE).read_text(encoding="utf-8"))  # O(file)
+        d = json.loads((sl_session.project_sl(plan_or_dir) / FEATURE).read_text(encoding="utf-8"))  # O(file)
     except (OSError, ValueError):  # O(1)
         return None  # O(1)
     return d.get("status") if isinstance(d, dict) else None  # O(1)

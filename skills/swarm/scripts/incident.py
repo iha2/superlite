@@ -177,6 +177,12 @@ def main(argv=None):  # O(1) parser setup + command cost
     s.add_argument("--log", default=DEFAULT_LOG)  # O(1)
     s.set_defaults(fn=cmd_summary)  # O(1)
     a = p.parse_args(argv)  # O(len(argv))
+    if getattr(a, "log", None) == DEFAULT_LOG:  # O(1)
+        try:  # O(1)
+            import session as sl_session  # O(1)
+            a.log = sl_session.display_path(sl_session.state_dir() / "incidents.jsonl")  # O(S)
+        except Exception:  # noqa: BLE001 | keep flat default | O(1)
+            pass  # O(1)
     return a.fn(a)  # O(cmd cost)
 
 

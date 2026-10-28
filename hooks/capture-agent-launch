@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # PostToolUse hook (matcher Agent): during an active superlite run, append one launch record to
-# <project>/.superlite/metrics.jsonl:
+# the session (or legacy flat) metrics.jsonl:
 #   {"ev":"launch","t":<epoch ms>,"agent_id":..,"type":..,"model":..,"desc":<max 120 chars>,"parent":<calling subagent's id, "" from the main session>}
 # Active when .superlite/stable.json, prime.md, pool.json, orchestrator.json or feature.json exists.
 # Bash builtins only (each external process costs ~250 ms on Windows). Never blocks: always exits 0.
@@ -46,7 +46,7 @@ jstr agent_id; parent="$REPLY"   # the calling subagent; absent on the main thre
 esc id; esc type; esc model; esc desc; esc parent
 
 now="${EPOCHREALTIME//[.,]/}"; now="${now:0:${#now}-3}"
-# metrics stay on the project container so finish/history see one stream; session state is separate
+# Write beside the session ledger so finish/history summarize this run's agents.
 printf '{"ev":"launch","t":%s,"agent_id":"%s","type":"%s","model":"%s","desc":"%s","parent":"%s"}\n' \
-  "$now" "$id" "$type" "$model" "$desc" "$parent" >> "$proj/.superlite/metrics.jsonl" 2>/dev/null
+  "$now" "$id" "$type" "$model" "$desc" "$parent" >> "$sd/metrics.jsonl" 2>/dev/null
 exit 0

@@ -28,6 +28,7 @@ def test_orchestrator_set_suspends_and_finish_restores(tmp_path, monkeypatch):
     assert cp.returncode == 0 and "peers: suspended superpowers" in cp.out
     saved = json.loads((tmp_path / ".superlite" / "peers.json").read_text(encoding="utf-8"))
     assert saved["suspended"] is True and saved["previous_enabled"] is True
+    assert saved.get("owners") == ["legacy"]
     turned = json.loads(settings.read_text(encoding="utf-8"))
     assert turned["enabledPlugins"][PEER] is False and turned["enabledPlugins"]["other@market"] is True
     assert turned["theme"] == "dark"
