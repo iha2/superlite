@@ -38,6 +38,10 @@
     "websiteURL": "https://github.com/iha2/superlite",
     "privacyPolicyURL": "https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement",
     "termsOfServiceURL": "https://docs.github.com/en/site-policy/github-terms/github-terms-of-service",
-    "screenshots": []
+    "screenshots": [
+      "./assets/agent-map.webp"
+    ],
+    "logo": "./assets/superlite-logo.svg",
+    "composerIcon": "./assets/superlite-logo.svg"
   }
 }
