@@ -280,7 +280,14 @@ def main(argv=None):  # O(B + H^2 + out)
     if len(data) > a.max_bytes:  # O(1)
         die(f"prime is {len(data)} bytes, over the {a.max_bytes} cap; "  # O(1)
             "move spec excerpts to referenced paths", 1)  # O(1)
-    out = Path(MINI_OUT if mini and a.out == DEFAULT_OUT else a.out)  # O(1)
+    if a.out == DEFAULT_OUT:  # session-local prime so concurrent runs do not clash | O(1)
+        try:  # O(1)
+            import session as sl_session  # O(1)
+            name = "prime-haiku.md" if mini else "prime.md"  # O(1)
+            a.out = sl_session.display_path(sl_session.state_dir(a.plan) / name)  # O(S)
+        except Exception:  # noqa: BLE001 | O(1)
+            a.out = MINI_OUT if mini else DEFAULT_OUT  # O(1)
+    out = Path(a.out)  # O(1)
     out.parent.mkdir(parents=True, exist_ok=True)  # O(path depth) filesystem call
     out.write_bytes(data)  # O(out) file write
     print(f"{hashlib.sha256(data).hexdigest()} {len(data)}")  # O(out) sha256

@@ -132,15 +132,19 @@ def checkpoint_note(ledger):  # O(files) + git spawns; [] unless this run took h
     """Lines saying nothing was committed and how to commit, when state is in checkpoint mode."""
     sys.path.insert(0, str(Path(__file__).resolve().parent))  # O(1)
     import autocommit  # O(1)
+    import session as sl_session  # O(1)
     st = autocommit.load_state(ledger)  # session-scoped or legacy flat | O(size)
     if autocommit.is_on() or not st or not st.get("entries"):  # O(1)
         return []  # O(1)
     files = sorted({f for e in st["entries"] for f in e["files"]})  # O(files)
     root = st.get("ref_root") or "refs/superlite"  # O(1)
+    sid = sl_session.id_from_path(ledger) or sl_session.current_id(ledger)  # O(S)
+    apply_cmd = f"sl autocommit apply --session {sid}" if sid else "sl autocommit apply"  # O(1)
+    clean_cmd = f"sl autocommit clean --session {sid}" if sid else "sl autocommit clean"  # O(1)
     return ["", "NOTHING WAS COMMITTED: your branch is untouched and the work is uncommitted in the tree.",  # O(1)
             f"changed files: {len(files)}; hidden checkpoint refs: {root}/{st['run']}/* ({len(st['entries'])})",
-            "to commit: `sl autocommit apply` (one commit per task, same titles, no trailer) or `git add -A && git commit`",
-            "to discard the checkpoints: `sl autocommit clean`"]
+            f"to commit: `{apply_cmd}` (one commit per task, same titles, no trailer) or `git add -A && git commit`",
+            f"to discard the checkpoints: `{clean_cmd}`"]
 
 
 SCOPE_TAG = re.compile(r"^\[scope\]\s*", re.I)  # O(1)
@@ -214,11 +218,16 @@ def main(argv=None):  # O(R*w + I*w)
     if a.log == DEFAULT_LOG:  # O(1)
         a.log = sl_session.display_path(Path(a.ledger).with_name("incidents.jsonl"))  # O(1)
     sys.stdout.write(summary(a.ledger, a.log, a.lint_log or str(Path(a.ledger).with_name("lint-log.jsonl")), a.plan))  # O(output)
-    # Cleanup always follows the ledger being summarized (not --plan), so finishing A cannot delete B.
+    # Cleanup follows the ledger: a path inside sessions/<id>/ ends that session; a legacy flat
+    # ledger must not fall back to the active session (would delete an unrelated run).
     ledger_path = Path(a.ledger).resolve()  # O(1)
-    owner = sl_session.id_from_path(ledger_path) or sl_session.current_id(a.plan)  # O(S)
-    print(exclusive.release(ledger_path, owner=owner))  # O(S) keeps peers suspended while other sessions own it
-    print(sl_session.end(ledger_path))  # O(tree) → "session: ended <id>" or "session: none"
+    encoded = sl_session.id_from_path(ledger_path)  # O(d)
+    if encoded:  # O(1)
+        print(exclusive.release(ledger_path, owner=encoded))  # O(S)
+        print(sl_session.end(ledger_path, session_id=encoded))  # O(tree)
+    else:  # O(1)
+        print(exclusive.release(ledger_path, owner="legacy"))  # O(S)
+        print("session: none")  # O(1)
     return 0  # O(1)
 
 

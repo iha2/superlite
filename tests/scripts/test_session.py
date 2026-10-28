@@ -219,7 +219,51 @@ def test_peers_release_only_after_last_owner(tmp_path, monkeypatch):
     assert not (tmp_path / ".superlite" / "peers.json").is_file()
 
 
+def test_finish_legacy_ledger_does_not_end_active_session(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    import sys
+    sys.path.insert(0, str(SCRIPTS))
+    import session as sl_session
+    sid, path = sl_session.start(tmp_path, host_session="keep-me")
+    monkeypatch.setenv("SUPERLITE_SESSION", sid)
+    flat = tmp_path / ".superlite" / "progress.md"
+    # Flat ledger next to sessions.json (not inside sessions/<id>/)
+    flat.write_text("- checkpoint T1 abc1234567 title\n", encoding="utf-8")
+    fin = run(FINISH, "--ledger", str(flat), cwd=tmp_path)
+    assert fin.returncode == 0 and "session: none" in fin.out
+    assert path.is_dir()  # active session B must survive a legacy finish
+
+
+def test_host_lookup_does_not_treat_dot_as_wildcard(tmp_path):
+    """Hooks must not match chat-a when looking up chat.a."""
+    import subprocess
+    import shutil
+    bash = shutil.which("bash")
+    if not bash:
+        return
+    sl = tmp_path / ".superlite"
+    (sl / "sessions" / "sid-dash").mkdir(parents=True)
+    (sl / "sessions" / "sid-dot").mkdir(parents=True)
+    (sl / "sessions.json").write_text(json.dumps({
+        "sessions": {"sid-dash": {}, "sid-dot": {}},
+        "by_host": {"chat-a": "sid-dash", "chat.a": "sid-dot"},
+        "active": "sid-dash",
+    }) + "\n", encoding="utf-8")
+    hook = SCRIPTS.parents[2] / "hooks" / "_sl_state_dir.sh"
+    script = f'''
+set -e
+. "{hook}"
+proj="{tmp_path}"
+SUPERLITE_HOST_SESSION="chat.a"
+sl_resolve_state_dir "$proj"
+printf "%s" "$sd"
+'''
+    out = subprocess.run([bash, "-c", script], capture_output=True, text=True, check=True)
+    assert out.stdout.endswith("sessions/sid-dot")
+
+
 def test_end_releases_peers_owner_and_keeps_lock_file(tmp_path, monkeypatch):
+
     monkeypatch.chdir(tmp_path)
     import sys
     sys.path.insert(0, str(SCRIPTS))

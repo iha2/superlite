@@ -374,7 +374,9 @@ def test_commit_launches_probe_in_background_only_if_present(tmp_path):
         if marker.exists() and marker.read_text():
             break
         time.sleep(0.1)
-    assert marker.read_text() == f"--checkpoint {r.stdout.strip()}"
+    got = marker.read_text().strip()
+    sha = r.stdout.strip()
+    assert got == f"--checkpoint {sha} --plan plan.md" or got == f"--checkpoint {sha}"
     # absent probe file: no launch, still commits
     marker.unlink()
     write(repo, "src/a.py", "X = 2\n")

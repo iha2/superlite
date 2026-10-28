@@ -29,21 +29,24 @@ REF_ROOT = "refs/superlite"
 TRUE, FALSE = ("1", "true", "yes", "on"), ("0", "false", "no", "off")
 
 
-def paths(plan=None):
-    """Checkpoint state/index/ref-root for this plan or the active session.
+def paths(plan=None, session_id=None):
+    """Checkpoint state/index/ref-root for this plan, --session, or the active session.
 
     Session runs store under project `.superlite/checkpoints/<id>/` (not inside
-    `sessions/<id>/`) so `sl autocommit apply` still works after `sl finish` deletes
-    the session tree. Legacy flat layout keeps `.superlite/checkpoints.json`.
+    `sessions/<id>/`) so `sl autocommit apply --session <id>` still works after
+    `sl finish` deletes the session tree. Legacy flat layout keeps
+    `.superlite/checkpoints.json`.
     """
-    sid = sl_session.id_from_path(plan) if plan is not None else None
+    sid = (session_id or "").strip() or None
+    if not sid and plan is not None:
+        sid = sl_session.id_from_path(plan)
     if not sid:
         sid = sl_session.current_id(plan)
     base = sl_session.project_sl(plan)
     if sid:
         d = base / "checkpoints" / sid
-        return d / "checkpoints.json", d / "checkpoint.index", f"{REF_ROOT}/{sid}"
-    return base / "checkpoints.json", base / "checkpoint.index", REF_ROOT
+        return d / "checkpoints.json", d / "checkpoint.index", f"{REF_ROOT}/{sid}", sid
+    return base / "checkpoints.json", base / "checkpoint.index", REF_ROOT, None
 
 
 def git(*args, env=None, check=True):
@@ -73,16 +76,16 @@ def set_on(value):
     p.write_text(json.dumps({"autocommit": bool(value)}) + "\n", encoding="utf-8")
 
 
-def load_state(plan=None):
-    state, _, _ = paths(plan)
+def load_state(plan=None, session_id=None):
+    state, _, _, _ = paths(plan, session_id=session_id)
     try:
         return json.loads(state.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
 
 
-def save_state(st, plan=None):
-    state, _, _ = paths(plan)
+def save_state(st, plan=None, session_id=None):
+    state, _, _, _ = paths(plan, session_id=session_id)
     state.parent.mkdir(parents=True, exist_ok=True)
     state.write_text(json.dumps(st, indent=1) + "\n", encoding="utf-8")
 
@@ -97,13 +100,13 @@ def checkpoint(tid, title, files, plan):
 
     A temporary index holds the parent's tree plus the owned files, so HEAD, the branch,
     the user's index and the working tree are not touched."""
-    state, index, ref_root = paths(plan)
+    state, index, ref_root, sid = paths(plan)
     st = load_state(plan)
     if not st or st.get("plan") != plan:
         stem = Path(plan).stem if plan else "run"
         st = {"plan": plan, "run": f"{stem}-{date.today():%Y%m%d}", "head": head_sha(),
               "branch": git("symbolic-ref", "-q", "HEAD", check=False).stdout.strip(),
-              "entries": [], "ref_root": ref_root}
+              "entries": [], "ref_root": ref_root, "session": sid}
     parent = st["entries"][-1]["sha"] if st["entries"] else st["head"]
     idx = str(index.resolve())
     index.parent.mkdir(parents=True, exist_ok=True)
@@ -119,14 +122,23 @@ def checkpoint(tid, title, files, plan):
     sha = git(*cmd).stdout.strip()
     git("update-ref", f"{ref_root}/{st['run']}/{tid}", sha)
     st["ref_root"] = ref_root
+    st["session"] = sid
     st["entries"].append({"task": tid, "sha": sha, "title": f"{tid}: {title}", "files": files})
     save_state(st, plan)
     return sha
 
 
-def refs(plan=None):
-    _, _, ref_root = paths(plan)
-    r = git("for-each-ref", "--format=%(refname)", ref_root, check=False)
+def refs(plan=None, session_id=None):
+    """Refs for the selected checkpoint run only. Never wipe the whole refs/superlite tree."""
+    state, _, ref_root, sid = paths(plan, session_id=session_id)
+    st = load_state(plan, session_id=session_id)
+    if not st:
+        # No selected state: do not enumerate sibling sessions' refs.
+        return []
+    root = st.get("ref_root") or ref_root
+    run = st.get("run")
+    prefix = f"{root}/{run}" if run else root
+    r = git("for-each-ref", "--format=%(refname)", prefix, check=False)
     return r.stdout.split()
 
 
@@ -141,10 +153,11 @@ def dirty_outside(files):
     return bad
 
 
-def apply(plan=None):
-    st = load_state(plan)
+def apply(plan=None, session_id=None):
+    st = load_state(plan, session_id=session_id)
     if not st or not st.get("entries"):
-        sys.exit("apply: no checkpoints recorded (nothing to commit)")
+        hint = " (pass --session <id> after finish)" if not session_id else ""
+        sys.exit(f"apply: no checkpoints recorded{hint}")
     if head_sha() != st["head"]:
         sys.exit(f"apply: refused, HEAD moved since the run started "
                  f"({st['head'][:10] or 'unborn'} -> {head_sha()[:10] or 'unborn'}); "
@@ -167,13 +180,17 @@ def apply(plan=None):
     print(f"applied {len(st['entries'])} commit(s) on {st.get('branch') or 'HEAD'}:")
     for e in st["entries"]:
         print(f"- {e['title']}")
-    clean(plan)
+    clean(plan, session_id=session_id)
     return 0
 
 
-def clean(plan=None):
-    state, index, _ = paths(plan)
-    for r in refs(plan):
+def clean(plan=None, session_id=None):
+    state, index, _, sid = paths(plan, session_id=session_id)
+    st = load_state(plan, session_id=session_id)
+    if not st and not state.is_file():
+        print("checkpoints: none selected (pass --session <id> after finish)")
+        return
+    for r in refs(plan, session_id=session_id):
         git("update-ref", "-d", r, check=False)
     state.unlink(missing_ok=True)
     index.unlink(missing_ok=True)
@@ -182,11 +199,11 @@ def clean(plan=None):
             state.parent.rmdir()
         except OSError:
             pass
-    print("checkpoints removed")
+    print("checkpoints removed" + (f" (session {sid})" if sid else ""))
 
 
-def listing(plan=None):
-    st = load_state(plan)
+def listing(plan=None, session_id=None):
+    st = load_state(plan, session_id=session_id)
     if not st:
         return "no checkpoints"
     root = st.get("ref_root") or REF_ROOT
@@ -195,21 +212,41 @@ def listing(plan=None):
     return "\n".join(out)
 
 
+def _parse_session_flag(argv):
+    """Pull `--session ID` out of argv; return (rest, session_id)."""
+    out, sid = [], None
+    i = 0
+    while i < len(argv):
+        if argv[i] == "--session" and i + 1 < len(argv):
+            sid = argv[i + 1]
+            i += 2
+            continue
+        if argv[i].startswith("--session="):
+            sid = argv[i].split("=", 1)[1]
+            i += 1
+            continue
+        out.append(argv[i])
+        i += 1
+    return out, sid
+
+
 def main(argv=None):
-    argv = sys.argv[1:] if argv is None else argv
+    argv = list(sys.argv[1:] if argv is None else argv)
+    argv, session_id = _parse_session_flag(argv)
     cmd = argv[0] if argv else "status"
     if cmd in ("on", "off"):
         set_on(cmd == "on")
         print(f"autocommit {cmd}")
     elif cmd == "status":
         print(f"autocommit: {'on (commit each task on your branch)' if is_on() else 'off (hidden checkpoints, work stays uncommitted)'}")
-        print(listing())
+        print(listing(session_id=session_id))
     elif cmd == "apply":
-        return apply()
+        return apply(session_id=session_id)
     elif cmd == "clean":
-        clean()
+        clean(session_id=session_id)
     else:
-        print(__doc__.split("\n")[0] + "\nusage: autocommit.py on|off|status|apply|clean", file=sys.stderr)
+        print(__doc__.split("\n")[0]
+              + "\nusage: autocommit.py on|off|status|apply|clean [--session ID]", file=sys.stderr)
         return 2
     return 0
 

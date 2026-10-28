@@ -241,6 +241,8 @@ def launch_probes(sha, plan=None):  # O(L) + process spawn
     cats = probe_categories(plan) if plan else ""  # O(L)
     if cats:  # O(1)
         extra = ["--categories", cats]  # O(1)
+    if plan:  # bind probe out/log to the same session as the checkpoint | O(1)
+        extra = ["--plan", str(plan), *extra]  # O(1)
     spawn_background(nt.sl_command("probe_run", "--checkpoint", sha, *extra))  # O(1) + process spawn
     return True  # O(1)
 
