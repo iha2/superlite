@@ -6,7 +6,7 @@
     history.py derive [--project .superlite]                   rebuild stats.json (global and project)
     history.py import FILE...                                  bench/results/*.json score files -> rows
 
-Files: `$SUPERLITE_HOME/history.jsonl` (default `~/.superlite/`), append-only, plus `stats.json` there and a
+Files: `$SUPERLITE_HOME/history.jsonl` (default `$XDG_DATA_HOME/superlite`, or an existing `~/.superlite/`), append-only, plus `stats.json` there and a
 per-project copy of both under `.superlite/`. Aggregates only: no code, prompts or file contents.
 
 ROW SCHEMA (v1), one JSON object per line:
@@ -40,7 +40,16 @@ SUFFIX_MARKERS = [(".csproj", "csharp"), (".sln", "csharp")]  # O(1)
 
 
 def home() -> Path:  # O(1)
-    return Path(os.environ.get("SUPERLITE_HOME") or Path.home() / ".superlite")  # O(1)
+    """$SUPERLITE_HOME, else an existing legacy ~/.superlite, else $XDG_DATA_HOME/superlite (default ~/.local/share).
+    hooks/session-start repeats this rule in bash: change both together."""
+    env = os.environ.get("SUPERLITE_HOME", "").strip()  # O(1)
+    if env:  # O(1)
+        return Path(env)  # O(1)
+    user = Path(os.environ.get("HOME") or Path.home())  # O(1)
+    if (user / ".superlite").is_dir():  # O(1)
+        return user / ".superlite"  # O(1)
+    xdg = os.environ.get("XDG_DATA_HOME", "")  # O(1)
+    return (Path(xdg) if os.path.isabs(xdg) else user / ".local" / "share") / "superlite"  # the spec ignores relative values | O(1)
 
 
 def detect_language(root=".") -> str:  # O(entries of root)

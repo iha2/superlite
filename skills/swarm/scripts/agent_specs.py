@@ -7,7 +7,7 @@
 
 Default is OFF. Env SUPERLITE_AGENT_SPECS wins over project
 `.superlite/agent-specs.json`, which wins over `$SUPERLITE_HOME/preferences.json`
-(default ~/.superlite/preferences.json). `open_in_harness` defaults ON when
+(default per history.home(): XDG data dir, or an existing ~/.superlite). `open_in_harness` defaults ON when
 specs are on; toggle with `open on|off` (project) or prefer's global file.
 `prefer` records the install/first-session choice in preferences.json so
 session-start asks only once.
@@ -19,15 +19,11 @@ import os
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from history import home  # noqa: E402  one rule for the global home
+
 PROJECT = Path(".superlite/agent-specs.json")
 TRUE, FALSE = ("1", "true", "yes", "on"), ("0", "false", "no", "off")
-
-
-def home() -> Path:
-    raw = os.environ.get("SUPERLITE_HOME", "").strip()
-    if raw:
-        return Path(raw)
-    return Path(os.environ.get("HOME") or Path.home()) / ".superlite"
 
 
 def preferences_path() -> Path:

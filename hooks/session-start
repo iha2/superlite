@@ -35,14 +35,19 @@ content="${content}"$'
 '"Project state: ${state}."  # O(s)
 
 # First session after this version is installed: show the intro screen once. The marker lives in
-# $SUPERLITE_HOME (default ~/.superlite), one file per version, so an upgrade shows it again.
+# $SUPERLITE_HOME (default $XDG_DATA_HOME/superlite, or an existing ~/.superlite), one file per version, so an upgrade shows it again.
 version=""  # O(1)
 if [ -f "${PLUGIN_ROOT}/.claude-plugin/plugin.json" ]; then  # O(1)
   IFS= read -r -d '' pj < "${PLUGIN_ROOT}/.claude-plugin/plugin.json" || true  # O(file) builtin
   re_ver='"version"[[:space:]]*:[[:space:]]*"([^"]+)"'  # O(1)
   [[ $pj =~ $re_ver ]] && version="${BASH_REMATCH[1]}"  # O(file)
 fi  # O(1)
-home="${SUPERLITE_HOME:-${HOME:-}/.superlite}"  # O(1)
+# Same rule as history.home() in skills/swarm/scripts/history.py: change both together.
+if [ -n "${SUPERLITE_HOME:-}" ]; then home="$SUPERLITE_HOME"  # O(1)
+elif [ -d "${HOME:-}/.superlite" ]; then home="${HOME}/.superlite"  # O(1)
+elif [[ ${XDG_DATA_HOME:-} == /* ]]; then home="${XDG_DATA_HOME}/superlite"  # O(1)
+else home="${HOME:-}/.local/share/superlite"  # O(1)
+fi  # O(1)
 marker="${home}/intro-shown-${version:-unknown}"  # O(1)
 if [ -n "${HOME:-}${SUPERLITE_HOME:-}" ] && [ -f "${PLUGIN_ROOT}/assets/intro.txt" ] && [ ! -e "$marker" ]; then  # O(1)
   { [ -d "$home" ] || mkdir -p "$home"; } 2>/dev/null && : > "$marker" 2>/dev/null || true  # first run only: one spawn

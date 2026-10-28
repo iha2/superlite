@@ -17,7 +17,7 @@ kind_miss_incidents, fix_notes, first_time_pass, done_s, start_lag_s, slack_s, o
 Works offline after the run; well under a second.
 
 ## `sl history write|read|derive|import`
-Append-only `~/.superlite/history.jsonl` (override with `SUPERLITE_HOME`), one aggregate row per task per run (schema in
+Append-only `$XDG_DATA_HOME/superlite/history.jsonl` (an existing `~/.superlite` wins; override with `SUPERLITE_HOME`), one aggregate row per task per run (schema in
 the header of `history.py`), a per-project copy under `.superlite/`, and `stats.json` by band
 (`kind/loc band/tests`) and by tier: n, first-time pass rate, mean and p90 duration, mean cost.
 `import` converts `bench/results/*.json` score files (idempotent). `finish --plan $PLAN` writes the run's rows and

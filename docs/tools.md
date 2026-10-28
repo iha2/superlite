@@ -28,7 +28,7 @@ A checkpoint is a hidden save of one task under `refs/superlite/*`; a commit is 
 | `incident` | Records and queries the shared incident log (file, line, context) |
 | `budget` | One line of elapsed time and cost against the plan's target and cap |
 | `metrics` | Per-task time, tokens and cost from `.superlite/metrics.jsonl` and agent transcripts |
-| `history` | Run history: `write` rows to `~/.superlite/history.jsonl`, `read`, `derive` stats, `import` bench scores |
+| `history` | Run history: `write` rows to `history.jsonl` in the superlite home (`$SUPERLITE_HOME`, an existing `~/.superlite`, else `$XDG_DATA_HOME/superlite`), `read`, `derive` stats, `import` bench scores |
 | `graphify_gate` | Gates Graphify for search in non-trivial codebases |
 | `orchestrator` | Who orchestrates: `set human|ai`, `approve --review <plan>` (needs an approving human reply newer than the plan), `status` |
 | `report` | The end-of-build report: a short summary in the session, the full file next to the plan, projected against actual; in feature mode the prototype and the integration as two parts |

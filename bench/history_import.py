@@ -82,7 +82,7 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("cmd", choices=["import"])
     ap.add_argument("files", nargs="+")
-    ap.add_argument("--history", help="history file (default: $SUPERLITE_HOME or ~/.superlite/history.jsonl)")
+    ap.add_argument("--history", help="history file (default: history.jsonl in the superlite home, see history.home())")
     a = ap.parse_args(argv)
     n = import_scores(a.files, a.history)
     print(f"{n} rows added to {a.history or history.home() / 'history.jsonl'}")
