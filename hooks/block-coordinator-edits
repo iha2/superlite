@@ -248,7 +248,9 @@ if [ -z "$hit" ] && [ "$tool" != Bash ] && [ "$tool" != PowerShell ]; then
 elif [ -z "$hit" ]; then
   jstr command; cmd="$REPLY"
   [ -n "$cmd" ] || exit 0
+  cmd="${cmd//\\\\/$'\x01'}"   # JSON \\ first, so \\" and \\n keep their shell meaning
   cmd="${cmd//\\\"/\"}"; cmd="${cmd//\\t/ }"; cmd="${cmd//\\r/}"; cmd="${cmd//\\n/$'\n'}"
+  cmd="${cmd//$'\x01'/\\}"
   lc="${cmd,,}"
   mentions=0
   [[ $lc == *human-replies.jsonl* || $lc == *orchestrator.json* || $lc == *.superlite/feature.json* ]] && mentions=1
@@ -266,16 +268,19 @@ elif [ -z "$hit" ]; then
     # Drop heredoc bodies and quoted strings, then split into simple commands.
     sq="'"; dq='"'
     re_here="<<-?[[:space:]]*[$sq$dq]?([A-Za-z_][A-Za-z_0-9]*)"
-    re_quote="^([^$dq$sq]*)($dq[^$dq]*$dq|$sq[^$sq]*$sq)(.*)\$"
-    stripped=""; skip=0; tag=""
+    re_quote="^([^$dq$sq]*)($dq([^$dq\\\\]|\\\\.)*$dq|$sq[^$sq]*$sq)(.*)\$"
+    stripped=""; skip=0; tag=""; open=""
     while IFS= read -r line; do
+      # A quote left open on the previous line continues on this one.
+      [ -n "$open" ] && { line="$open $line"; open=""; }
       if [ "$skip" = 1 ]; then
         t="${line#"${line%%[![:space:]]*}"}"; t="${t%"${t##*[![:space:]]}"}"
         [ "$t" = "$tag" ] && skip=0
         continue
       fi
       if [[ $line =~ $re_here ]]; then tag="${BASH_REMATCH[1]}"; skip=1; fi
-      while [[ $line =~ $re_quote ]]; do line="${BASH_REMATCH[1]}Q${BASH_REMATCH[3]}"; done
+      while [[ $line =~ $re_quote ]]; do line="${BASH_REMATCH[1]}Q${BASH_REMATCH[4]}"; done
+      case "$line" in *[$dq$sq]*) open="$line"; continue ;; esac
       line="${line//&&/$'\n'}"; line="${line//||/$'\n'}"; line="${line//;/$'\n'}"; line="${line//|/$'\n'}"
       stripped="$stripped$line"$'\n'
     done <<< "$cmd"
@@ -292,7 +297,7 @@ elif [ -z "$hit" ]; then
       while [ $# -gt 0 ]; do case "$1" in *=*|sudo|command|env|time) shift ;; *) break ;; esac; done
       [ $# -gt 0 ] || continue
       c="${1##*/}"; c="${c%.exe}"; shift
-      args=(); for a in "$@"; do case "$a" in -*) ;; *) args+=("$a") ;; esac; done
+      args=(); for a in "$@"; do case "$a" in -*|*'>'*|*'<'*) ;; *) args+=("$a") ;; esac; done   # redirects are not operands
       n=${#args[@]}; last=""; [ "$n" -gt 0 ] && last="${args[n-1]}"
       case "$c" in
         patch) [ "$enforce" = 1 ] && hit="patch" ;;
