@@ -101,6 +101,9 @@ def test_prime_marker_activates(tmp_path):
     "cp /tmp/x.py src/a.py",
     "rm src/a.py",
     "ls && rm -f src/a.py",
+    "cp /tmp/x.py src/a.py 2>/dev/null",
+    "echo \"multi\nline\" > src/a.py",
+    "echo \"x\\\"y\" > src/a.py",
 ])
 def test_blocks_bash_writes(proj, cmd):
     assert bash(proj, cmd).returncode == 2, cmd
@@ -118,6 +121,9 @@ def test_blocks_powershell_write(proj):
     "sed -n 1,5p src/app.py", "sed -i s/a/b/ .superlite/progress.md", "echo hi > /dev/null",
     "echo hi > /tmp/x.txt", "cp src/a.py /tmp/a.py", "rm -f /tmp/x", "python3 -c \"print(open('a.py').read())\"",
     "echo \"a > b\"", "tee .superlite/log.txt",
+    # Redirects are not cp operands; escaped and multi-line quotes hide their '>'.
+    "cp src/a.py /tmp/a.py 2>/dev/null", "grep -E \"href=\\\"[^>]*>\" x.html",
+    "grep -c \"<li[^>]*>\nfoo\" x.html",
 ])
 def test_allows_bash_reads_and_safe_writes(proj, cmd):
     r = bash(proj, cmd)
