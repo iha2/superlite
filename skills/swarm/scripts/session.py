@@ -45,35 +45,49 @@ def _looks_like_container(sl: Path) -> bool:  # O(1)
 
 
 def _container_from_arg(plan_or_dir=None) -> Path:  # O(depth)
-    """The project `.superlite` folder (never a sessions/<id> path, never a nested fake `.superlite`)."""
+    """The project `.superlite` folder (never a sessions/<id> path, never a nested fake `.superlite`).
+
+    A plan under `docs/plans/` binds to that package's `.superlite` (parent of `docs`), including a
+    prototype sandbox's own tree — do not walk out to an outer checkout's `.superlite`.
+    """
     if plan_or_dir is None:  # O(1)
         start = Path.cwd().resolve()  # O(1)
-    else:  # O(1)
-        p = Path(plan_or_dir).resolve()  # O(1)
-        start = p if p.is_dir() else p.parent  # O(1)
+        for d in (start, *start.parents):  # O(depth)
+            if d.parent.name == SESSIONS and d.parent.parent.name == ".superlite":  # O(1)
+                return d.parent.parent  # O(1)
+            if d.name == SESSIONS and d.parent.name == ".superlite":  # O(1)
+                return d.parent  # O(1)
+            if d.name == ".superlite":  # O(1)
+                if d.parent.parent.name == SESSIONS and d.parent.parent.parent.name == ".superlite":  # O(1)
+                    return d.parent.parent.parent  # O(1)
+                return d  # O(1)
+            sl = d / ".superlite"  # O(1)
+            if sl.is_dir() and _looks_like_container(sl):  # O(1)
+                return sl  # O(1)
+        return Path(".superlite")  # O(1)
+
+    p = Path(plan_or_dir).resolve()  # O(1)
+    start = p if p.is_dir() else p.parent  # O(1)
+    # Session state path first
     for d in (start, *start.parents):  # O(depth)
-        # …/.superlite/sessions/<id>[/…] → the project container is the parent of sessions/
         if d.parent.name == SESSIONS and d.parent.parent.name == ".superlite":  # O(1)
             return d.parent.parent  # O(1)
         if d.name == SESSIONS and d.parent.name == ".superlite":  # O(1)
             return d.parent  # O(1)
+        if d.name == ".superlite" and d.parent.parent.name == SESSIONS and d.parent.parent.parent.name == ".superlite":  # O(1)
+            return d.parent.parent.parent  # O(1)
+    # Plan under docs/plans: package root is parent of docs (sandbox or checkout), not an outer tree
+    for d in (start, *start.parents):  # O(depth)
+        if d.name == "plans" and d.parent.name == "docs":  # O(1)
+            return d.parent.parent / ".superlite"  # O(1)
+    # Explicit .superlite path, or nearest existing container, else beside the path
+    for d in (start, *start.parents):  # O(depth)
         if d.name == ".superlite":  # O(1)
-            # Reject a mistaken …/sessions/<id>/.superlite nest; climb to the real container.
-            if d.parent.parent.name == SESSIONS and d.parent.parent.parent.name == ".superlite":  # O(1)
-                return d.parent.parent.parent  # O(1)
             return d  # O(1)
-        # From a subfolder of the project: the container is d/.superlite when a run lives there
         sl = d / ".superlite"  # O(1)
         if sl.is_dir() and _looks_like_container(sl):  # O(1)
             return sl  # O(1)
-    if plan_or_dir is None:  # O(1)
-        return Path(".superlite")  # O(1)
-    # Plan next to docs/plans, or any other path: .superlite beside the plan's repo root
-    p = Path(plan_or_dir).resolve()  # O(1)
-    root = p if p.is_dir() else p.parent  # O(1)
-    if root.name == "plans" and root.parent.name == "docs":  # O(1)
-        return root.parent.parent / ".superlite"  # O(1)
-    return root / ".superlite"  # O(1)
+    return start / ".superlite"  # O(1)
 
 
 def project_sl(plan_or_dir=None) -> Path:  # O(1)

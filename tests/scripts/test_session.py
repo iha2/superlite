@@ -89,6 +89,26 @@ def test_mvp_defaults_follow_active_session(tmp_path, monkeypatch):
     assert Path(mvp_check.default_feedback()).resolve() == (path / "mvp" / "mvp-feedback.json").resolve()
 
 
+def test_plan_under_sandbox_docs_plans_binds_to_sandbox_superlite(tmp_path):
+    """Prototype builds live under .superlite/sandboxes/<topic>/; their plans must not see the parent's feature.json."""
+    import sys
+    sys.path.insert(0, str(SCRIPTS))
+    import orchestrator
+    import session as sl_session
+    sl = tmp_path / ".superlite"
+    sl.mkdir()
+    (sl / "orchestrator.json").write_text(json.dumps({"mode": "human", "approved": True, "by": "t", "time": "t"}) + "\n",
+                                          encoding="utf-8")
+    (sl / "feature.json").write_text(json.dumps({"status": "tryout"}) + "\n", encoding="utf-8")
+    proto_plan = sl / "sandboxes" / "export-proto" / "docs" / "plans" / "p.proto.md"
+    proto_plan.parent.mkdir(parents=True)
+    proto_plan.write_text("# p\n", encoding="utf-8")
+    (sl / "sandboxes" / "export-proto" / ".superlite").mkdir(parents=True)
+    assert sl_session.project_sl(proto_plan) == sl / "sandboxes" / "export-proto" / ".superlite"
+    assert orchestrator.gate(proto_plan, "dispatch") is None
+    assert orchestrator.gate(tmp_path / "docs" / "plans" / "p.md", "dispatch") == orchestrator.TRYOUT_BLOCK
+
+
 def test_end_from_ledger_path_without_active_pointer(tmp_path, monkeypatch):
     """finish must clean up even when active/env were cleared (self-cleanup)."""
     monkeypatch.chdir(tmp_path)
