@@ -12,6 +12,7 @@
   <img alt="license" src="https://img.shields.io/badge/license-MIT-6366f1">
   <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-2dd4bf">
   <img alt="parallel agents" src="https://img.shields.io/badge/parallel%20agents-up%20to%2018-c084fc">
+  <a href="https://github.com/hashgraph-online/hol-guard"><img alt="HOL Guard Scanner" src="https://img.shields.io/badge/HOL%20Guard-passing-00a67e"></a>
 </p>
 
 ---
