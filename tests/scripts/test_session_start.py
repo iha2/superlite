@@ -30,8 +30,11 @@ def _context(home):
 
 def test_intro_is_shown_once_per_installed_version(tmp_path):
     version = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))["version"]
+    intro = (ROOT / "assets" / "intro.txt").read_text(encoding="utf-8").replace("\r", "")
     first = _context(tmp_path)
-    assert "was just installed" in first and "assets/intro.txt" in first and "verbatim" in first
+    assert "was just installed" in first and "verbatim" in first
+    assert "do not call Read" in first
+    assert "```text" in first and intro in first   # embedded: no Read of a plugin path
     assert (tmp_path / f"intro-shown-{version}").is_file()
     assert "was just installed" not in _context(tmp_path)   # the second session stays quiet
 

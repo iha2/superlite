@@ -51,12 +51,19 @@ fi  # O(1)
 marker="${home}/intro-shown-${version:-unknown}"  # O(1)
 if [ -n "${HOME:-}${SUPERLITE_HOME:-}" ] && [ -f "${PLUGIN_ROOT}/assets/intro.txt" ] && [ ! -e "$marker" ]; then  # O(1)
   { [ -d "$home" ] || mkdir -p "$home"; } 2>/dev/null && : > "$marker" 2>/dev/null || true  # first run only: one spawn
-  intro="${PLUGIN_ROOT}/assets/intro.txt"  # O(1)
-  re_drive='^/([a-zA-Z])/(.*)$'  # Git Bash path -> a path the Read tool takes on Windows | O(1)
-  [[ $intro =~ $re_drive ]] && intro="${BASH_REMATCH[1]^^}:/${BASH_REMATCH[2]}"  # O(1)
-  content="${content}"$'
+  # Embed the screen here: the plugin path is outside the project, so a Read of
+  # assets/intro.txt often fails or is skipped on a fresh install.
+  IFS= read -r -d '' intro_body < "${PLUGIN_ROOT}/assets/intro.txt" || true  # O(intro)
+  intro_body="${intro_body//$'\r'/}"  # O(intro) drop CR
+  if [ -n "$intro_body" ]; then  # O(1)
+    content="${content}"$'
 
-'"superlite ${version} was just installed. Before anything else in your first reply, Read ${intro} and print it to the user verbatim inside one text code block, then continue with their request. Do this only once."  # O(s)
+'"superlite ${version} was just installed. Before anything else in your first reply, print the following intro screen to the user verbatim inside one text code block (do not call Read for it), then continue with their request. Do this only once.
+
+\`\`\`text
+${intro_body}
+\`\`\`"  # O(s+intro)
+  fi  # O(1)
 fi  # O(1)
 
 # One-time prefer for pre-impl specs (default remains off until prefer on). Marker: agent_specs key in preferences.json.
