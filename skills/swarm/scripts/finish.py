@@ -132,16 +132,13 @@ def checkpoint_note(ledger):  # O(files) + git spawns; [] unless this run took h
     """Lines saying nothing was committed and how to commit, when state is in checkpoint mode."""
     sys.path.insert(0, str(Path(__file__).resolve().parent))  # O(1)
     import autocommit  # O(1)
-    sl = Path(ledger).resolve().parent  # O(1)
-    try:  # O(1)
-        st = json.loads((sl / "checkpoints.json").read_text(encoding="utf-8"))  # O(size)
-    except (OSError, ValueError):  # O(1)
-        return []  # O(1)
-    if autocommit.is_on() or not st.get("entries"):  # O(1)
+    st = autocommit.load_state(ledger)  # session-scoped or legacy flat | O(size)
+    if autocommit.is_on() or not st or not st.get("entries"):  # O(1)
         return []  # O(1)
     files = sorted({f for e in st["entries"] for f in e["files"]})  # O(files)
+    root = st.get("ref_root") or "refs/superlite"  # O(1)
     return ["", "NOTHING WAS COMMITTED: your branch is untouched and the work is uncommitted in the tree.",  # O(1)
-            f"changed files: {len(files)}; hidden checkpoint refs: refs/superlite/{st['run']}/* ({len(st['entries'])})",
+            f"changed files: {len(files)}; hidden checkpoint refs: {root}/{st['run']}/* ({len(st['entries'])})",
             "to commit: `sl autocommit apply` (one commit per task, same titles, no trailer) or `git add -A && git commit`",
             "to discard the checkpoints: `sl autocommit clean`"]
 

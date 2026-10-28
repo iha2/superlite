@@ -6,10 +6,12 @@
     autocommit.py clean      delete refs/superlite/* and the checkpoint state
 
 Default is OFF: `sl checkpoint` then records a hidden checkpoint (never on HEAD, the
-branch or the user's index) under refs/superlite/<run>/<Tn> and the work stays uncommitted
-in the tree. `on` (or SUPERLITE_AUTOCOMMIT=1, which overrides the file) makes `sl checkpoint`
-make a real commit on the current branch. State: .superlite/autocommit.json and
-.superlite/checkpoints.json. Stdlib only; commits use the user's git identity, no trailers.
+branch or the user's index) under refs/superlite/<run>/<Tn> (or refs/superlite/<session>/…)
+and the work stays uncommitted in the tree. `on` (or SUPERLITE_AUTOCOMMIT=1, which overrides
+the file) makes `sl checkpoint` make a real commit on the current branch. State:
+session-scoped `.superlite/checkpoints/<session>/` when a session is active (survives
+`session end` so `apply` still works after finish), else flat `.superlite/checkpoints.json`.
+Stdlib only; commits use the user's git identity, no trailers.
 """
 import json
 import os
@@ -20,12 +22,28 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gitignore  # noqa: E402
+import session as sl_session  # noqa: E402
 
 CONFIG = ".superlite/autocommit.json"
-STATE = ".superlite/checkpoints.json"
-TEMP_INDEX = ".superlite/checkpoint.index"
 REF_ROOT = "refs/superlite"
 TRUE, FALSE = ("1", "true", "yes", "on"), ("0", "false", "no", "off")
+
+
+def paths(plan=None):
+    """Checkpoint state/index/ref-root for this plan or the active session.
+
+    Session runs store under project `.superlite/checkpoints/<id>/` (not inside
+    `sessions/<id>/`) so `sl autocommit apply` still works after `sl finish` deletes
+    the session tree. Legacy flat layout keeps `.superlite/checkpoints.json`.
+    """
+    sid = sl_session.id_from_path(plan) if plan is not None else None
+    if not sid:
+        sid = sl_session.current_id(plan)
+    base = sl_session.project_sl(plan)
+    if sid:
+        d = base / "checkpoints" / sid
+        return d / "checkpoints.json", d / "checkpoint.index", f"{REF_ROOT}/{sid}"
+    return base / "checkpoints.json", base / "checkpoint.index", REF_ROOT
 
 
 def git(*args, env=None, check=True):
@@ -55,17 +73,18 @@ def set_on(value):
     p.write_text(json.dumps({"autocommit": bool(value)}) + "\n", encoding="utf-8")
 
 
-def load_state():
+def load_state(plan=None):
+    state, _, _ = paths(plan)
     try:
-        return json.loads(Path(STATE).read_text(encoding="utf-8"))
+        return json.loads(state.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
 
 
-def save_state(st):
-    p = Path(STATE)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(st, indent=1) + "\n", encoding="utf-8")
+def save_state(st, plan=None):
+    state, _, _ = paths(plan)
+    state.parent.mkdir(parents=True, exist_ok=True)
+    state.write_text(json.dumps(st, indent=1) + "\n", encoding="utf-8")
 
 
 def head_sha():
@@ -78,15 +97,16 @@ def checkpoint(tid, title, files, plan):
 
     A temporary index holds the parent's tree plus the owned files, so HEAD, the branch,
     the user's index and the working tree are not touched."""
-    st = load_state()
+    state, index, ref_root = paths(plan)
+    st = load_state(plan)
     if not st or st.get("plan") != plan:
         stem = Path(plan).stem if plan else "run"
         st = {"plan": plan, "run": f"{stem}-{date.today():%Y%m%d}", "head": head_sha(),
               "branch": git("symbolic-ref", "-q", "HEAD", check=False).stdout.strip(),
-              "entries": []}
+              "entries": [], "ref_root": ref_root}
     parent = st["entries"][-1]["sha"] if st["entries"] else st["head"]
-    idx = str(Path(TEMP_INDEX).resolve())
-    Path(idx).parent.mkdir(parents=True, exist_ok=True)
+    idx = str(index.resolve())
+    index.parent.mkdir(parents=True, exist_ok=True)
     Path(idx).unlink(missing_ok=True)
     env = {"GIT_INDEX_FILE": idx}
     try:
@@ -97,14 +117,16 @@ def checkpoint(tid, title, files, plan):
         Path(idx).unlink(missing_ok=True)
     cmd = ["commit-tree", tree, "-m", f"{tid}: {title}"] + (["-p", parent] if parent else [])
     sha = git(*cmd).stdout.strip()
-    git("update-ref", f"{REF_ROOT}/{st['run']}/{tid}", sha)
+    git("update-ref", f"{ref_root}/{st['run']}/{tid}", sha)
+    st["ref_root"] = ref_root
     st["entries"].append({"task": tid, "sha": sha, "title": f"{tid}: {title}", "files": files})
-    save_state(st)
+    save_state(st, plan)
     return sha
 
 
-def refs():
-    r = git("for-each-ref", "--format=%(refname)", REF_ROOT, check=False)
+def refs(plan=None):
+    _, _, ref_root = paths(plan)
+    r = git("for-each-ref", "--format=%(refname)", ref_root, check=False)
     return r.stdout.split()
 
 
@@ -119,8 +141,8 @@ def dirty_outside(files):
     return bad
 
 
-def apply():
-    st = load_state()
+def apply(plan=None):
+    st = load_state(plan)
     if not st or not st.get("entries"):
         sys.exit("apply: no checkpoints recorded (nothing to commit)")
     if head_sha() != st["head"]:
@@ -145,22 +167,30 @@ def apply():
     print(f"applied {len(st['entries'])} commit(s) on {st.get('branch') or 'HEAD'}:")
     for e in st["entries"]:
         print(f"- {e['title']}")
-    clean()
+    clean(plan)
     return 0
 
 
-def clean():
-    for r in refs():
+def clean(plan=None):
+    state, index, _ = paths(plan)
+    for r in refs(plan):
         git("update-ref", "-d", r, check=False)
-    Path(STATE).unlink(missing_ok=True)
+    state.unlink(missing_ok=True)
+    index.unlink(missing_ok=True)
+    if state.parent.name != ".superlite" and state.parent.is_dir() and not any(state.parent.iterdir()):
+        try:
+            state.parent.rmdir()
+        except OSError:
+            pass
     print("checkpoints removed")
 
 
-def listing():
-    st = load_state()
+def listing(plan=None):
+    st = load_state(plan)
     if not st:
         return "no checkpoints"
-    out = [f"checkpoints for run {st['run']} (base {st['head'][:10]}):"]
+    root = st.get("ref_root") or REF_ROOT
+    out = [f"checkpoints for run {st['run']} (base {st['head'][:10]}, refs {root}/):"]
     out += [f"- {e['sha'][:10]} {e['title']} ({len(e['files'])} files)" for e in st["entries"]]
     return "\n".join(out)
 

@@ -219,7 +219,44 @@ def test_peers_release_only_after_last_owner(tmp_path, monkeypatch):
     assert not (tmp_path / ".superlite" / "peers.json").is_file()
 
 
+def test_end_releases_peers_owner_and_keeps_lock_file(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    import sys
+    sys.path.insert(0, str(SCRIPTS))
+    import exclusive
+    import session as sl_session
+    sid_a, _ = sl_session.start(tmp_path, host_session="ea")
+    exclusive.suspend(tmp_path, owner=sid_a)
+    monkeypatch.delenv("SUPERLITE_SESSION", raising=False)
+    sid_b, path_b = sl_session.start(tmp_path, host_session="eb")
+    exclusive.suspend(tmp_path, owner=sid_b)
+    assert "ended" in sl_session.end(tmp_path, session_id=sid_a)
+    peers = json.loads((tmp_path / ".superlite" / "peers.json").read_text(encoding="utf-8"))
+    assert peers["owners"] == [sid_b]
+    assert (tmp_path / ".superlite" / "sessions.lock").is_file()  # retained across empty-ish registry
+    assert "ended" in sl_session.end(path_b)
+    assert not (tmp_path / ".superlite" / "peers.json").is_file()
+    assert (tmp_path / ".superlite" / "sessions.lock").is_file()  # still retained when registry cleared
+
+
+def test_mvp_defaults_follow_plan_session_not_active(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    import sys
+    sys.path.insert(0, str(SCRIPTS))
+    import session as sl_session
+    import mvp_check
+    sid_a, path_a = sl_session.start(tmp_path, host_session="ma")
+    monkeypatch.delenv("SUPERLITE_SESSION", raising=False)
+    sid_b, _ = sl_session.start(tmp_path, host_session="mb")
+    monkeypatch.setenv("SUPERLITE_SESSION", sid_b)
+    plan_a = path_a / "plan.md"
+    plan_a.write_text("# a\n", encoding="utf-8")
+    assert Path(mvp_check.default_page(plan_a)).resolve() == (path_a / "mvp" / "prototype.html").resolve()
+    assert Path(mvp_check.default_feedback(plan_a)).resolve() == (path_a / "mvp" / "mvp-feedback.json").resolve()
+
+
 def test_cwd_subfolder_finds_parent_superlite_without_git(tmp_path, monkeypatch):
+
     """`sl` from a nested folder still sees the project run when there is no .git marker."""
     import sys
     sys.path.insert(0, str(SCRIPTS))

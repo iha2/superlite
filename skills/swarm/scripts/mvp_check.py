@@ -37,12 +37,13 @@ PAGE = ".superlite/mvp/prototype.html"  # legacy default; overridden to the acti
 FEEDBACK = ".superlite/mvp/mvp-feedback.json"  # O(1)
 
 
-def default_page() -> str:  # O(S)
-    return sl_session.display_path(sl_session.state_dir() / "mvp" / "prototype.html")  # O(S)
+def default_page(plan=None) -> str:  # O(S)
+    """MVP page under the plan's session when encoded/active, else legacy flat."""
+    return sl_session.display_path(sl_session.state_dir(plan) / "mvp" / "prototype.html")  # O(S)
 
 
-def default_feedback() -> str:  # O(S)
-    return sl_session.display_path(sl_session.state_dir() / "mvp" / "mvp-feedback.json")  # O(S)
+def default_feedback(plan=None) -> str:  # O(S)
+    return sl_session.display_path(sl_session.state_dir(plan) / "mvp" / "mvp-feedback.json")  # O(S)
 KINDS = {"web", "cli", "library", "api", "other"}  # O(1)
 SIZES = {"S", "M", "L"}  # O(1)
 PRIORITIES = {"must", "should", "could"}  # O(1)
@@ -348,10 +349,11 @@ def main(argv=None) -> int:  # O(n)
         if name == "fetch":  # O(1)
             s.add_argument("--downloads", default=str(Path.home() / "Downloads"))  # O(1)
     a = ap.parse_args(argv)  # O(1)
+    plan = getattr(a, "plan", None)  # prefer path-encoded session over active | O(1)
     if getattr(a, "page", None) is None:  # O(1)
-        a.page = default_page()  # O(S)
+        a.page = default_page(plan)  # O(S)
     if hasattr(a, "feedback") and a.feedback is None:  # O(1)
-        a.feedback = default_feedback()  # O(S)
+        a.feedback = default_feedback(plan)  # O(S)
 
     if a.cmd == "fetch":  # O(1)
         got = fetch(a.feedback, a.page, a.downloads)  # O(d)

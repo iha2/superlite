@@ -91,6 +91,9 @@ def main(argv=None):  # O(L + a*o*F*len) + process spawn
     ap.add_argument("--pool", default=".superlite/pool.json")  # O(1)
     ap.add_argument("--plan")  # O(1)
     a = ap.parse_args(argv)  # O(1)
+    if a.pool == ".superlite/pool.json":  # O(1)
+        import session as sl_session  # O(1)
+        a.pool = sl_session.display_path(sl_session.state_dir(a.plan) / "pool.json")  # O(S)
     pool_path = Path(a.pool)  # O(1)
     pool = json.loads(pool_path.read_text(encoding="utf-8")) if pool_path.exists() \
         else {"agents": []}  # O(1)
