@@ -12,8 +12,9 @@ gated (existing runs behave as before). `--ruling` on `set ai` also appends a `R
 (for a headless run where no human can answer).
 In human mode `approve` needs `--review PATH` (the plain-language review plan; refused without it, exit 2; a missing file exit 2)
 and evidence of a real human reply: `.superlite/human-replies.jsonl` (written only by the UserPromptSubmit hook, one
-{"t": epoch ms, "approves": bool, "text": ...} per human prompt while unapproved) must hold a line with approves true whose t is
-later than the review file's modification time, else exit 3 with a BLOCKED line. The path and sha256 are recorded. AI mode never
+{"t": epoch ms, "approves": bool, "text": ...} per human prompt while unapproved) must hold a line whose t is
+later than the review file's modification time, else exit 3 with a BLOCKED line. The coordinator sends `approve` when it
+understands that reply as approval; the hook's phrase flag does not decide. The path and sha256 are recorded. AI mode never
 needs `approve`. Feature flow: in human mode, while `.superlite/feature.json` (written by `sl proto`) has status tryout, the same
 tools exit 4 with the try-out BLOCKED line until `sl proto tryout --approve` records the human's try-out reply. `status` and `finish` print the review plan path; `status` also says whether an approving reply exists. Library: gate(plan_or_dir, tool) -> message or None,
 require(plan_or_dir, tool) -> exit code (prints the message), read_state, summary_line. Stdlib only.
@@ -122,6 +123,12 @@ def approving_reply(plan_or_dir=None, since_ms: float = 0):  # O(replies)
     return max(hits, key=lambda e: e["t"]) if hits else None  # O(replies)
 
 
+def newest_reply(plan_or_dir=None, since_ms: float = 0):  # O(replies)
+    """The newest human reply with t later than since_ms, or None. The coordinator judged it; the phrase flag is not consulted."""
+    hits = [e for e in read_replies(plan_or_dir) if e["t"] > since_ms]  # O(replies)
+    return max(hits, key=lambda e: e["t"]) if hits else None  # O(replies)
+
+
 def reply_note(plan_or_dir=None, review=None) -> str:  # O(replies)
     since = 0  # O(1)
     if review and Path(review).is_file():  # O(1)
@@ -186,9 +193,11 @@ def main(argv=None):  # O(1)
             if not rp.is_file():  # O(1)
                 print(f"orchestrator: review plan not found: {a.review}", file=sys.stderr)  # O(1)
                 return 2  # O(1)
-            if not approving_reply(a.plan, rp.stat().st_mtime * 1000):  # a real human reply, written by the hook, after the plan | O(replies)
+            hit = newest_reply(a.plan, rp.stat().st_mtime * 1000)  # a human answered; the coordinator judged it | O(replies)
+            if not hit:  # O(1)
                 print(NO_REPLY, file=sys.stderr)  # O(1)
                 return 3  # O(1)
+            cur["approved_reply"] = hit.get("text", "")  # O(1)
             cur.update(review_path=a.review.replace(chr(92), "/"), review_sha256=hashlib.sha256(rp.read_bytes()).hexdigest())  # O(size)
         cur.update(approved=True, approved_by=a.by, approved_time=now())  # O(1)
         write_state(a.plan, cur)  # O(1)

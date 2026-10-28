@@ -24,10 +24,10 @@ def reply(tmp_path, review, approves=True, offset_ms=5000, text="approve"):
         fh.write(json.dumps({"t": t, "approves": approves, "text": text}) + "\n")
 
 
-def approve_human(tmp_path, by="human", review=None):
-    """A real approval: a review plan, a fresh approving human reply, then approve --review."""
+def approve_human(tmp_path, by="human", review=None, text="approve"):
+    """A real approval: a review plan, a fresh human reply, then the coordinator sends approve."""
     f = review or review_file(tmp_path)
-    reply(tmp_path, f)
+    reply(tmp_path, f, text=text)
     return orch(tmp_path, "approve", "--by", by, "--review", f)
 
 
@@ -210,12 +210,15 @@ def test_approve_refuses_a_stale_reply_older_than_the_review_plan(tmp_path):
     assert "no qualifying human reply yet" in orch(tmp_path, "status", "--review", f).out
 
 
-def test_approve_refuses_a_non_approving_reply(tmp_path):
+def test_approve_follows_the_model_when_a_human_has_answered(tmp_path):
+    # The hook would not call this a stock phrase. The coordinator understood it as approval and sent approve.
     orch(tmp_path, "set", "human")
     f = review_file(tmp_path)
-    reply(tmp_path, f, approves=False, text="change the storage to a database")
+    reply(tmp_path, f, approves=False, text="looks good enough, rename the title")
     cp = orch(tmp_path, "approve", "--review", f)
-    assert cp.returncode == 3 and state(tmp_path)["approved"] is False
+    assert cp.returncode == 0, cp.both
+    assert state(tmp_path)["approved"] is True
+    assert state(tmp_path)["approved_reply"] == "looks good enough, rename the title"
 
 
 def test_approve_accepts_a_fresh_approving_reply_after_a_changing_one(tmp_path):

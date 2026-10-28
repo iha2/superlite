@@ -89,11 +89,11 @@ def test_human_mode_tryout_approval_needs_a_reply_newer_than_the_tryout(repo):
     assert cp.returncode == 3 and "BLOCKED: no human reply since the prototype was shown" in cp.err
     time.sleep(0.02)
     with (sl / "human-replies.jsonl").open("a") as fh:
-        fh.write(json.dumps({"t": time.time() * 1000, "approves": True, "text": "it works"}) + "\n")
+        fh.write(json.dumps({"t": time.time() * 1000, "approves": False, "text": "ship it, the button can wait"}) + "\n")
     cp = proto(repo, "tryout", "--approve", "--by", "dana")
     assert cp.returncode == 0, cp.both
     st = state(repo)
-    assert st["status"] == "approved" and st["tryout_approved"] is True and st["tryout_by"] == "dana" and st["tryout_reply"] == "it works"
+    assert st["status"] == "approved" and st["tryout_approved"] is True and st["tryout_by"] == "dana" and st["tryout_reply"] == "ship it, the button can wait"
     assert "try-out approved" in cp.out and orchestrator.gate(sl, "dispatch") is None
 
 
@@ -201,8 +201,9 @@ def test_reply_hook_records_while_the_tryout_waits(tmp_path):
     p = feature(tmp_path, "human", True, "tryout")
     reply(p, "it works")
     reply(p, "it works but the button is too small")
-    a, b = lines(p)
-    assert a["approves"] is True and b["approves"] is False
+    reply(p, "the button is too small")
+    a, b, c = lines(p)
+    assert a["approves"] is True and b["approves"] is True and c["approves"] is False
     (tmp_path / "q").mkdir()
     q = feature(tmp_path / "q", "human", True, "approved")  # nothing waits on the human: nothing is recorded
     reply(q, "it works")

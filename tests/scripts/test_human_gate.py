@@ -168,6 +168,12 @@ def lines(proj):
 @pytest.mark.parametrize("prompt", [
     "approve", "Approved", "yes", "Yes, approve", "go ahead", "Go for it!", "looks good", "LGTM",
     "proceed", "ship it", "do it", "yes, approve it", "OK looks good to me, go ahead",
+    "yeah", "yep", "sure", "okay", "sounds good", "sgtm", "perfect", "absolutely, let's build it",
+    "ready to approve", "I want to approve",
+    "yes but add tests", "approve, but change the name", "no problem, go ahead", "fine by me",
+    "lgtm, but rename the title", "Looks good. Can you also add a test?", "I like it, proceed",
+    "approve?",
+    "Go ahead and rename the module, then update every caller, rerun the tests, and send me the results after",
 ])
 def test_reply_approves(human, prompt):
     t0 = time.time() * 1000
@@ -179,13 +185,21 @@ def test_reply_approves(human, prompt):
     assert list(rec) == ["t", "approves", "text"]
 
 
+def test_reply_approves_a_thumbs_up(human):
+    raw = json.dumps({"hook_event_name": "UserPromptSubmit", "cwd": str(human), "prompt": "👍"}, ensure_ascii=False)
+    assert reply(human, None, raw=raw).returncode == 0
+    (rec,) = lines(human)
+    assert rec["approves"] is True and rec["text"] == "👍"
+
+
 @pytest.mark.parametrize("prompt", [
-    "no", "not yet", "don't approve", "dont proceed", "wait, change the scope", "yes but add tests",
-    "stop", "instead, do X", "approve, but change the name", "hmm", "Create hello.txt containing hi",
-    "unapproved", "yesterday", "nothing", "what about the schema?", "approve?", "Should I approve it?",
+    "no", "not yet", "don't approve", "dont proceed", "do not approve", "please don't proceed",
+    "wait, change the scope", "stop", "instead, do X", "hmm", "Create hello.txt containing hi",
+    "unapproved", "yesterday", "nothing", "what about the schema?", "Should I approve it?",
+    "can we go ahead?", "not approved", "not sure", "not perfect", "make sure the tests cover empty files",
+    "I'd like it if the button were bigger",
     "The guard is not registered, so the gate is held only by the sl tools refusing to run until you approve. "
     "Can we fix this as well or am I misunderstanding?",
-    "Go ahead and rename the module, then update every caller, rerun the tests, and send me the results after",
 ])
 def test_reply_does_not_approve(human, prompt):
     reply(human, prompt)

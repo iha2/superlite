@@ -17,7 +17,7 @@ plan's acceptance checks, and sets status tryout; `--start` also launches the ru
 `.superlite/proto-run.log`). `tryout --approve` records the try-out approval. Human mode (orchestrator.json mode human): it
 needs a real typed human reply that approves ("it works", "approve", ...) newer than the prototype's last checkpoint (the
 later of the try-out time and the worktree's checkpoints.json), read from `.superlite/human-replies.jsonl` written by
-hooks/record-human-reply; else exit 3 with a BLOCKED line. AI mode or no orchestrator file: `--ruling TEXT` is appended to
+hooks/record-human-reply; else exit 3 with a BLOCKED line. The coordinator sends `--approve` when it understands that reply as approval. AI mode or no orchestrator file: `--ruling TEXT` is appended to
 `.superlite/progress.md` as a `Ruling:` line. While the status is tryout in human mode the integration build is gated:
 orchestrator.gate refuses lint --stable, dispatch, wave0 and build_prime, and hooks/block-coordinator-edits denies agent
 dispatch. `discard` saves the prototype's report headline into feature.json (for the report's two parts), then removes
@@ -188,8 +188,8 @@ def cmd_tryout(a, sl) -> int:  # O(P + R)
         if st["status"] != "tryout":  # O(1)
             print(f"proto: status is {st['status']}; run sl proto tryout first so the human can try it", file=sys.stderr)  # O(1)
             return 2  # O(1)
-        if human_mode(sl):  # the same evidence as plan approval: a typed reply, written by the hook | O(file)
-            hit = orchestrator.approving_reply(sl, last_checkpoint_ms(st))  # O(R)
+        if human_mode(sl):  # a human answered after the try-out; the coordinator judged that answer | O(file)
+            hit = orchestrator.newest_reply(sl, last_checkpoint_ms(st))  # O(R)
             if not hit:  # O(1)
                 print(NO_REPLY, file=sys.stderr)  # O(1)
                 return 3  # O(1)
@@ -228,7 +228,8 @@ def cmd_tryout(a, sl) -> int:  # O(P + R)
         st["pid"] = p.pid  # O(1)
         write_state(sl, st)  # O(1)
         print(f"started: pid {p.pid}, log {log.as_posix()}")  # O(1)
-    print("next: show it, ask the human to reply \"it works\" or list changes, end your turn; then sl proto tryout --approve"
+    print("next: show it, ask the human to reply \"it works\" or list changes, end your turn; then, if you understand"
+          " the answer as approval, sl proto tryout --approve"
           " (changes: sl proto start --topic " + st["topic"] + " reopens it for a fix round)")  # O(1)
     return 0  # O(1)
 
@@ -263,7 +264,7 @@ def main(argv=None):  # O(P + R) + git spawns
     s.add_argument("--base", help="the ref to cut from (default: the current branch)")  # O(1)
     t = sub.add_parser("tryout")  # O(1)
     t.add_argument("--start", action="store_true", help="also launch the run command in the background")  # O(1)
-    t.add_argument("--approve", action="store_true", help="record the try-out approval")  # O(1)
+    t.add_argument("--approve", action="store_true", help="record the try-out approval; send this when you understand the reply as approval")  # O(1)
     t.add_argument("--by", default="human")  # O(1)
     t.add_argument("--ruling", help="AI mode: the acceptance-check result, recorded as a Ruling: line")  # O(1)
     for p in (s, t):  # O(1)
