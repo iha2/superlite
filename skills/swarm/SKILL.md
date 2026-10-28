@@ -101,7 +101,7 @@ After a green suite: freeze. Archive `.superlite/incidents.jsonl` and `progress.
 
 Stop and ask only for: an irreversible or destructive operation; a security-sensitive action; an outward side effect (merge, push, publish); a plan so broken every path is a guess.
 
-**AI orchestrator** (`sl orchestrator status`; also user away, "decide yourself"): never end your turn to wait. Take the safe path: defer the outward or destructive action, read a broken plan conservatively, record the ruling; list what you deferred. **Human orchestrator**: nothing is built, dispatched or written but the review plan before the human's approving reply; ask in plain text, end the turn, then `bash "$SL" orchestrator approve --review PATH` and the machine plan; `lint --stable`, `dispatch`, `wave0`, `build_prime` refuse before (`orchestrator.md`).
+**AI orchestrator** (`sl orchestrator status`; also user away, "decide yourself"): never end your turn to wait. Take the safe path: defer the outward or destructive action, read a broken plan conservatively, record the ruling; list what you deferred. **Human orchestrator**: nothing is built, dispatched or written but the review plan before the human's approving reply; ask in plain text, end the turn, then if you understand their answer as approval send `bash "$SL" orchestrator approve --review PATH` and the machine plan. Do not pass their words through. `lint --stable`, `dispatch`, `wave0`, `build_prime` refuse before (`orchestrator.md`).
 
 ## Red flags
 

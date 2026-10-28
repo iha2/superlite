@@ -28,10 +28,13 @@ unattended signal (all mean AI). When no human can answer (a headless `claude -p
   (`approved` is true for AI, false for human until `approve`).
 - `approve --review PATH [--by NAME]` records the approval. Human mode only (exit 2 otherwise); `--review` is required (exit 2: write the
   review plan first; a missing file also exit 2); and a real human reply is required: `.superlite/human-replies.jsonl` (written only by the
-  UserPromptSubmit hook, `{t, approves, text}` per human prompt while unapproved) must hold an `approves: true` line later than the review
+  UserPromptSubmit hook, `{t, approves, text}` per human prompt while unapproved) must hold a line later than the review
   file's modification time, else exit 3 `BLOCKED: no human approval reply since the review plan was written; show the plan, ask the human to
-  reply approve, end your turn`. The path and sha256 go to `orchestrator.json` (`review_path`, `review_sha256`). AI mode never needs `approve`.
+  reply approve, end your turn`. The coordinator sends `approve` when it understands that reply as approval; the hook's phrase flag does not decide.
+  The path and sha256 go to `orchestrator.json` (`review_path`, `review_sha256`). AI mode never needs `approve`.
   `status [--review PATH]` and `finish` print the review plan path and whether an approving reply exists.
+- Where the state lives: without `--plan`, `sl orchestrator` and the hooks use the nearest `.superlite` at or above the working directory that holds an
+  `orchestrator.json`, so a shell or session in a subfolder still reads and writes the run the hook records replies for.
 - `status` prints one line: `orchestrator: human, awaiting approval` / `human, approved <time> by <name>` / `AI` / `not set (ungated)`.
 - Gate: in human mode without an approval `plan_tools lint --stable`, `dispatch`, `wave0` and `build_prime` exit 4 with
   `BLOCKED: human orchestrator selected, show the plan, ask for approval, then run sl orchestrator approve`.
@@ -43,8 +46,9 @@ unattended signal (all mean AI). When no human can answer (a headless `claude -p
 ## The hard rule (human mode)
 No orchestrated build starts until the human approves the plan: nothing is linted, dispatched or sent to an agent before the human's
 approving reply. The approval is asked in PLAIN TEXT, never with AskUserQuestion, because the typed reply is what the hook verifies: show
-the review plan path, a five-line summary and "Reply approve to start, or tell me what to change", then end the turn. Only after the reply
-run `approve --review`. `set human` writes `approved: false`. The hook (`block-coordinator-edits`) denies superlite agent dispatch and the
+the review plan path, a five-line summary and "Reply approve to start, or tell me what to change", then end the turn. Read the answer.
+If you understand it as approval, send `approve --review`. Do not pass their words through and do not ask them to retype approve.
+If you understand it as changes with no approval, revise and ask again. `set human` writes `approved: false`. The hook (`block-coordinator-edits`) denies superlite agent dispatch and the
 build tools while the mode is human and unapproved, and always denies the model writing `orchestrator.json` or `human-replies.jsonl`.
 
 In MVP mode the MVP plan (`docs/plans/<date>-<topic>.mvp.md`) and its prototype are the review plan: `approve --review` takes the
@@ -52,8 +56,8 @@ In MVP mode the MVP plan (`docs/plans/<date>-<topic>.mvp.md`) and its prototype 
 
 In feature mode the feature plan (`docs/plans/<date>-<topic>.feature.md`) is the review plan. The try-out of the prototype is the one
 exception to "not asked again after approval": a second planned gate, feature mode only, because trying the prototype is the point of the
-flow. Ask it in plain text ("reply it works, or list the changes"), end the turn, then `sl proto tryout --approve`, which needs an
-approving reply in `human-replies.jsonl` newer than the prototype's last checkpoint (exit 3 otherwise). While `.superlite/feature.json`
+flow. Ask it in plain text ("reply it works, or list the changes"), end the turn, then if you understand the answer as approval run `sl proto tryout --approve`, which needs a
+human reply in `human-replies.jsonl` newer than the prototype's last checkpoint (exit 3 otherwise). A note that never says the try-out is acceptable means another fix round. While `.superlite/feature.json`
 says `tryout`, the hook denies integration dispatch and `lint --stable`, `dispatch`, `wave0`, `build_prime` exit 4, as before plan
 approval. AI mode: the acceptance checks decide, as a `Ruling: [tryout]`.
 

@@ -1,10 +1,11 @@
 {
   "name": "superlite",
   "description": "Lightweight Claude Code skills for the build lifecycle: one approval gate, parallel waves, short reports",
-  "version": "2.0.1",
+  "version": "2.0.3",
   "author": {
     "name": "CWogu"
   },
   "license": "MIT",
-  "keywords": ["skills", "tdd", "debugging", "workflow"]
+  "keywords": ["skills", "tdd", "debugging", "workflow"],
+  "dependencies": ["claude-agent-map"]
 }
