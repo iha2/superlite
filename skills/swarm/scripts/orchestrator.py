@@ -41,8 +41,13 @@ BLOCK = ("BLOCKED: human orchestrator selected, show the plan, ask for approval,
 
 
 def sl_dir(plan_or_dir=None) -> Path:  # O(1)
-    """The `.superlite` folder: the argument itself when it is one, else next to a plan (the plan's repo root), else ./.superlite."""
+    """The `.superlite` folder: the argument itself when it is one, else next to a plan (the plan's repo root), else the nearest one
+    above the working directory that holds an orchestrator.json, else ./.superlite."""
     if plan_or_dir is None:  # O(1)
+        cwd = Path.cwd().resolve()  # O(1)
+        for d in (cwd, *cwd.parents):  # the hooks record replies at the project root; the app may run sl from a folder below it | O(depth)
+            if (d / ".superlite" / FILE).is_file():  # O(1)
+                return d / ".superlite"  # O(1)
         return Path(".superlite")  # O(1)
     p = Path(plan_or_dir).resolve()  # O(1)
     if p.name == ".superlite":  # O(1)

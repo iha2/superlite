@@ -417,3 +417,23 @@ def test_latency(human):
     for hook, raw in cases:
         t = best([BASH, str(hook)], raw, str(human))
         assert t < max(0.6, base + 0.35), (hook.name, t, base)
+
+
+# ---- the session folder and the folder sl runs in can differ (the desktop app moves the working directory) ----
+
+def test_reply_recorded_when_the_prompt_cwd_is_below_the_project(human):
+    sub = human / "movedocs" / "api"
+    sub.mkdir(parents=True)
+    r = reply(sub, "approve")
+    assert r.returncode == 0
+    assert [e["approves"] for e in lines(human)] == [True]
+    assert not (sub / ".superlite").exists()
+
+
+def test_guard_finds_the_run_from_a_folder_below_the_project(human):
+    sub = human / "movedocs" / "api"
+    sub.mkdir(parents=True)
+    raw = json.dumps({"tool_name": "Bash", "tool_input": {"command": 'bash "$SL" dispatch implementer t1'}, "cwd": str(sub)})
+    env = {k: v for k, v in os.environ.items() if k != "CLAUDE_PROJECT_DIR"}
+    r = subprocess.run([BASH, str(GUARD)], input=raw, capture_output=True, text=True, env=env)
+    assert r.returncode == 2 and NEXT in r.stderr

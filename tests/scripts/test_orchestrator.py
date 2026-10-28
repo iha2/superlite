@@ -312,3 +312,24 @@ def test_texts_state_the_hard_rule_plain_text_approval_and_the_small_form():
 def test_readme_has_the_human_mode_sentence():
     readme = (REPO / "README.md").read_text(encoding="utf-8")
     assert "nothing is linted, dispatched or sent to an agent until you reply approve" in readme and "you are not asked again" in readme
+
+
+def test_orchestrator_uses_the_run_of_a_parent_folder(tmp_path):
+    # The hook records replies at the project root; sl run from a subfolder must read and write the same .superlite.
+    assert "human" in orch(tmp_path, "set", "human").out
+    sub = tmp_path / "movedocs" / "api"
+    sub.mkdir(parents=True)
+    f = review_file(tmp_path)
+    reply(tmp_path, f)
+    cp = run(ORCH, "approve", "--review", f, cwd=sub)
+    assert cp.returncode == 0, cp.both
+    assert not (sub / ".superlite").exists()
+    assert json.loads((tmp_path / ".superlite" / "orchestrator.json").read_text())["approved"] is True
+    assert run(ORCH, "set", "human", cwd=sub).returncode == 0
+    assert json.loads((tmp_path / ".superlite" / "orchestrator.json").read_text())["approved"] is False
+    assert not (sub / ".superlite").exists()
+
+
+def test_set_in_a_folder_without_a_run_still_starts_one_there(tmp_path):
+    assert run(ORCH, "set", "human", cwd=tmp_path).returncode == 0
+    assert (tmp_path / ".superlite" / "orchestrator.json").exists()

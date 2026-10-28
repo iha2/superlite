@@ -33,6 +33,8 @@ unattended signal (all mean AI). When no human can answer (a headless `claude -p
   reply approve, end your turn`. The coordinator sends `approve` when it understands that reply as approval; the hook's phrase flag does not decide.
   The path and sha256 go to `orchestrator.json` (`review_path`, `review_sha256`). AI mode never needs `approve`.
   `status [--review PATH]` and `finish` print the review plan path and whether an approving reply exists.
+- Where the state lives: without `--plan`, `sl orchestrator` and the hooks use the nearest `.superlite` at or above the working directory that holds an
+  `orchestrator.json`, so a shell or session in a subfolder still reads and writes the run the hook records replies for.
 - `status` prints one line: `orchestrator: human, awaiting approval` / `human, approved <time> by <name>` / `AI` / `not set (ungated)`.
 - Gate: in human mode without an approval `plan_tools lint --stable`, `dispatch`, `wave0` and `build_prime` exit 4 with
   `BLOCKED: human orchestrator selected, show the plan, ask for approval, then run sl orchestrator approve`.
