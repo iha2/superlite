@@ -32,6 +32,9 @@ jstr() {
   jdecode "${BASH_REMATCH[1]}"
 }
 
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=./_sl_state_dir.sh
+. "$HOOK_DIR/_sl_state_dir.sh"
 # Project: Claude Code's env or cwd; Cursor runs plugin hooks elsewhere, so its env or the first
 # workspace root (sent as /c:/path) that holds a superlite run.
 jstr cwd; proj="${CLAUDE_PROJECT_DIR:-${CURSOR_PROJECT_DIR:-${REPLY//\\//}}}"
@@ -46,7 +49,7 @@ if [ -z "$proj" ]; then
       jdecode "${BASH_REMATCH[1]}"; r="${REPLY//\\//}"
       [[ $r =~ $re_drive ]] && r="${BASH_REMATCH[1]}"
       [ -n "$proj" ] || proj="$r"
-      [ -f "$r/.superlite/orchestrator.json" ] && { proj="$r"; break; }
+      sl_has_orchestrator "$r" && { proj="$r"; break; }
     done
   fi
 fi
@@ -54,11 +57,11 @@ fi
 # The session folder can sit below the project (the desktop app moves the working directory): use the nearest
 # folder at or above it that holds the run, the same one `sl orchestrator` finds from its own working directory.
 d="$proj"
-while [ ! -f "$d/.superlite/orchestrator.json" ]; do
+while ! sl_has_orchestrator "$d"; do
   up="${d%/*}"; { [ -z "$up" ] || [ "$up" = "$d" ]; } && break; d="$up"
 done
-[ -f "$d/.superlite/orchestrator.json" ] && proj="$d"
-sd="$proj/.superlite"
+sl_has_orchestrator "$d" && proj="$d"
+sl_resolve_state_dir "$proj"
 [ -f "$sd/orchestrator.json" ] || exit 0
 IFS= read -r -d '' oj < "$sd/orchestrator.json"
 re_human='"mode"[[:space:]]*:[[:space:]]*"human"'

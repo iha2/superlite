@@ -28,7 +28,11 @@ case "$tool" in ''|Agent|Task) ;; *) exit 0 ;; esac
 
 jstr cwd; proj="${CLAUDE_PROJECT_DIR:-${REPLY//\\//}}"
 [ -n "$proj" ] || proj="$PWD"
-[ -f "$proj/.superlite/stable.json" ] || [ -f "$proj/.superlite/prime.md" ] || [ -f "$proj/.superlite/pool.json" ] || [ -f "$proj/.superlite/orchestrator.json" ] || [ -f "$proj/.superlite/feature.json" ] || exit 0
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=./_sl_state_dir.sh
+. "$HOOK_DIR/_sl_state_dir.sh"
+sl_resolve_state_dir "$proj"
+sl_run_marker "$sd" || exit 0
 
 jstr agentId; id="$REPLY"                 # Claude tool_response.agentId
 if [ -z "$id" ]; then jstr subagent_id; id="$REPLY"; fi   # Cursor subagentStart
@@ -42,6 +46,7 @@ jstr agent_id; parent="$REPLY"   # the calling subagent; absent on the main thre
 esc id; esc type; esc model; esc desc; esc parent
 
 now="${EPOCHREALTIME//[.,]/}"; now="${now:0:${#now}-3}"
+# metrics stay on the project container so finish/history see one stream; session state is separate
 printf '{"ev":"launch","t":%s,"agent_id":"%s","type":"%s","model":"%s","desc":"%s","parent":"%s"}\n' \
   "$now" "$id" "$type" "$model" "$desc" "$parent" >> "$proj/.superlite/metrics.jsonl" 2>/dev/null
 exit 0

@@ -28,6 +28,9 @@ import sys  # O(1)
 from datetime import datetime  # O(1)
 from pathlib import Path  # O(1)
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # O(1)
+import session as sl_session  # noqa: E402 | state_dir / project_sl | O(1)
+
 FILE = "orchestrator.json"  # O(1)
 REPLIES = "human-replies.jsonl"  # written only by the UserPromptSubmit hook | O(1)
 NO_REPLY = ("BLOCKED: no human approval reply since the review plan was written; show the plan, ask the human to reply approve, "
@@ -40,26 +43,17 @@ TRYOUT_BLOCK = ("BLOCKED: the human has not approved the prototype try-out; show
 BLOCK = ("BLOCKED: human orchestrator selected, show the plan, ask for approval, then run sl orchestrator approve")  # O(1)
 
 
-def sl_dir(plan_or_dir=None) -> Path:  # O(1)
-    """The `.superlite` folder: the argument itself when it is one, else next to a plan (the plan's repo root), else the nearest one
-    above the working directory that holds an orchestrator.json, else ./.superlite."""
-    if plan_or_dir is None:  # O(1)
-        cwd = Path.cwd().resolve()  # O(1)
-        for d in (cwd, *cwd.parents):  # the hooks record replies at the project root; the app may run sl from a folder below it | O(depth)
-            if (d / ".superlite" / FILE).is_file():  # O(1)
-                return d / ".superlite"  # O(1)
-        return Path(".superlite")  # O(1)
-    p = Path(plan_or_dir).resolve()  # O(1)
-    if p.name == ".superlite":  # O(1)
-        return p  # O(1)
-    if p.is_dir():  # O(1)
-        return p / ".superlite" if p.name != ".superlite" else p  # O(1)
-    root = p.parent  # O(1)
-    if root.name == ".superlite":  # O(1)
-        return root  # O(1)
-    if root.name == "plans" and root.parent.name == "docs":  # O(1)
-        return root.parent.parent / ".superlite"  # O(1)
-    return root / ".superlite"  # O(1)
+def sl_dir(plan_or_dir=None) -> Path:  # O(S)
+    """Run-state directory: an active `sessions/<id>` when one is selected, else the project `.superlite`
+    (legacy flat layout). Peers/worktrees stay on the project container via `session.project_sl`."""
+    # A path that is already a session state dir (…/.superlite/sessions/<id>) is used as-is.
+    if plan_or_dir is not None:  # O(1)
+        p = Path(plan_or_dir).resolve()  # O(1)
+        if p.is_dir() and p.parent.name == "sessions" and p.parent.parent.name == ".superlite":  # O(1)
+            return p  # O(1)
+        if p.name == FILE and p.parent.parent.name == "sessions" and p.parent.parent.parent.name == ".superlite":  # O(1)
+            return p.parent  # O(1)
+    return sl_session.state_dir(plan_or_dir)  # O(S)
 
 
 def read_state(plan_or_dir=None):  # O(file)

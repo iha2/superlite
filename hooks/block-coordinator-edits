@@ -70,14 +70,17 @@ if [ -z "$proj" ]; then   # Cursor: the first workspace root that holds a superl
   fi
 fi
 [ -n "$proj" ] || proj="$PWD"
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=./_sl_state_dir.sh
+. "$HOOK_DIR/_sl_state_dir.sh"
 # The session folder can sit below the project (the desktop app moves the working directory): use the nearest
 # folder at or above it that holds the run, the same one `sl orchestrator` finds from its own working directory.
 d="$proj"
-while [ ! -f "$d/.superlite/orchestrator.json" ]; do
+while ! sl_has_orchestrator "$d" && [ ! -d "$d/.superlite" ]; do
   up="${d%/*}"; { [ -z "$up" ] || [ "$up" = "$d" ]; } && break; d="$up"
 done
-[ -f "$d/.superlite/orchestrator.json" ] && proj="$d"
-sd="$proj/.superlite"
+{ sl_has_orchestrator "$d" || [ -d "$d/.superlite" ]; } && proj="$d"
+sl_resolve_state_dir "$proj"
 [ -d "$sd" ] || exit 0
 
 active=0

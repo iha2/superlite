@@ -1,0 +1,107 @@
+"""Per-worktree sessions: isolate concurrent runs and clean up after themselves."""
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+
+import pytest
+
+from test_plan_tools import SCRIPTS, run
+
+SESSION = SCRIPTS / "session.py"
+FINISH = SCRIPTS / "finish.py"
+ORCH = SCRIPTS / "orchestrator.py"
+
+
+def test_start_isolates_mvp_paths_and_finish_deletes_the_tree(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    a = run(SESSION, "start", "--host-session", "chat-a", cwd=tmp_path)
+    assert a.returncode == 0 and "session: started" in a.out
+    sid_a = [ln.split("=", 1)[1].strip() for ln in a.out.splitlines() if ln.startswith("SUPERLITE_SESSION=")][0]
+    path_a = tmp_path / ".superlite" / "sessions" / sid_a
+    assert path_a.is_dir() and (path_a / "mvp").is_dir()
+    monkeypatch.setenv("SUPERLITE_SESSION", sid_a)
+    (path_a / "mvp" / "prototype.html").write_text("<html>a</html>", encoding="utf-8")
+    (path_a / "progress.md").write_text("- checkpoint T1 abc1234 title\n", encoding="utf-8")
+    (path_a / "orchestrator.json").write_text(json.dumps({"mode": "ai", "approved": True, "by": "t", "time": "t"}) + "\n",
+                                              encoding="utf-8")
+
+    # Second chat: new session, does not overwrite A's prototype
+    monkeypatch.delenv("SUPERLITE_SESSION", raising=False)
+    b = run(SESSION, "start", "--host-session", "chat-b", cwd=tmp_path)
+    sid_b = [ln.split("=", 1)[1].strip() for ln in b.out.splitlines() if ln.startswith("SUPERLITE_SESSION=")][0]
+    assert sid_b != sid_a
+    path_b = tmp_path / ".superlite" / "sessions" / sid_b
+    (path_b / "mvp" / "prototype.html").write_text("<html>b</html>", encoding="utf-8")
+    assert (path_a / "mvp" / "prototype.html").read_text(encoding="utf-8") == "<html>a</html>"
+
+    # finish cleans up session A (ledger path) even when B is active
+    monkeypatch.setenv("SUPERLITE_SESSION", sid_b)
+    fin = run(FINISH, "--ledger", str(path_a / "progress.md"), cwd=tmp_path)
+    assert fin.returncode == 0 and f"session: ended {sid_a}" in fin.out
+    assert not path_a.exists()
+    assert path_b.exists() and (path_b / "mvp" / "prototype.html").read_text(encoding="utf-8") == "<html>b</html>"
+
+    # finish B → empty registry, flat again
+    (path_b / "progress.md").write_text("- checkpoint T1 abc1234 title\n", encoding="utf-8")
+    fin_b = run(FINISH, "--ledger", str(path_b / "progress.md"), cwd=tmp_path)
+    assert fin_b.returncode == 0 and f"session: ended {sid_b}" in fin_b.out
+    assert not (tmp_path / ".superlite" / "sessions").exists()
+    assert not (tmp_path / ".superlite" / "sessions.json").exists()
+    assert not (tmp_path / ".superlite" / "active").exists()
+
+
+def test_same_host_session_restart_ends_the_previous_tree(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    first = run(SESSION, "start", "--host-session", "same-chat", cwd=tmp_path)
+    sid1 = [ln.split("=", 1)[1].strip() for ln in first.out.splitlines() if ln.startswith("SUPERLITE_SESSION=")][0]
+    old = tmp_path / ".superlite" / "sessions" / sid1
+    (old / "mvp" / "prototype.html").write_text("old", encoding="utf-8")
+    monkeypatch.delenv("SUPERLITE_SESSION", raising=False)
+    second = run(SESSION, "start", "--host-session", "same-chat", cwd=tmp_path)
+    sid2 = [ln.split("=", 1)[1].strip() for ln in second.out.splitlines() if ln.startswith("SUPERLITE_SESSION=")][0]
+    assert sid2 != sid1
+    assert not old.exists()
+    assert (tmp_path / ".superlite" / "sessions" / sid2).is_dir()
+
+
+def test_legacy_flat_layout_untouched_until_session_start(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "plan.md").write_text("# p\n", encoding="utf-8")
+    cp = run(ORCH, "set", "ai", "--plan", tmp_path / "plan.md", cwd=tmp_path)
+    assert cp.returncode == 0
+    assert (tmp_path / ".superlite" / "orchestrator.json").is_file()
+    assert not (tmp_path / ".superlite" / "sessions").exists()
+    st = run(SESSION, "status", cwd=tmp_path)
+    assert "session: none" in st.out
+
+
+def test_mvp_defaults_follow_active_session(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    import sys
+    sys.path.insert(0, str(SCRIPTS))
+    import session as sl_session
+    import mvp_check
+    sid, path = sl_session.start(tmp_path, host_session="mvp")
+    monkeypatch.setenv("SUPERLITE_SESSION", sid)
+    assert Path(mvp_check.default_page()).resolve() == (path / "mvp" / "prototype.html").resolve()
+    assert Path(mvp_check.default_feedback()).resolve() == (path / "mvp" / "mvp-feedback.json").resolve()
+
+
+def test_end_from_ledger_path_without_active_pointer(tmp_path, monkeypatch):
+    """finish must clean up even when active/env were cleared (self-cleanup)."""
+    monkeypatch.chdir(tmp_path)
+    import sys
+    sys.path.insert(0, str(SCRIPTS))
+    import session as sl_session
+    sid, path = sl_session.start(tmp_path, host_session="orphan")
+    (path / "progress.md").write_text("x\n", encoding="utf-8")
+    monkeypatch.delenv("SUPERLITE_SESSION", raising=False)
+    (tmp_path / ".superlite" / "active").unlink()
+    reg = json.loads((tmp_path / ".superlite" / "sessions.json").read_text(encoding="utf-8"))
+    reg["active"] = None
+    (tmp_path / ".superlite" / "sessions.json").write_text(json.dumps(reg) + "\n", encoding="utf-8")
+    assert "ended" in sl_session.end(path / "progress.md")
+    assert not path.exists()
+    assert not (tmp_path / ".superlite" / "sessions.json").exists()

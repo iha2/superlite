@@ -24,6 +24,7 @@ from pathlib import Path  # O(1)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # O(1)
 import orchestrator  # noqa: E402 | sl_dir | O(1)
+import session as sl_session  # noqa: E402 | project_sl / project_root | O(1)
 
 FILE = "peers.json"  # O(1)
 PEER_ID = "superpowers@claude-plugins-official"  # the installed Claude Code plugin id | O(1)
@@ -33,7 +34,8 @@ CLEAR = "peers: clear (superpowers may be used again)"  # O(1)
 
 
 def peers_path(plan_or_dir=None) -> Path:  # O(1)
-    return orchestrator.sl_dir(plan_or_dir) / FILE  # O(1)
+    """Peers are project-wide (one suspend for the checkout), never per-session."""
+    return sl_session.project_sl(plan_or_dir) / FILE  # O(1)
 
 
 def read_peers(plan_or_dir=None):  # O(file)
@@ -50,14 +52,14 @@ def suspended(plan_or_dir=None) -> bool:  # O(file)
 
 
 def settings_path(plan_or_dir=None) -> Path:  # O(1)
-    return orchestrator.sl_dir(plan_or_dir).parent / ".claude" / "settings.local.json"  # O(1)
+    return sl_session.project_root(plan_or_dir) / ".claude" / "settings.local.json"  # O(1)
 
 
 def claude_host(plan_or_dir=None) -> bool:  # O(1)
     """True when this project is a Claude Code host, so writing its settings is in scope."""
     if os.environ.get("CLAUDE_PLUGIN_ROOT") or os.environ.get("CLAUDE_CODE"):  # O(1)
         return True  # O(1)
-    return (orchestrator.sl_dir(plan_or_dir).parent / ".claude").is_dir()  # O(1) stat
+    return (sl_session.project_root(plan_or_dir) / ".claude").is_dir()  # O(1) stat
 
 
 def read_settings(path: Path):  # O(S)
@@ -124,7 +126,7 @@ def suspend(plan_or_dir=None) -> str:  # O(S)
         "settings_skip": skip,  # O(1)
         "previous_enabled": previous,  # O(1)
     }  # O(1)
-    d = orchestrator.sl_dir(plan_or_dir)  # O(1)
+    d = sl_session.project_sl(plan_or_dir)  # O(1)
     d.mkdir(parents=True, exist_ok=True)  # O(1)
     if not skip:  # O(1)
         write_enabled(plan_or_dir, False)  # O(S)

@@ -38,8 +38,9 @@ SYNTH_OWNS = ["package.json", "package-lock.json", "tsconfig*.json", "pyproject.
               "**/__init__.py", "**/errors.*", "**/types.*", "**/models.*"]
 
 
-def sl_dir(plan_path: str) -> Path:  # O(1)
-    return pt.stable_root(plan_path) / ".superlite"  # O(1)
+def sl_dir(plan_path: str) -> Path:  # O(S)
+    from session import state_dir  # O(1)
+    return state_dir(plan_path)  # O(S)
 
 
 def is_wave0(task) -> bool:  # O(k*s)

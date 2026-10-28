@@ -39,7 +39,12 @@ esc() {
 
 jstr cwd; proj="${CLAUDE_PROJECT_DIR:-${REPLY//\\//}}"
 [ -n "$proj" ] || proj="$PWD"
-[ -f "$proj/.superlite/stable.json" ] || [ -f "$proj/.superlite/prime.md" ] || [ -f "$proj/.superlite/pool.json" ] || exit 0
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=./_sl_state_dir.sh
+. "$HOOK_DIR/_sl_state_dir.sh"
+sl_resolve_state_dir "$proj"
+sl_run_marker "$sd" || exit 0
+# Prefer session markers for "is a run active"; test-cmd and incidents stay on the project container when flat.
 
 jstr command; cmd="$REPLY"
 [ -n "$cmd" ] || exit 0

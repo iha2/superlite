@@ -338,6 +338,8 @@ def norm_ann(s: str | None) -> str | None:  # O(m) total
 
 def compare_sig(p: Planned, real: dict) -> list[str]:  # O(p^2 + p*m) total
     """Differences between a planned signature and the real one (empty = match)."""  # O(m)
+    if real.get("skip"):  # non-Python module found; signature introspection is Python-only | O(m)
+        return []  # O(m)
     if not real.get("ok"):  # O(m)
         return [f"{p.qual}: {real.get('error', 'cannot read the real signature')}"]  # O(m)
     msgs: list[str] = []  # O(m)
@@ -445,12 +447,24 @@ def module_name(root: Path, file: Path) -> str:  # O(d) path syscalls total
     return file.stem  # O(d)
 
 
-def find_module_file(root: Path, dotted: str) -> Path | None:  # O(d) stat calls total (4 is_file)
+def find_module_file(root: Path, dotted: str) -> Path | None:  # O(d) stat calls (+ a bounded Swift walk)
     rel = dotted.replace(".", "/")  # O(d)
-    for base in (root / "src", root):  # O(2) iterations
-        for cand in (base / f"{rel}.py", base / rel / "__init__.py"):  # O(2) iterations
+    last = dotted.rsplit(".", 1)[-1]  # O(d)
+    for base in (root / "src", root / "Sources", root):  # O(3) iterations
+        for cand in (base / f"{rel}.py", base / rel / "__init__.py",  # O(1)
+                     base / f"{rel}.swift", base / last / f"{last}.swift", base / f"{last}.swift"):  # O(1)
             if cand.is_file():  # O(d)
                 return cand  # O(d)
+    # SwiftPM: Sources/<Target>/<Type>.swift — walk one level of Sources for a matching file name
+    sources = root / "Sources"  # O(1)
+    if sources.is_dir():  # O(1)
+        for target in sources.iterdir():  # O(T)
+            if not target.is_dir():  # O(1)
+                continue  # O(1)
+            for name in (f"{rel}.swift", f"{last}.swift"):  # O(1)
+                cand = target / name  # O(1)
+                if cand.is_file():  # O(1)
+                    return cand  # O(1)
     return None  # O(d)
 
 
@@ -476,7 +490,7 @@ def locate(root: Path, plan: Plan, p: Planned) -> tuple[str, list[str], Path | N
         if f:  # O(d)
             return module_name(root, f), parts[k:], f  # O(d)
     owned = [root / o for o in plan.tasks[p.task].owns()  # O(o*m)
-             if o.endswith(".py") and not TEST_PATH_RE.search(o)]  # O(d)
+             if (o.endswith(".py") or o.endswith(".swift")) and not TEST_PATH_RE.search(o)]  # O(d)
     for f in owned:  # O(o) iterations; short module names (`slug.slugify` -> src/sitegen/slug.py) | O(d) per module_name
         mod = module_name(root, f)  # O(d)
         for k in range(len(parts), 0, -1):  # O(d) iterations; full dotted name, or last component for k == 1
@@ -492,21 +506,34 @@ def locate(root: Path, plan: Plan, p: Planned) -> tuple[str, list[str], Path | N
 
 
 def read_real(root: Path, located: list[tuple[str, list[str]]]) -> list[dict]:  # O(P) + 1 subprocess spawn + import time
-    todo = [(m, c) for m, c in located if m]  # O(1)
-    results: list[dict] = []  # O(1)
-    if todo:  # O(1)
+    out: list[dict] = []  # O(1)
+    py_todo: list[tuple[str, list[str]]] = []  # O(1)
+    py_slots: list[int] = []  # O(1)
+    for i, (m, c) in enumerate(located):  # O(P)
+        if not m:  # O(1)
+            out.append({"ok": False, "error": "no module found (file missing)"})  # O(1)
+            continue  # O(1)
+        f = find_module_file(root, m)  # O(d)
+        if f is not None and f.suffix.lower() != ".py":  # Swift/other: file exists; Python importlib cannot introspect | O(1)
+            out.append({"ok": True, "skip": True, "file": str(f), "params": [], "returns": None, "line": 1,  # O(1)
+                        "error": f"skipped: {f.suffix} modules are not introspected (file present)"})  # O(1)
+            continue  # O(1)
+        out.append({})  # placeholder filled after the Python batch (importlib may still resolve m) | O(1)
+        py_todo.append((m, c))  # O(1)
+        py_slots.append(i)  # O(1)
+    if py_todo:  # O(1)
         try:  # O(1)
-            proc = subprocess.run([sys.executable, "-c", _INTROSPECT, json.dumps(todo)], cwd=root,  # O(1)
+            proc = subprocess.run([sys.executable, "-c", _INTROSPECT, json.dumps(py_todo)], cwd=root,  # O(1)
                                   env=project_env(root), capture_output=True, text=True,  # O(1)
                                   encoding="utf-8", errors="replace", timeout=60)  # O(1)
             line = next((ln for ln in proc.stdout.splitlines() if ln.startswith("@@SIG@@")), None)  # O(1)
             results = json.loads(line[7:]) if line else \
-                [{"ok": False, "error": f"introspection failed: {proc.stderr.strip()[-200:]}"}] * len(todo)  # O(1)
+                [{"ok": False, "error": f"introspection failed: {proc.stderr.strip()[-200:]}"}] * len(py_todo)  # O(1)
         except subprocess.TimeoutExpired:  # O(1)
-            results = [{"ok": False, "error": "introspection timed out"}] * len(todo)  # O(1)
-    it = iter(results)  # O(1)
-    return [next(it) if m else {"ok": False, "error": "no module found (file missing)"}  # O(1)
-            for m, _c in located]  # O(1)
+            results = [{"ok": False, "error": "introspection timed out"}] * len(py_todo)  # O(1)
+        for slot, real in zip(py_slots, results):  # O(P)
+            out[slot] = real  # O(1)
+    return out  # O(1)
 
 
 @dataclass  # O(1)
@@ -1171,7 +1198,7 @@ def build_adapter(plan: Plan, out: Path, root: Path) -> str:  # O(E_p*m + templa
 
 SEAM_FILES = {  # O(1)
     "typescript": "seam.ts", "javascript": "seam.js", "go": "seam.go", "rust": "seam.rs",
-    "csharp": "seam.cs", "java": "seam.java", "ruby": "seam.rb",
+    "csharp": "seam.cs", "java": "seam.java", "ruby": "seam.rb", "swift": "seam.swift",
 }
 
 

@@ -133,6 +133,23 @@ def test_exit_code_zero_without_junit_is_green(tmp_path):
     assert cp.returncode == 0 and summary(tmp_path)["failed"] == 0 and summary(tmp_path)["passed"] >= 1
 
 
+def test_xcsift_json_counts_passed_tests_array_not_summary_object(tmp_path):
+    sys.path.insert(0, str(SCRIPTS))
+    import testcmd
+    # Repro from issue #4: a whole-package xcsift blob used to become passed: 1
+    blob = json.dumps({
+        "passed_tests": [f"Test{i}" for i in range(132)],
+        "failed_tests": [],
+        "skipped_tests": ["SkipMe"],
+        "summary": {"passed": 1},
+    })
+    got = testcmd.parse_output(blob, 0)
+    assert got["passed"] == 132 and got["failed"] == 0 and got["skipped"] == 1
+    # Integer form also works
+    got2 = testcmd.parse_output(json.dumps({"passed_tests": 10, "failed_tests": 2, "skipped_tests": 0}), 1)
+    assert got2["passed"] == 10 and got2["failed"] == 2
+
+
 def test_non_python_project_never_asks_for_pytest(tmp_path):
     (tmp_path / "go.mod").write_text("module m\n", encoding="utf-8")
     config(tmp_path, language="go", test=f'{sys.executable} -c "print(1)"', test_file="", junit="", setup="")

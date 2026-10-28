@@ -173,6 +173,15 @@ def test_ignored_matches_every_language_but_not_source():
     assert {".superlite/", "__pycache__/", "node_modules/", "target/"} <= set(checkpoint.IGNORED_PARTS)
 
 
+def test_coordinator_plan_and_spec_docs_never_block_a_checkpoint(tmp_path):
+    """Issue #4: untracked docs/plans (and docs/specs) must not fail a task as out-of-scope."""
+    sys.path.insert(0, str(SCRIPTS))
+    import checkpoint
+    assert checkpoint.ignored("docs/plans/2026-10-28-x.md")
+    assert checkpoint.ignored("docs/specs/2026-10-28-x.md")
+    assert not checkpoint.ignored("docs/guide.md")
+
+
 def test_out_of_scope_incidents_are_one_row_per_top_level_directory(tmp_path):
     p = ts_repo(tmp_path)
     write(tmp_path, "stray.txt")

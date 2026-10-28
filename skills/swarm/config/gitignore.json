@@ -1,6 +1,6 @@
 {
   "comment": "Data, not code. Dependency, build and cache paths each ecosystem creates, per language (keys match LANGS in scripts/wave0.py), plus `common`. wave0.py appends the missing entries of the plan's languages and `common` to .gitignore before any agent runs; checkpoint.py never blocks a task on a path matching the union of every list. A trailing slash marks a directory; `*` globs match one path segment. Edit this file to change what is ignored; no code change is needed.",
-  "common": [".superlite/", ".DS_Store", "Thumbs.db", ".idea/", "*.swp"],
+  "common": [".superlite/", ".DS_Store", "Thumbs.db", ".idea/", "*.swp", "docs/plans/", "docs/specs/"],
   "TypeScript": ["node_modules/", "dist/", "coverage/", "*.tsbuildinfo"],
   "JavaScript": ["node_modules/", "dist/", "coverage/"],
   "Python": [".venv/", "venv/", "__pycache__/", "*.pyc", ".pytest_cache/", ".mypy_cache/", ".ruff_cache/", "*.egg-info/", "build/", "dist/"],

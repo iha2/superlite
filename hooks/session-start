@@ -24,7 +24,11 @@ escape_for_json() {  # O(s)
 state="empty folder"  # O(1)
 shopt -s nullglob dotglob  # O(1)
 entries=(./*)  # O(n) directory entries
-if [ -f .superlite/orchestrator.json ] && [ -d docs/plans ]; then  # O(1)
+# shellcheck source=./_sl_state_dir.sh
+. "${SCRIPT_DIR}/_sl_state_dir.sh"
+proj="$PWD"
+sl_resolve_state_dir "$proj"
+if { [ -f .superlite/orchestrator.json ] || [ -f "$sd/orchestrator.json" ]; } && [ -d docs/plans ]; then  # O(1)
   state="run in progress"  # O(1)
 elif [ -d .git ] || [ "${#entries[@]}" -gt 0 ]; then  # O(1)
   state="existing code"  # O(1)

@@ -40,6 +40,19 @@ def _ts(root: Path) -> Path:
     return plan
 
 
+def test_swift_produces_finds_file_and_skips_introspection(tmp_path):
+    """Issue #4: Swift Produces must not report 'no module found (file missing)' when the .swift exists."""
+    sources = tmp_path / "Sources" / "MaxKit"
+    sources.mkdir(parents=True)
+    (sources / "Counter.swift").write_text("struct Counter {}\n", encoding="utf-8")
+    f = pt_review.find_module_file(tmp_path, "MaxKit.Counter")
+    assert f is not None and f.name == "Counter.swift"
+    reals = pt_review.read_real(tmp_path, [("MaxKit.Counter", ["init"])])
+    assert reals[0].get("skip") is True and reals[0].get("ok") is True
+    assert pt_review.compare_sig(type("P", (), {"qual": "MaxKit.Counter.init", "args_src": "()", "ret": None, "raw": "x"})(),
+                                 reals[0]) == []
+
+
 def test_typescript_stub_spec_writes_no_py(tmp_path, capsys):
     plan = _ts(tmp_path)
     assert plan_tools.main(["stubs", "--plan", str(plan), "--root", str(tmp_path)]) == 0
