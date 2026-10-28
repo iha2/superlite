@@ -723,13 +723,45 @@ def call_in_contract(call: Call, contract: list[ContractLine]) -> bool:  # O(C*s
 
 _SERVE_SNIPPET = r'''
 def _make_server(target, args_src):
-    import importlib, inspect
+    import ast, importlib, inspect
     mod_name, _, fn_name = target.rpartition(".")
     mod = importlib.import_module(mod_name)
     fn = getattr(mod, fn_name)
-    def _cap(*a, **k):
-        return a, k
-    pos, kw = eval("_cap(%s)" % args_src, dict(vars(mod), _cap=_cap)) if args_src is not None else ((), {})
+    pos, kw = (), {}
+    if args_src is not None:
+        tree = ast.parse("_cap(%s)" % args_src, mode="eval").body
+        if not isinstance(tree, ast.Call):
+            raise RuntimeError("serve args must be a call argument list")
+        ns = dict(vars(mod))
+
+        def _resolve(node):
+            if isinstance(node, ast.Constant):
+                return node.value
+            if isinstance(node, ast.Name):
+                if node.id not in ns:
+                    raise RuntimeError("unknown name %r in serve args" % node.id)
+                return ns[node.id]
+            if isinstance(node, ast.Attribute):
+                return getattr(_resolve(node.value), node.attr)
+            if isinstance(node, ast.Call):
+                callee = _resolve(node.func)
+                a = [_resolve(x) for x in node.args]
+                k = {kw.arg: _resolve(kw.value) for kw in node.keywords if kw.arg}
+                return callee(*a, **k)
+            if isinstance(node, ast.List):
+                return [_resolve(x) for x in node.elts]
+            if isinstance(node, ast.Tuple):
+                return tuple(_resolve(x) for x in node.elts)
+            if isinstance(node, ast.Dict):
+                return {_resolve(k): _resolve(v) for k, v in zip(node.keys, node.values)
+                        if k is not None}
+            if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)) \
+                    and isinstance(node.operand, ast.Constant) and isinstance(node.operand.value, (int, float)):
+                return node.operand.value if isinstance(node.op, ast.UAdd) else -node.operand.value
+            raise RuntimeError("unsupported serve arg expression: %s" % type(node).__name__)
+
+        pos = tuple(_resolve(a) for a in tree.args)
+        kw = {k.arg: _resolve(k.value) for k in tree.keywords if k.arg}
     sig = inspect.signature(fn)
     if "port" in sig.parameters and "port" not in kw:
         kw["port"] = 0
