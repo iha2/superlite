@@ -61,8 +61,8 @@ plan, then `build` again. After any hand edit of the page run `sl mvp_check stam
 ## 4. Human orchestrator
 
 Show the path, a five-line summary (goal, target, features in, features out, rough time and cost) and: open the page, cut or
-reorder features, edit labels, leave notes, press Save feedback, then reply approve in chat. END THE TURN. The chat reply
-approves, never the file. After it: `sl orchestrator approve --review docs/plans/<date>-<topic>.mvp.md`, then
+reorder features, edit labels, leave notes, press Save feedback, then reply in chat. END THE TURN. The chat reply
+approves, never the file. If you understand that reply as approval, send approve: `sl orchestrator approve --review docs/plans/<date>-<topic>.mvp.md`, then
 `sl mvp_check fetch` (the project file, else the newest `mvp-feedback*.json` in Downloads, copied in; if none, ask the user to
 paste the Copy feedback block and save it yourself to `.superlite/mvp/mvp-feedback.json`), then
 `sl mvp_check check --plan <mvp.md> --require-feedback`. A sha mismatch means the file came from an older page: ask once for a

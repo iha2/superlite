@@ -4,10 +4,11 @@
 # .superlite/feature.json has status tryout), append one line per human prompt to
 # <project>/.superlite/human-replies.jsonl:
 #   {"t":<epoch ms>,"approves":true|false,"text":"<first 160 chars of the prompt>"}
-# approves is true when the prompt contains an approval phrase (approve, approved, yes, go ahead,
-# go for it, looks good, lgtm, proceed, ship it, do it, it works, works for me, all good) and none
-# of: not, don't, dont, no, wait, stop, but, change, instead (case-insensitive, whole words), has no
-# question mark, and is at most 12 words. Only this hook writes the file.
+# approves is true when the prompt expresses approval in any common way (approve, yes, yeah, yep,
+# ok, okay, sure, go ahead, looks good, sounds good, lgtm, proceed, it works, and similar), including
+# a long reply or one that also names a change. It is false for an explicit refusal (don't approve,
+# do not proceed), a real question (should I approve?, can we go ahead?), or a message that only
+# mentions approving. Only this hook writes the file.
 # Bash builtins only (each external process costs ~250 ms on Windows). Never blocks: exit 0 always.
 
 IFS= read -r -d '' input   # builtin; returns 1 at EOF, which is fine
@@ -50,6 +51,13 @@ if [ -z "$proj" ]; then
   fi
 fi
 [ -n "$proj" ] || proj="$PWD"
+# The session folder can sit below the project (the desktop app moves the working directory): use the nearest
+# folder at or above it that holds the run, the same one `sl orchestrator` finds from its own working directory.
+d="$proj"
+while [ ! -f "$d/.superlite/orchestrator.json" ]; do
+  up="${d%/*}"; { [ -z "$up" ] || [ "$up" = "$d" ]; } && break; d="$up"
+done
+[ -f "$d/.superlite/orchestrator.json" ] && proj="$d"
 sd="$proj/.superlite"
 [ -f "$sd/orchestrator.json" ] || exit 0
 IFS= read -r -d '' oj < "$sd/orchestrator.json"
@@ -65,12 +73,53 @@ fi
 
 jstr prompt; text="$REPLY"
 lc="${text,,}"
+lc="${lc//$'\u2019'/\'}"; lc="${lc//$'\u2018'/\'}"
+
+# Drop real questions ("should I approve?", "can we go ahead?"). Keep every other clause, so
+# "looks good, can you add tests?" and a bare "approve?" still count.
+statements=""
+rest="$lc"
+re_q='^(can|could|should|would|do|does|did|is|are|am|will|what|when|where|why|how|who|whom|which|may|shall)([^[:alnum:]_]|$)'
+while [[ $rest == *'?'* ]]; do
+  clause="${rest%%\?*}"
+  rest="${rest#*\?}"
+  head=""; tail="$clause"
+  if [[ $clause =~ ^(.*[.!])(.*)$ ]]; then
+    head="${BASH_REMATCH[1]}"
+    tail="${BASH_REMATCH[2]}"
+  fi
+  trimmed="${tail#"${tail%%[![:space:]]*}"}"
+  if [[ $trimmed =~ $re_q ]]; then
+    statements+=" $head"
+  else
+    statements+=" $head $tail"
+  fi
+done
+statements+=" $rest"
+
+# Explicit refusals and mere mentions, longest first, so they cannot count as a yes.
+for phrase in \
+  "do not go ahead" "don't go ahead" "dont go ahead" \
+  "do not proceed" "don't proceed" "dont proceed" \
+  "do not continue" "don't continue" "dont continue" \
+  "do not ship it" "don't ship it" "dont ship it" \
+  "do not do this" "don't do this" "dont do this" \
+  "do not do it" "don't do it" "dont do it" \
+  "do not approve" "don't approve" "dont approve" \
+  "never approve" "not approved" "not approve" \
+  "cannot approve" "can't approve" "cant approve" \
+  "not okay" "not ok" "not sure" "not perfect" \
+  "you approve" "make sure"
+do
+  statements="${statements//$phrase/ }"
+done
+
 b='(^|[^[:alnum:]_])'; e='([^[:alnum:]_]|$)'
-re_yes="$b(approve|approved|yes|go[[:space:]]+ahead|go[[:space:]]+for[[:space:]]+it|looks[[:space:]]+good|lgtm|proceed|ship[[:space:]]+it|do[[:space:]]+it|it[[:space:]]+works|works[[:space:]]+for[[:space:]]+me|all[[:space:]]+good)$e"
-re_no="$b(not|don't|don’t|dont|no|wait|stop|but|change|instead)$e"
+re_yes="$b(approved|approve|absolutely|definitely|affirmative|accepted|agreed|agree|alright|all[[:space:]]+right|all[[:space:]]+good|go[[:space:]]+ahead|go[[:space:]]+for[[:space:]]+it|good[[:space:]]+to[[:space:]]+go|good[[:space:]]+enough|good[[:space:]]+with[[:space:]]+me|green[[:space:]]+light|looks[[:space:]]+great|looks[[:space:]]+good|looks[[:space:]]+fine|sounds[[:space:]]+great|sounds[[:space:]]+good|sounds[[:space:]]+fine|let'?s[[:space:]]+do[[:space:]]+this|lets[[:space:]]+do[[:space:]]+this|let'?s[[:space:]]+do[[:space:]]+it|lets[[:space:]]+do[[:space:]]+it|let'?s[[:space:]]+go|lets[[:space:]]+go|full[[:space:]]+send|fine[[:space:]]+by[[:space:]]+me|fine[[:space:]]+with[[:space:]]+me|works[[:space:]]+for[[:space:]]+me|it[[:space:]]+works|this[[:space:]]+works|that[[:space:]]+works|i'?m[[:space:]]+good|im[[:space:]]+good|i[[:space:]]+accept|i[[:space:]]+like[[:space:]]+it|love[[:space:]]+it|make[[:space:]]+it[[:space:]]+so|run[[:space:]]+with[[:space:]]+it|carry[[:space:]]+on|copy[[:space:]]+that|please[[:space:]]+continue|sign[[:space:]]+off|signed[[:space:]]+off|ship[[:space:]]+it|build[[:space:]]+it|send[[:space:]]+it|do[[:space:]]+this|do[[:space:]]+it|thumbs[[:space:]]+up|okay|ok|yeah|yep|yup|yes|sure|lgtm|sgtm|proceed|continue|perfect|roger)$e"
 approves=false
-set -f; set -- $lc; set +f   # word count: an approval is a short reply, not a long message that mentions one
-[[ $lc =~ $re_yes ]] && ! [[ $lc =~ $re_no ]] && [[ $lc != *'?'* ]] && [ $# -le 12 ] && approves=true
+# Thumbs-up, check mark, ok-hand: the character itself, or the \u escape JSON leaves in the prompt.
+[[ $statements =~ $re_yes || $text == *$'\U1F44D'* || $text == *$'\U2705'* || $text == *$'\U1F44C'* \
+  || $lc == *'\ud83d\udc4d'* || $lc == *'\u2705'* || $lc == *'\ud83d\udc4c'* ]] && approves=true
 
 text="${text:0:160}"
 text="${text//\\/\\\\}"; text="${text//\"/\\\"}"

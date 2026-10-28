@@ -53,7 +53,7 @@ Plain words work just as well; the commands are shortcuts.
 
 ### Who orchestrates
 
-- **Human orchestrator.** You get a plain-language review plan with diagrams (a `.review.md`, about two pages, with a rough time and cost), and nothing is linted, dispatched or sent to an agent until you reply approve. After that you are not asked again: any change to scope is recorded as a ruling and listed at the end under "Changed from the approved plan". Small inline work needs only your yes in chat.
+- **Human orchestrator.** You get a plain-language review plan with diagrams (a `.review.md`, about two pages, with a rough time and cost), and nothing is linted, dispatched or sent to an agent until you reply approve. Any clear approval counts (yes, go ahead, looks good, or similar), including a longer note. After that you are not asked again: any change to scope is recorded as a ruling and listed at the end under "Changed from the approved plan". Small inline work needs only your yes in chat.
 - **AI orchestrator.** It plans, lints, dispatches and rules on open choices itself, with no review plan and no questions.
 
 Both stop for destructive, outward (push, merge, publish) or security-sensitive actions, and nothing is committed unless you ask: finished tasks are kept as hidden checkpoints until you run `/superlite:commit`. A checkpoint is a hidden save of one task under `refs/superlite/*`; a commit is a real git commit on your branch, made only by `/superlite:commit` or `sl autocommit on`.
@@ -76,7 +76,7 @@ flowchart LR
 
 A read-only view, offered when you approve the plan (reply `approve map`), or opened any time:
 
-- `/superlite:agents` opens the **agent map** in Claude Desktop: a tree from the main session down, each agent under the one that spawned it, green while it runs, red if it was aborted or blocked, grey when done. Each node shows its tier, time, tokens and tasks (✓ once checkpointed); click a row for its details and its ledger lines. It needs the `superlite-agents` mod: `/plugin install superlite-agents@superlite-dev`.
+- `/superlite:agents` opens the **agent map** in Claude Desktop: a tree from the main session down, each agent under the one that spawned it, green while it runs, red if it was aborted or blocked, grey when done. Each node shows its tier, time, tokens and tasks (✓ once checkpointed); click a row for its details and its ledger lines. It needs the `claude-agent-map` mod: `/plugin install claude-agent-map@superlite-dev`.
 - Without the mod (a terminal session, another harness), `/superlite:tail` prints the same run as a **live feed**: every agent start and finish from `metrics.jsonl` and every ledger line from `progress.md` (`sl tail --dir .superlite`).
 
 ---

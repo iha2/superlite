@@ -6,8 +6,9 @@ sizes) from it, with the header line `**Review plan:** <path>`. With an AI orche
 
 File: `docs/plans/<date>-<topic>.review.md`. Nothing is built, dispatched or written (except this file) before the human's approving
 reply. Show the human, in plain text and not with AskUserQuestion, the path, a five-line summary and "Reply approve to start, or tell me
-what to change", then END THE TURN. Only after the human's reply run `sl orchestrator approve --review <path>` (needs a fresh approving
-reply recorded by the hook; records the path and its sha256 in `.superlite/orchestrator.json`).
+what to change", then END THE TURN. If you understand the answer as approval, send approve:
+`sl orchestrator approve --review <path>` (do not pass their words through; records the path and its sha256 in `.superlite/orchestrator.json`).
+If you do not, revise and ask again.
 
 ## Required sections, in this order
 
