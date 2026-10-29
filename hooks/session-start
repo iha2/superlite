@@ -94,6 +94,17 @@ if [ -n "$cost_line" ]; then  # O(1)
 '"${cost_line}"  # O(s)
 fi  # O(1)
 
+# Which superlite session (slug, branch, worktree) this checkout is, when sessions are registered.
+hud_line=""  # O(1)
+if [ "${SUPERLITE_NO_SESSION_HUD:-}" != "1" ] && { [ -d .superlite ] || [ -f .git ]; }; then  # O(1)
+  hud_line="$("${SUPERLITE_PYTHON:-python}" "${PLUGIN_ROOT}/skills/swarm/scripts/session_hud.py" . 2>/dev/null || true)"  # O(N)
+fi  # O(1)
+if [ -n "$hud_line" ]; then  # O(1)
+  content="${content}"$'
+
+'"${hud_line}"  # O(s)
+fi  # O(1)
+
 # A superlite run suspends peer process plugins. The marker is removed by sl finish.
 peers_file=".superlite/peers.json"  # O(1)
 if [ -f "$peers_file" ]; then  # O(1)

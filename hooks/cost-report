@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
 # UserPromptSubmit / beforeSubmitPrompt: inject a live superlite cost line into additional
 # context whenever a session is active. Always on (including $0.00 before agents run).
-# Silent when SUPERLITE_NO_COST_REPORT=1 or no session. Exit 0 always (fail open).
-
-if [ "${SUPERLITE_NO_COST_REPORT:-}" = "1" ]; then
-  exit 0
-fi
+# The session HUD line is independent: SUPERLITE_NO_SESSION_HUD=1 silences it, and it shows
+# in a session worktree that has no .superlite yet. Exit 0 always (fail open).
 
 IFS= read -r -d '' input || true
 
@@ -41,7 +38,6 @@ if [ -z "$proj" ]; then
 fi
 [ -n "$proj" ] || proj="$PWD"
 sl_dir="${proj}/.superlite"
-[ -d "$sl_dir" ] || { [ "$is_cursor" = 1 ] && printf '{"continue":true}\n'; exit 0; }
 
 root="${CLAUDE_PLUGIN_ROOT:-${CURSOR_PLUGIN_ROOT:-}}"
 if [ -z "$root" ]; then
@@ -51,13 +47,15 @@ if [ -z "$root" ]; then
 fi
 root="${root//\\//}"
 py="${SUPERLITE_PYTHON:-python}"
-script="$root/skills/swarm/scripts/cost_live.py"
 
-line="$("$py" "$script" "$sl_dir" 2>/dev/null)" || line=""
-hud_script="$root/skills/swarm/scripts/session_hud.py"
 hud=""
-if [ "${SUPERLITE_NO_SESSION_HUD:-}" != "1" ] && [ -f "$hud_script" ]; then
-  hud="$("$py" "$hud_script" "$sl_dir" 2>/dev/null)" || hud=""
+hud_script="$root/skills/swarm/scripts/session_hud.py"
+if [ "${SUPERLITE_NO_SESSION_HUD:-}" != "1" ] && [ -f "$hud_script" ] && { [ -d "$sl_dir" ] || [ -f "$proj/.git" ]; }; then
+  hud="$("$py" "$hud_script" "$proj" 2>/dev/null)" || hud=""
+fi
+line=""
+if [ "${SUPERLITE_NO_COST_REPORT:-}" != "1" ] && [ -d "$sl_dir" ]; then
+  line="$("$py" "$root/skills/swarm/scripts/cost_live.py" "$sl_dir" 2>/dev/null)" || line=""
 fi
 if [ -n "$hud" ] && [ -n "$line" ]; then
   line="${hud}"$'\n'"${line}"
