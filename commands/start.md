@@ -21,3 +21,5 @@ Menu by the "Project state" line in the session context (show only the options t
 - existing code: Feature, Debug, Small, Review, Regular, MVP (a new app beside it).
 - empty folder: MVP (plan, clickable prototype to assess, then build), Regular, Small.
 Skip the menu for a clear one-line request you can size as trivial, or when the user already typed a `/superlite:` command.
+
+**Start something new (run in progress).** Do not invent in the same checkout: a second session would overwrite `.superlite/`. Ask in the same AskUserQuestion batch (or plain text on Cursor): separate the work into worktrees? Recommended: Yes. If Yes, ask for a short slug for the new work (and for the open run when it is not already on `superlite/<slug>`), then run `sl session split --new <new> [--keep <open>]`. That moves the open run (state and uncommitted work) to `.superlite/worktrees/<open>` and cuts `.superlite/worktrees/<new>` on `superlite/<new>`. Tell the user to resume in the previous worktree and start the new request in the new one (move the agent root there before inventing). If No, do not start another session here: offer Resume or Finish only.
