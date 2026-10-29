@@ -356,6 +356,10 @@ def test_history_and_feature_report_use_project_container(tmp_path, monkeypatch)
     proj = tmp_path / ".superlite"
     assert (proj / "history.jsonl").is_file() and (proj / "stats.json").is_file()
     assert not (path / "history.jsonl").exists()
+    # Lint/budget pass the session dir; reads must still hit project stats.json.
+    st = history.project_stats(path)
+    assert st.get("rows", 0) >= 1
+    assert not (path / "stats.json").exists()
 
     head = {"wall_min": {"projected": 4.0, "actual": 5.0}, "cost_usd_agents": {"projected": 0.5, "actual": 0.6}}
     (proj / "feature.json").write_text(json.dumps({
@@ -368,6 +372,7 @@ def test_history_and_feature_report_use_project_container(tmp_path, monkeypatch)
     sl_session.end(tmp_path, session_id=sid)
     assert not path.exists()
     assert (proj / "history.jsonl").is_file() and (proj / "feature.json").is_file()
+    assert history.project_stats(proj).get("rows", 0) >= 1
 
 
 def test_list_empty_when_no_sessions(tmp_path, monkeypatch):

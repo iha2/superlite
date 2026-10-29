@@ -140,8 +140,12 @@ def load_stats(path=None) -> dict:  # O(file)
 
 
 def project_stats(sl_dir) -> dict:  # O(file)
-    """The run's own stats first, else the global ones: what lint and dispatch cite."""
-    return load_stats(Path(sl_dir) / "stats.json") or load_stats()  # O(file)
+    """Project cumulative stats, else global: what lint and budget cite.
+
+    Reads the project `.superlite` container (same place `record_run` writes), so a
+    session directory passed from lint/budget still sees saved routing/duration data.
+    """
+    return load_stats(_project_container(sl_dir) / "stats.json") or load_stats()  # O(file)
 
 
 def predicted_flags(plan, args=None) -> dict:  # O(n*(n + e))
