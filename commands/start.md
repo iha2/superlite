@@ -21,3 +21,13 @@ Menu by the "Project state" line in the session context (show only the options t
 - existing code: Feature, Debug, Small, Review, Regular, MVP (a new app beside it).
 - empty folder: MVP (plan, clickable prototype to assess, then build), Regular, Small.
 Skip the menu for a clear one-line request you can size as trivial, or when the user already typed a `/superlite:` command.
+
+**Start something new (run in progress).** Do not invent on top of another session’s live `.superlite/`. Ask (one batch): separate into a **second worktree** for parallel chats, or switch sessions on the **host** worktree (saves space)? 
+
+- **Parallel (second chat live):** `sl session split --new <new> [--keep <open>]` (or `sl session create --slug <new> --worktree`). Move the agent root into the printed path.
+- **Serial (same host):** `sl session create --slug <new>` then work there; later `sl session use --slug <other>` parks/stashes and switches. See `docs/sessions.md`.
+- If `session use`/`create` prints `REDIRECT worktree=…`, **cd/open that worktree** — do not check the branch out a second time.
+- If `session use` reports a stash conflict: resolve, `git add`, then `sl session use --slug <slug> --continue`.
+- If the user refuses any isolation: offer Resume or Finish only.
+
+A **session HUD** line (`superlite session: …`) is injected each turn when a registry exists.

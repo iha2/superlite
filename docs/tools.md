@@ -34,6 +34,7 @@ A checkpoint is a hidden save of one task under `refs/superlite/*`; a commit is 
 | `report` | The end-of-build report: a short summary in the session, the full file next to the plan, projected against actual; in feature mode the prototype and the integration as two parts |
 | `suggest_flow` | `--text "<request>"`: one line, the suggested flow (regular, mvp, feature, debug, small, review, resume, status) from the request and the project state, with the other fits; deterministic |
 | `proto` | Feature mode's prototype: `start` (its own worktree on `superlite/<topic>-proto`), `tryout` (how to try it; `--approve` needs the human's reply in human mode), `status`, `discard`; state in `.superlite/feature.json` |
+| `session` | `create` / `use` (park+stash or REDIRECT) / `split` (parallel worktrees) / `discard` / `status`; `session_hud` one-liner for hooks. See [Sessions](sessions.md) |
 | `mvp_check` | MVP mode: `build` the prototype page from the template, the `.mvp.md` plan's features and a mock fragment; `stamp` its sha; `check` the page (parses, every feature id in the mock, no external URLs) and `mvp-feedback.json` (schema, features, `prototype_sha`); `ai` writes the AI orchestrator's feedback; `fetch` copies a saved file in from Downloads |
 | `finish` | Collects the finish summary (rulings, checkpoints, or commits with autocommit on, test counts, open incidents) |
 
