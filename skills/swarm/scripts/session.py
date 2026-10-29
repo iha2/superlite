@@ -269,7 +269,7 @@ def run_entries(live_sl: Path) -> list[Path]:  # O(entries)
     return [p for p in live_sl.iterdir() if p.name not in STATIONARY]  # O(entries)
 
 
-def move_run_state(src_sl: Path, dest: Path) -> None:  # O(S)
+def move_run_state(src_sl: Path, dest: Path, moved: list | None = None) -> None:  # O(S)
     """Move run files (not STATIONARY checkouts/registry) from src_sl into dest."""
     dest.mkdir(parents=True, exist_ok=True)  # O(1)
     for p in run_entries(src_sl):  # O(entries)
@@ -279,6 +279,8 @@ def move_run_state(src_sl: Path, dest: Path) -> None:  # O(S)
         elif target.exists() or target.is_symlink():  # O(1)
             target.unlink()  # O(1)
         shutil.move(str(p), str(target))  # O(S)
+        if moved is not None:  # O(1)
+            moved.append((p, target))  # O(1)
 
 
 def clear_run_state(live_sl: Path) -> None:  # O(S)
@@ -743,8 +745,17 @@ def _split_move(root: Path, sl: Path, cur: str, base: str, keep_branch: str, wt_
     """Move the hub's open run and WIP into a keep worktree; every step pushes its inverse onto undo."""
     tmp = Path(tempfile.mkdtemp(prefix="superlite-session-"))  # O(1)
     held = tmp / "run"  # O(1)
-    move_run_state(sl, held)  # O(S)
-    undo.append(lambda: (move_run_state(held, sl), shutil.rmtree(tmp, ignore_errors=True)))  # O(1)
+    moved = []  # O(entries)
+
+    def restore_run_state():
+        for source, target in reversed(moved):
+            if target.exists() or target.is_symlink():
+                shutil.move(str(target), str(source))
+        move_run_state(held, sl)
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    undo.append(restore_run_state)  # O(1)
+    move_run_state(sl, held, moved)  # O(S)
 
     wip = {"oid": stash_push(root, "superlite-session-split") if is_dirty(root) else None, "in_keep": False}  # O(diff)
 

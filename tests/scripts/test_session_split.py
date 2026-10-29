@@ -15,6 +15,8 @@ SESSION = SCRIPTS / "session.py"
 
 sys.path.insert(0, str(SCRIPTS))
 
+import session  # noqa: E402
+
 
 def run(script: Path, *args, cwd=None):
     env = dict(os.environ, PYTHONIOENCODING="utf-8")
@@ -125,6 +127,25 @@ def test_split_rolls_back_when_a_late_step_fails(repo):
     assert git(repo, "branch", "--show-current").strip() == "main"
     assert git(repo, "stash", "list").strip() == ""
     assert "superlite/sessions/export" not in git(repo, "branch", "--list")
+
+
+def test_split_restores_run_state_after_partial_move(repo, monkeypatch):
+    original_move = session.shutil.move
+    calls = 0
+
+    def fail_second_move(src, dst, *args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("simulated move failure")
+        return original_move(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(session.shutil, "move", fail_second_move)
+    result = session.main(["split", "--keep", "export", "--new", "auth", "--root", str(repo)])
+
+    assert result == 1
+    assert (repo / ".superlite" / "orchestrator.json").is_file()
+    assert (repo / ".superlite" / "progress.md").read_text(encoding="utf-8") == "- start abc\n"
 
 
 def test_split_rejects_unknown_base_without_side_effects(repo):
