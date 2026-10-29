@@ -162,3 +162,16 @@ def test_per_agent_cost_when_host_names_agents(tmp_path):
     out = json.loads(subprocess.run([BASH, str(HOOK)], input=raw, capture_output=True, text=True, env=env).stdout)
     ctx = out.get("additional_context") or ""
     assert "implementer $0.1200" in ctx and "package-reviewer $0.0800" in ctx
+
+
+def test_hook_falls_back_to_python3_when_python_is_missing(tmp_path):
+    sl = _sl(tmp_path)
+    _host_usage(sl, usd=0.55)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "python3").symlink_to(sys.executable)
+    env = {k: v for k, v in os.environ.items() if k not in ("SUPERLITE_PYTHON", "SUPERLITE_NO_COST_REPORT")}
+    env.update(PATH=str(bin_dir), CLAUDE_PROJECT_DIR=str(tmp_path), CURSOR_AGENT="1")
+    raw = json.dumps({"hook_event_name": "beforeSubmitPrompt", "prompt": "hi", "cwd": str(tmp_path)})
+    r = subprocess.run([BASH, str(HOOK)], input=raw, capture_output=True, text=True, env=env)
+    assert "superlite cost (host, cursor): $0.5500" in json.loads(r.stdout).get("additional_context", "")

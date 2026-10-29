@@ -29,7 +29,10 @@ if [ -z "$root" ]; then
   root="${self%/hooks/*}"
 fi
 root="${root//\\//}"
-py="${SUPERLITE_PYTHON:-python}"
+py="${SUPERLITE_PYTHON:-}"
+if [ -z "$py" ]; then
+  if command -v python >/dev/null 2>&1; then py=python; else py=python3; fi
+fi
 script="$root/skills/swarm/scripts/compact_due.py"
 
 line="$("$py" "$script" "$sl_dir" 2>/dev/null)" || exit 0
