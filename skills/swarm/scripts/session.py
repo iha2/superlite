@@ -684,7 +684,8 @@ def cmd_split(a) -> int:  # O(S) + trees
             return print_redirect(owner, new_slug, new_branch)  # O(1)
         for slug in (keep_slug, new_slug):  # O(1)
             row = find_row(reg, slug)  # O(N)
-            if row and not (slug == keep_slug and same(row.get("worktree"), wt_keep)):  # O(1)
+            if row and not (slug == keep_slug and row.get("branch") == keep_branch
+                            and same(row.get("worktree"), wt_keep)):  # O(1)
                 print(f"session: session {slug} already exists; pick another slug", file=sys.stderr)  # O(1)
                 return 2  # O(1)
         if (not in_place and wt_keep.exists()) or wt_new.exists():  # O(1)
