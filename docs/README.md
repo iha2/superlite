@@ -5,6 +5,7 @@ The README covers what superlite is, the results, and how to install and use it.
 | Page | What it covers |
 |---|---|
 | [How a run works](how-a-run-works.md) | The flow from request to a finished, measured build |
+| [Sessions](sessions.md) | Worktree split when starting another session: layout, start-menu path, and how it relates to feature worktrees (mermaid) |
 | [Skills and agents](skills-and-agents.md) | The skills, and the seven agents with their model and effort |
 | [Hooks](hooks.md) | What each hook blocks, rewrites or records, and when it is active |
 | [Tools](tools.md) | Every `sl` tool, one honest line each |

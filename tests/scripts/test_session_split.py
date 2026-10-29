@@ -100,3 +100,11 @@ def test_start_md_asks_to_separate_into_worktrees():
     assert "separate" in text.lower() and "worktree" in text.lower()
     assert "sl session split" in text
     assert "Start something new" in text
+
+
+def test_sessions_doc_has_mermaid_and_is_indexed():
+    doc = (ROOT / "docs" / "sessions.md").read_text(encoding="utf-8")
+    assert "```mermaid" in doc and doc.count("```mermaid") >= 3
+    assert "sl session split" in doc and "sessions.json" in doc
+    index = (ROOT / "docs" / "README.md").read_text(encoding="utf-8")
+    assert "sessions.md" in index
