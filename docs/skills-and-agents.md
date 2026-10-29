@@ -10,6 +10,7 @@
 - `proof`
 - `shipping`
 - `mvp-prototype` (MVP mode: the clickable prototype and its feedback)
+- `writing-specs` (only when `agent_specs` is on or the user asks for a spec: what done looks like and why, before the plan)
 
 Agents (`agents/`):
 

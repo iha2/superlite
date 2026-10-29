@@ -118,7 +118,7 @@ Same machine, same task: build a Python site generator and a spreadsheet engine 
 | Wall-clock to a finished build | 33.6 min (stock, 3 runs: 21.2 / 31.9 / 47.6)<br>23.5 min (orchestrated, 3 runs) | **16.1 min** |
 | Faster than superpowers | | **52%** vs stock, **31%** vs orchestrated |
 | Fastest-to-slowest spread, 3 runs | 26.4 min | **9.1 min** |
-| Agents working at once | 3 to 4 | **up to 18** (k1) |
+| Agents working at once | 3 to 4 | **up to 18** (k1; dispatch now caps at 10 running tasks) |
 | Hidden tests passed | 177 / 177 | 177 / 177 (a tie, at higher speed) |
 | Earlier 9-module benchmark (1 run each) | 34.4 min | **8.8 min** |
 | superlite against its own first version | 26.9 min | **16.1 min** (40% faster) |
@@ -397,7 +397,7 @@ Restart any active Muse sessions after installing so the `SessionStart` hook tak
 The version lives in every manifest listed in `.version-bump.json`. Bump all of them with one command, and check for drift with `--check` or `--audit`:
 
 ```bash
-scripts/bump-version.sh 0.2.0
+scripts/bump-version.sh <new-version>
 scripts/bump-version.sh --check
 ```
 
