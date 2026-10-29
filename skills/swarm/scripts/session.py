@@ -613,7 +613,7 @@ def cmd_discard(a) -> int:  # O(tree)
             if row.get("has_stash"):  # O(1)
                 drop_stashes(host, session_stashes(host, row))  # O(stash)
         elif owned_worktree(root, row) and Path(row["worktree"]).is_dir():  # O(1)
-            git("worktree", "remove", "--force", row["worktree"], cwd=root, check=False)  # O(tree)
+            git("worktree", "remove", "--force", row["worktree"], cwd=root)  # O(tree)
             git("worktree", "prune", cwd=root, check=False)  # O(1)
 
         store = store_path(root, slug)  # O(1)
