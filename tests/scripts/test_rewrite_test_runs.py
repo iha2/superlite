@@ -45,6 +45,12 @@ SLFULL = f'bash "{SL}" run_tests --full'
 SLFAST = f'bash "{SL}" run_tests --fast'
 
 
+def sl_bind(proj):
+    """Paths the hook pins onto rewritten run_tests (resolved state dir)."""
+    sd = Path(proj).resolve().as_posix() + "/.superlite"
+    return f' --ledger "{sd}/progress.md" --log "{sd}/incidents.jsonl" --summary "{sd}/test-summary.json"'
+
+
 @pytest.mark.parametrize("cmd,mode,tail", [
     ("pytest", "full", ""),
     ("pytest -x tests/test_a.py", "fast", " tests/test_a.py"),
@@ -71,16 +77,42 @@ SLFAST = f'bash "{SL}" run_tests --fast'
     ("  pytest", "full", ""),
 ])
 def test_rewrites_raw_runners(proj, cmd, mode, tail):
-    want = (SLFAST + tail) if mode == "fast" else SLFULL
+    b = sl_bind(proj)
+    want = (SLFAST + tail + b) if mode == "fast" else (SLFULL + b)
     assert rewritten(run(proj, cmd), mode=mode).strip() == want.strip()
 
 
 def test_chained_commands_keep_other_work(proj):
-    assert rewritten(run(proj, "cd app && pytest -x")) == f"cd app && {SLFULL} "
-    assert rewritten(run(proj, "npm run build && npm test")) == f"npm run build && {SLFULL} "
+    b = sl_bind(proj)
+    assert rewritten(run(proj, "cd app && pytest -x")) == f"cd app && {SLFULL}{b} "
+    assert rewritten(run(proj, "npm run build && npm test")) == f"npm run build && {SLFULL}{b} "
     assert rewritten(run(proj, "cd x; go test ./...; echo done"), mode="fast").endswith("; echo done")
     assert rewritten(run(proj, "pytest 2>&1 | tail -5")).endswith("| tail -5")
     assert rewritten(run(proj, "make build\npytest")).startswith("make build\n")
+
+
+def test_rewrite_pins_host_session_paths_not_shared_active(tmp_path):
+    """Hook payload selects chat A while B is shared active: rewritten command must write A's summary."""
+    base = tmp_path / ".superlite"
+    base.mkdir()
+    (base / "sessions" / "sessA").mkdir(parents=True)
+    (base / "sessions" / "sessB").mkdir(parents=True)
+    (base / "sessions" / "sessA" / "pool.json").write_text("{}")
+    (base / "sessions" / "sessB" / "pool.json").write_text("{}")
+    (base / "active").write_text("sessB\n")
+    (base / "sessions.json").write_text(json.dumps({
+        "sessions": {"sessA": {}, "sessB": {}},
+        "by_host": {"chat-a": "sessA", "chat-b": "sessB"},
+        "active": "sessB",
+    }))
+    raw = json.dumps({
+        "session_id": "chat-a",
+        "tool_name": "Bash",
+        "tool_input": {"command": "pytest"},
+    })
+    cmd = rewritten(run(tmp_path, raw=raw), mode="full")
+    assert "/sessions/sessA/" in cmd and "/sessions/sessB/" not in cmd
+    assert "--summary" in cmd and "test-summary.json" in cmd
 
 
 def test_subagent_bare_full_suite_denied(proj):
@@ -227,8 +259,9 @@ def test_harmless_loops_and_redirects_pass(proj, cmd):
 
 
 def test_plain_runner_is_still_rewritten_not_denied(proj):
-    assert rewritten(run(proj, "npx vitest run")).strip() == SLFULL
-    assert rewritten(run(proj, "pytest 2>/dev/null")).strip() == SLFULL
+    b = sl_bind(proj)
+    assert rewritten(run(proj, "npx vitest run")).strip() == SLFULL + b
+    assert rewritten(run(proj, "pytest 2>/dev/null")).strip() == SLFULL + b
 
 
 def test_denial_is_coordinator_only_and_needs_a_run(proj, tmp_path):
@@ -280,4 +313,5 @@ def test_denial_check_stays_fast(proj):
 
 
 def test_redirect_in_a_kept_segment_survives_the_rewrite(proj):
-    assert rewritten(run(proj, "npm run build 2>&1 && npm test")) == f"npm run build 2>&1 && {SLFULL} "
+    b = sl_bind(proj)
+    assert rewritten(run(proj, "npm run build 2>&1 && npm test")) == f"npm run build 2>&1 && {SLFULL}{b} "

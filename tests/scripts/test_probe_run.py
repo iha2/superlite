@@ -396,3 +396,50 @@ def test_generated_server_adapter_regression_tests_run_against_the_adapter(tmp_p
     out = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", str(proj / tests)],
                          cwd=proj, capture_output=True, text=True)
     assert "start_server" not in out.stdout + out.stderr and "AttributeError" not in out.stdout + out.stderr, out.stdout[-800:]
+
+
+def test_session_defaults_are_absolute_and_background_keeps_custom_out(tmp_path, monkeypatch):
+    """Remapped --out/--log stay absolute under --root; custom --out is not dropped on --background."""
+    spec = importlib.util.spec_from_file_location("probe_run_remap", RUNNER)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    scripts = REPO / "skills" / "swarm" / "scripts"
+    sys.path.insert(0, str(scripts))
+    import session as sl_session
+
+    monkeypatch.chdir(tmp_path)
+    child = tmp_path / "child"
+    child.mkdir()
+    sid, sd = sl_session.start(child, host_session="probe-sess")
+    monkeypatch.setenv("SUPERLITE_SESSION", sid)
+    captured = {}
+
+    def fake_spawn(argv):
+        captured["argv"] = list(argv)
+        return 0
+
+    monkeypatch.setattr(mod, "spawn_background", fake_spawn)
+    # From parent cwd with --root child: absolute session paths must not become child/child/...
+    rc = mod.main(["--root", str(child), "--background", "--categories", "state"])
+    assert rc == 0
+    argv = captured["argv"]
+    assert "--out" in argv and "--log" in argv
+    out = argv[argv.index("--out") + 1]
+    log = argv[argv.index("--log") + 1]
+    assert Path(out).is_absolute() and str(sd / "probes" / "probe-results.json") == out
+    assert Path(log).is_absolute() and str(sd / "incidents.jsonl") == log
+    assert f"{child.name}/{child.name}" not in out
+
+    captured.clear()
+    custom = str(tmp_path / "custom.json")
+    rc = mod.main(["--root", str(child), "--background", "--out", custom, "--categories", "state"])
+    assert rc == 0
+    argv = captured["argv"]
+    # Custom --out kept; remapped defaults appended last (argparse last-wins for --out/--log).
+    assert argv.count("--out") >= 1
+    last_out = argv[len(argv) - 1 - argv[::-1].index("--out") + 1]
+    assert last_out == custom
+    # Never leave the path as a bare argv token without its flag (old strip bug).
+    for i, x in enumerate(argv):
+        if x == custom:
+            assert i > 0 and argv[i - 1] == "--out"

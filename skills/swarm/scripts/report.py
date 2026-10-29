@@ -112,8 +112,19 @@ def _read_json(p):  # O(file)
 
 
 def feature_parts(sl_dir, headline) -> dict | None:  # O(file)
-    """Feature flow only: {topic, prototype, integration, prototype_tasks, share_pct, cap_pct}; None without feature.json."""
-    st = _read_json(Path(sl_dir) / "feature.json")  # O(file)
+    """Feature flow only: {topic, prototype, integration, prototype_tasks, share_pct, cap_pct}; None without feature.json.
+
+    `feature.json` is project-scoped (sandboxes / tryout gate). When `sl_dir` is a session
+    directory, read it from the project container; otherwise from `sl_dir` (legacy flat).
+    """
+    feat_dir = Path(sl_dir)  # O(1)
+    try:  # O(1)
+        import session as sl_session  # O(1)
+        if sl_session.id_from_path(sl_dir):  # O(d)
+            feat_dir = sl_session.project_sl(sl_dir)  # O(1)
+    except Exception:  # noqa: BLE001 | O(1)
+        pass  # O(1)
+    st = _read_json(feat_dir / "feature.json")  # O(file)
     if not isinstance(st, dict) or not st.get("topic"):  # O(1)
         return None  # O(1)
     import proto  # O(1)

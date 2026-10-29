@@ -58,8 +58,12 @@ if [ -z "$root" ]; then
   root="${self%/hooks/*}"
 fi
 root="${root//\\//}"
+# Bind rewritten run_tests to the resolved state dir: the child process cannot see
+# SUPERLITE_HOST_SESSION exported inside this hook, so pass paths explicitly.
+sd="${sd//\\//}"
+sl_bind="--ledger \"$sd/progress.md\" --log \"$sd/incidents.jsonl\" --summary \"$sd/test-summary.json\""
 sl_base="bash \"$root/skills/swarm/scripts/sl\" run_tests"
-sl="$sl_base --full"
+sl="$sl_base --full $sl_bind"
 
 # A test segment: optional env assignments and runner prefix, then a known runner.
 re_test='^[[:space:]]*([A-Za-z_][A-Za-z_0-9]*=[^[:space:]]*[[:space:]]+)*((uv|poetry|pipenv|pdm|hatch)[[:space:]]+run[[:space:]]+)?(((python[0-9.]*|py)([[:space:]]+-[0-9]+)?[[:space:]]+-m[[:space:]]+)?(pytest|py\.test|unittest)|((npm|pnpm|yarn|bun)[[:space:]]+(run[[:space:]]+)?test)|((npx|pnpm[[:space:]]+(exec|dlx)|bunx|yarn)[[:space:]]+(--no-install[[:space:]]+)?(vitest|jest))|(vitest|jest)|(go|cargo|dotnet)[[:space:]]+test)([[:space:]]|$)'
@@ -185,7 +189,7 @@ while :; do
   if [ $(( ${#q} % 2 )) = 1 ] || [ $(( ${#q2} % 2 )) = 1 ]; then exit 0; fi   # quote spans a separator
   if [[ $seg =~ $re_test ]]; then
     files_from_seg "$seg"
-    if [ -n "$REPLY" ]; then out="$out $sl_base --fast $REPLY "; used_fast=1
+    if [ -n "$REPLY" ]; then out="$out $sl_base --fast $REPLY $sl_bind "; used_fast=1
     else out="$out $sl "; fi
     changed=1
   else out="$out$seg"; fi

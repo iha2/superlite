@@ -327,3 +327,44 @@ def test_feature_status_reads_project_feature_json(tmp_path, monkeypatch):
     assert orchestrator.feature_status(tmp_path) is None
     (tmp_path / ".superlite" / "feature.json").write_text(json.dumps({"status": "tryout"}) + "\n", encoding="utf-8")
     assert orchestrator.feature_status(tmp_path) == "tryout"
+
+
+def test_history_and_feature_report_use_project_container(tmp_path, monkeypatch):
+    """Session finish deletes the tree; project history/stats and feature.json must survive."""
+    monkeypatch.chdir(tmp_path)
+    import sys
+    sys.path.insert(0, str(SCRIPTS))
+    import history
+    import report
+    import session as sl_session
+    from test_metrics_history import setup_run
+    from test_routing import mech_plan
+
+    monkeypatch.setenv("SUPERLITE_HOME", str(tmp_path / "home"))
+    (tmp_path / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    p = mech_plan(tmp_path, 2)
+    setup_run(tmp_path)
+    sid, path = sl_session.start(tmp_path, host_session="hist")
+    # Move metrics + pool into the session (producers write session-local)
+    for name in ("metrics.jsonl", "pool.json"):
+        src = tmp_path / ".superlite" / name
+        if src.is_file():
+            (path / name).write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+            src.unlink()
+    rows = history.record_run(p, path, run_id="sess1")
+    assert rows and rows[0]["language"] == "python"
+    proj = tmp_path / ".superlite"
+    assert (proj / "history.jsonl").is_file() and (proj / "stats.json").is_file()
+    assert not (path / "history.jsonl").exists()
+
+    head = {"wall_min": {"projected": 4.0, "actual": 5.0}, "cost_usd_agents": {"projected": 0.5, "actual": 0.6}}
+    (proj / "feature.json").write_text(json.dumps({
+        "topic": "export", "status": "discarded", "proto_report": {"headline": head, "tasks": 2},
+    }), encoding="utf-8")
+    integ = {"wall_min": {"projected": 12.0, "actual": 15.0}, "cost_usd_agents": {"projected": 2.0, "actual": 2.4}}
+    f = report.feature_parts(path, integ)
+    assert f is not None and f["topic"] == "export"
+
+    sl_session.end(tmp_path, session_id=sid)
+    assert not path.exists()
+    assert (proj / "history.jsonl").is_file() and (proj / "feature.json").is_file()

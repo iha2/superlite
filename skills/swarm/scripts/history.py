@@ -171,6 +171,18 @@ def predicted_flags(plan, args=None) -> dict:  # O(n*(n + e))
     return out  # O(n^2)
 
 
+def _project_container(sl_dir) -> Path:  # O(1)
+    """Project `.superlite` for cumulative history/stats (not a session subtree)."""
+    try:  # O(1)
+        import session as sl_session  # O(1)
+        return sl_session.project_sl(sl_dir)  # O(1)
+    except Exception:  # noqa: BLE001 | O(1)
+        p = Path(sl_dir).resolve()  # O(1)
+        if p.name != ".superlite" and p.parent.name == "sessions" and p.parent.parent.name == ".superlite":  # O(1)
+            return p.parent.parent  # O(1)
+        return p if p.name == ".superlite" else p / ".superlite"  # O(1)
+
+
 def run_rows(plan_path, sl_dir=".superlite", run_id=None) -> list:  # O(M + B + n*r)
     """Rows for this run from metrics.jsonl, the plan, routing and the prime files."""
     import metrics  # O(1)
@@ -182,7 +194,13 @@ def run_rows(plan_path, sl_dir=".superlite", run_id=None) -> list:  # O(M + B + 
     flags = predicted_flags(plan)  # O(n*(n + e))
     tiers = routing.read_tiers(str(plan_path))  # O(file)
     focus = pt.review_focus_cases(plan)  # O(L)
-    lang = detect_language(Path(sl).resolve().parent)  # O(entries)
+    # Language markers live at the repo root, not beside a session dir under .superlite/sessions/.
+    try:  # O(1)
+        import session as sl_session  # O(1)
+        lang_root = sl_session.project_root(sl)  # O(1)
+    except Exception:  # noqa: BLE001 | O(1)
+        lang_root = _project_container(sl).parent  # O(1)
+    lang = detect_language(lang_root)  # O(entries)
     prime = {t: (sl / name).stat().st_size if (sl / name).is_file() else None for t, name in (("sonnet", "prime.md"), ("haiku", "prime-haiku.md"))}  # O(1)
     rid = run_id or datetime.now().strftime("%Y%m%d-%H%M%S")  # O(1)
     rows = []  # O(1)
@@ -205,13 +223,19 @@ def run_rows(plan_path, sl_dir=".superlite", run_id=None) -> list:  # O(M + B + 
 
 
 def record_run(plan_path, sl_dir=".superlite", run_id=None) -> list:  # O(R + n*w)
-    """Append this run's rows (global and project) and refresh both stats files."""
+    """Append this run's rows (global and project) and refresh both stats files.
+
+    Metrics are read from `sl_dir` (session-local when active). Cumulative project
+    `history.jsonl` / `stats.json` stay on the project `.superlite` container so
+    `sl finish` deleting a session does not erase cross-run history.
+    """
     rows = run_rows(plan_path, sl_dir, run_id)  # O(M + B)
+    proj = _project_container(sl_dir)  # O(1)
     if rows:  # O(1)
         append_rows(rows)  # O(n*w)
-        append_rows(rows, Path(sl_dir) / "history.jsonl")  # O(n*w)
+        append_rows(rows, proj / "history.jsonl")  # O(n*w)
     write_stats(read_rows(), home() / "stats.json")  # O(R log R)
-    write_stats(read_rows(Path(sl_dir) / "history.jsonl"), Path(sl_dir) / "stats.json")  # O(R log R)
+    write_stats(read_rows(proj / "history.jsonl"), proj / "stats.json")  # O(R log R)
     return rows  # O(1)
 
 
