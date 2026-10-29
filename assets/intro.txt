@@ -33,11 +33,12 @@
 
   DURING A BUILD                            AFTER
    /superlite:status   where it stands        /superlite:review [branch]
-   /superlite:stop     stop dispatching       /superlite:report [plan] [full]
-   /superlite:resume   pick up again          /superlite:commit  checkpoints
-   /superlite:agents   the agent map                             -> commits
-   /superlite:tail     live feed (no mod)     /superlite:finish  merge or PR,
-  SETUP                                                          never pushes
+   /superlite:sessions list/switch/discard    /superlite:report [plan] [full]
+   /superlite:stop     stop dispatching       /superlite:commit  checkpoints
+   /superlite:resume   pick up again                             -> commits
+   /superlite:agents   the agent map          /superlite:finish  merge or PR,
+   /superlite:tail     live feed (no mod)                        never pushes
+  SETUP
    /superlite:setup    first-run check
  ------------------------------------------------------------------------------
   Or just say it: "build X", "I will approve the plan", "fix this bug".
