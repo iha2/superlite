@@ -54,6 +54,16 @@ py="${SUPERLITE_PYTHON:-python}"
 script="$root/skills/swarm/scripts/cost_live.py"
 
 line="$("$py" "$script" "$sl_dir" 2>/dev/null)" || line=""
+hud_script="$root/skills/swarm/scripts/session_hud.py"
+hud=""
+if [ "${SUPERLITE_NO_SESSION_HUD:-}" != "1" ] && [ -f "$hud_script" ]; then
+  hud="$("$py" "$hud_script" "$sl_dir" 2>/dev/null)" || hud=""
+fi
+if [ -n "$hud" ] && [ -n "$line" ]; then
+  line="${hud}"$'\n'"${line}"
+elif [ -n "$hud" ]; then
+  line="$hud"
+fi
 if [ -z "$line" ]; then
   [ "$is_cursor" = 1 ] && printf '{"continue":true}\n'
   exit 0

@@ -22,4 +22,11 @@ Menu by the "Project state" line in the session context (show only the options t
 - empty folder: MVP (plan, clickable prototype to assess, then build), Regular, Small.
 Skip the menu for a clear one-line request you can size as trivial, or when the user already typed a `/superlite:` command.
 
-**Start something new (run in progress).** Do not invent in the same checkout: a second session would overwrite `.superlite/`. Ask in the same AskUserQuestion batch (or plain text on Cursor): separate the work into worktrees? Recommended: Yes. If Yes, ask for a short slug for the new work (and for the open run when it is not already on `superlite/<slug>`), then run `sl session split --new <new> [--keep <open>]`. That moves the open run (state and uncommitted work) to `.superlite/worktrees/<open>` and cuts `.superlite/worktrees/<new>` on `superlite/<new>`. Tell the user to resume in the previous worktree and start the new request in the new one (move the agent root there before inventing). If No, do not start another session here: offer Resume or Finish only.
+**Start something new (run in progress).** Do not invent on top of another session’s live `.superlite/`. Ask (one batch): separate into a **second worktree** for parallel chats, or switch sessions on the **host** worktree (saves space)? 
+
+- **Parallel (second chat live):** `sl session split --new <new> [--keep <open>]` (or `sl session create --slug <new> --worktree`). Move the agent root into the printed path.
+- **Serial (same host):** `sl session create --slug <new>` then work there; later `sl session use --slug <other>` parks/stashes and switches. See `docs/sessions.md`.
+- If `session use`/`create` prints `REDIRECT worktree=…`, **cd/open that worktree** — do not check the branch out a second time.
+- If the user refuses any isolation: offer Resume or Finish only.
+
+A **session HUD** line (`superlite session: …`) is injected each turn when a registry exists.
