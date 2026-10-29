@@ -17,7 +17,7 @@ Start a superlite session. Arguments: $ARGUMENTS
    - Resume or Status (a run in progress): the same as `/superlite:resume` or `/superlite:status`.
 
 Menu by the "Project state" line in the session context (show only the options that fit):
-- run in progress: Resume, Status, Start something new, Finish.
+- run in progress: Resume, Status, Sessions (list/switch/discard), Start something new, Finish.
 - existing code: Feature, Debug, Small, Review, Regular, MVP (a new app beside it).
 - empty folder: MVP (plan, clickable prototype to assess, then build), Regular, Small.
 Skip the menu for a clear one-line request you can size as trivial, or when the user already typed a `/superlite:` command.

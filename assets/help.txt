@@ -83,6 +83,8 @@
    /superlite:ai                    Switch to the AI orchestrator.
    /superlite:approve [plan]        Approve the review plan so the build runs.
    /superlite:status                Mode, approval, task progress, budget.
+   /superlite:sessions [list|use|discard]
+                                    List, switch, or discard run sessions.
    /superlite:stop                  Stop dispatching new tasks, report state.
    /superlite:resume [plan]         Resume an interrupted build.
    /superlite:agents [dir]          The agent map pane: who spawned whom,

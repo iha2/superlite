@@ -368,3 +368,93 @@ def test_history_and_feature_report_use_project_container(tmp_path, monkeypatch)
     sl_session.end(tmp_path, session_id=sid)
     assert not path.exists()
     assert (proj / "history.jsonl").is_file() and (proj / "feature.json").is_file()
+
+
+def test_list_empty_when_no_sessions(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    out = run(SESSION, "list", cwd=tmp_path)
+    assert out.returncode == 0
+    assert "session: list active=none count=0" in out.out
+
+
+def test_list_marks_active_and_shows_stopped_and_orch(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    import sys
+    sys.path.insert(0, str(SCRIPTS))
+    import session as sl_session
+    sid_a, path_a = sl_session.start(tmp_path, host_session="list-a")
+    (path_a / "stopped.md").write_text("paused\n", encoding="utf-8")
+    (path_a / "orchestrator.json").write_text(
+        json.dumps({"mode": "human", "approved": True, "by": "t", "time": "t"}) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("SUPERLITE_SESSION", raising=False)
+    sid_b, path_b = sl_session.start(tmp_path, host_session="list-b")
+    (path_b / "orchestrator.json").write_text(
+        json.dumps({"mode": "ai", "approved": True, "by": "t", "time": "t"}) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("SUPERLITE_SESSION", sid_b)
+    out = run(SESSION, "list", cwd=tmp_path)
+    assert out.returncode == 0
+    assert f"session: list active={sid_b} count=2" in out.out
+    # Active row marked with leading "* "; others with two spaces
+    assert any(ln.startswith(f"* {sid_b}") and "orch=ai" in ln and "stopped=no" in ln for ln in out.out.splitlines())
+    assert any(ln.startswith(f"  {sid_a}") and "orch=human" in ln and "stopped=yes" in ln and "host=list-a" in ln
+               for ln in out.out.splitlines())
+
+
+def test_use_switches_active_session(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    import sys
+    sys.path.insert(0, str(SCRIPTS))
+    import session as sl_session
+    sid_a, path_a = sl_session.start(tmp_path, host_session="use-a")
+    (path_a / "progress.md").write_text("- checkpoint T1\n", encoding="utf-8")
+    monkeypatch.delenv("SUPERLITE_SESSION", raising=False)
+    sid_b, _ = sl_session.start(tmp_path, host_session="use-b")
+    monkeypatch.setenv("SUPERLITE_SESSION", sid_b)
+    assert sl_session.current_id(tmp_path) == sid_b
+    used = run(SESSION, "use", "--id", sid_a, cwd=tmp_path)
+    assert used.returncode == 0 and f"session: using {sid_a}" in used.out
+    assert f"SUPERLITE_SESSION={sid_a}" in used.out
+    monkeypatch.setenv("SUPERLITE_SESSION", sid_a)
+    assert sl_session.current_id(tmp_path) == sid_a
+    reg = json.loads((tmp_path / ".superlite" / "sessions.json").read_text(encoding="utf-8"))
+    assert reg["active"] == sid_a
+    assert (tmp_path / ".superlite" / "active").read_text(encoding="utf-8").strip() == sid_a
+    assert sl_session.state_dir(tmp_path) == path_a
+
+
+def test_use_rejects_unknown_and_invalid_ids(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    run(SESSION, "start", "--host-session", "u", cwd=tmp_path)
+    miss = run(SESSION, "use", "--id", "no-such-session", cwd=tmp_path)
+    assert miss.returncode == 2 and "unknown session" in miss.err
+    bad = run(SESSION, "use", "--id", "../../src", cwd=tmp_path)
+    assert bad.returncode == 2 and "invalid session id" in bad.err
+
+
+def test_discard_ends_non_active_and_keeps_others(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    import sys
+    sys.path.insert(0, str(SCRIPTS))
+    import session as sl_session
+    sid_a, path_a = sl_session.start(tmp_path, host_session="d-a")
+    (path_a / "mvp" / "prototype.html").write_text("a", encoding="utf-8")
+    monkeypatch.delenv("SUPERLITE_SESSION", raising=False)
+    sid_b, path_b = sl_session.start(tmp_path, host_session="d-b")
+    monkeypatch.setenv("SUPERLITE_SESSION", sid_b)
+    gone = run(SESSION, "discard", "--id", sid_a, cwd=tmp_path)
+    assert gone.returncode == 0 and f"session: ended {sid_a}" in gone.out
+    assert not path_a.exists()
+    assert path_b.is_dir()
+    assert sl_session.current_id(tmp_path) == sid_b
+
+
+def test_sessions_command_documents_list_use_discard():
+    text = (SCRIPTS.parents[2] / "commands" / "sessions.md").read_text(encoding="utf-8")
+    assert "sl session list" in text
+    assert "sl session use" in text
+    assert "sl session discard" in text
+    assert "SUPERLITE_SESSION" in text

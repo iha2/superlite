@@ -2,7 +2,9 @@
 """Per-worktree superlite sessions so concurrent runs do not share run state.
 
     session.py start [--host-session H] [--plan P] [--id ID]
-    session.py end [--id ID] [--plan P]
+    session.py end|discard [--id ID] [--plan P]
+    session.py list [--plan P]
+    session.py use --id ID [--plan P]
     session.py status [--plan P]
     session.py path [--plan P]
 
@@ -20,9 +22,10 @@ Resolution order for the state dir:
   5. legacy flat `.superlite/` when no session is active
 
 `start` always creates a new id (unless --id reuses a slot). Sessions clean up after themselves:
-`end` (also run by `sl finish`) deletes `sessions/<id>/`; same-host restart ends the previous
-tree first; an empty registry drops `sessions.json`/`active`. Registry updates are locked and
-atomic. `end --id` rejects anything that is not a session id (no path traversal). Stdlib only.
+`end`/`discard` (also run by `sl finish`) deletes `sessions/<id>/`; same-host restart ends the
+previous tree first; an empty registry drops `sessions.json`/`active`. `list` shows every
+registered session; `use` switches the active pointer. Registry updates are locked and
+atomic. `--id` rejects anything that is not a session id (no path traversal). Stdlib only.
 """
 # Complexity notation:
 #   everything here is O(1) file work plus O(S) registry size, plus lock wait under contention
@@ -415,6 +418,90 @@ def status_line(plan_or_dir=None) -> str:  # O(S)
     return f"session: {sid} path={base / SESSIONS / sid} registered={n}"  # O(1)
 
 
+def _session_meta(base: Path, sid: str, info) -> dict:  # O(1)
+    """Small display fields for one registered session (orch / stopped / host / created)."""
+    path = base / SESSIONS / sid  # O(1)
+    meta = info if isinstance(info, dict) else {}  # O(1)
+    created = meta.get("created") or "?"  # O(1)
+    host = meta.get("host_session") or "-"  # O(1)
+    stopped = "yes" if (path / "stopped.md").is_file() else "no"  # O(1)
+    orch = "?"  # O(1)
+    oj = path / "orchestrator.json"  # O(1)
+    if oj.is_file():  # O(1)
+        try:  # O(1)
+            data = json.loads(oj.read_text(encoding="utf-8"))  # O(1)
+            if isinstance(data, dict) and data.get("mode"):  # O(1)
+                orch = str(data["mode"])  # O(1)
+        except (OSError, ValueError):  # O(1)
+            pass  # O(1)
+    return {"created": created, "host": host, "stopped": stopped, "orch": orch, "path": path}  # O(1)
+
+
+def list_lines(plan_or_dir=None) -> list[str]:  # O(S)
+    """Human-readable list: header plus one row per registered session (* = active)."""
+    base = project_sl(plan_or_dir)  # O(1)
+    reg = _read_registry(base)  # O(S)
+    active = _active_id(base)  # O(S)
+    sessions = reg.get("sessions") or {}  # O(1)
+    lines = [f"session: list active={active or 'none'} count={len(sessions)}"]  # O(1)
+    # Stable order: active first, then created ascending, then id
+    rows = []  # O(1)
+    for sid, info in sessions.items():  # O(S)
+        if not isinstance(sid, str) or not ID_RE.match(sid):  # O(1)
+            continue  # O(1)
+        meta = _session_meta(base, sid, info)  # O(1)
+        rows.append((0 if sid == active else 1, str(meta["created"]), sid, meta))  # O(1)
+    rows.sort()  # O(S log S)
+    for _, _, sid, meta in rows:  # O(S)
+        mark = "* " if sid == active else "  "  # O(1)
+        lines.append(  # O(1)
+            f"{mark}{sid} created={meta['created']} host={meta['host']} "
+            f"stopped={meta['stopped']} orch={meta['orch']}"
+        )  # O(1)
+    return lines  # O(S)
+
+
+def use(plan_or_dir=None, session_id: str | None = None) -> tuple[str, Path]:  # O(S)
+    """Make an existing session the active one. Returns (id, path).
+
+    Rebinds `$SUPERLITE_HOST_SESSION` in the registry when that env is set, so the next
+    hook resolve for this chat finds the switched session. Rejects unknown / invalid ids.
+    """
+    base = project_sl(plan_or_dir)  # O(1)
+    sid = (session_id or "").strip()  # O(1)
+    if not sid or not ID_RE.match(sid):  # O(1)
+        raise ValueError(f"invalid session id: {sid or '(empty)'}")  # O(1)
+    path = base / SESSIONS / sid  # O(1)
+    try:  # O(1)
+        path.resolve().relative_to((base / SESSIONS).resolve())  # O(1)
+    except ValueError:  # O(1)
+        raise ValueError(f"invalid session id: {sid}") from None  # O(1)
+    if not path.is_dir():  # O(1)
+        raise ValueError(f"unknown session: {sid}")  # O(1)
+
+    host = (os.environ.get("SUPERLITE_HOST_SESSION") or "").strip() or None  # O(1)
+
+    def mutate(reg: dict):  # O(1)
+        if sid not in reg["sessions"]:  # O(1)
+            # Dir exists but registry drifted — re-register lightly so use still works.
+            reg["sessions"][sid] = {  # O(1)
+                "created": datetime.now().isoformat(timespec="seconds"),  # O(1)
+                "host_session": host,  # O(1)
+            }  # O(1)
+        elif host:  # O(1)
+            info = reg["sessions"].get(sid)  # O(1)
+            if isinstance(info, dict):  # O(1)
+                info["host_session"] = host  # O(1)
+        if host:  # O(1)
+            reg["by_host"][host] = sid  # O(1)
+        reg["active"] = sid  # O(1)
+        return reg  # O(1)
+
+    _with_registry_lock(base, mutate)  # O(S)
+    os.environ["SUPERLITE_SESSION"] = sid  # O(1)
+    return sid, path  # O(1)
+
+
 def main(argv=None) -> int:  # O(S)
     ap = argparse.ArgumentParser(description=__doc__.split(chr(10))[0])  # O(1)
     sub = ap.add_subparsers(dest="cmd", required=True)  # O(1)
@@ -423,7 +510,11 @@ def main(argv=None) -> int:  # O(S)
     s.add_argument("--id", help="reuse this session id (must match [A-Za-z0-9._-]+)")  # O(1)
     e = sub.add_parser("end")  # O(1)
     e.add_argument("--id", help="session to end (default: active)")  # O(1)
-    for name in ("status", "path"):  # O(1)
+    d = sub.add_parser("discard", help="same as end: delete sessions/<id>")  # O(1)
+    d.add_argument("--id", help="session to discard (default: active)")  # O(1)
+    u = sub.add_parser("use", help="switch the active session")  # O(1)
+    u.add_argument("--id", required=True, help="session id to make active")  # O(1)
+    for name in ("list", "status", "path"):  # O(1)
         sub.add_parser(name)  # O(1)
     for p in sub.choices.values():  # O(1)
         if hasattr(p, "add_argument"):  # O(1)
@@ -439,12 +530,24 @@ def main(argv=None) -> int:  # O(S)
         print(f"session: started {sid} path={path}")  # O(1)
         print(f"SUPERLITE_SESSION={sid}")  # O(1)
         return 0  # O(1)
-    if a.cmd == "end":  # O(1)
+    if a.cmd in ("end", "discard"):  # O(1)
         try:  # O(1)
             print(end(a.plan, session_id=getattr(a, "id", None)))  # O(tree)
         except ValueError as err:  # O(1)
             print(f"session: {err}", file=sys.stderr)  # O(1)
             return 2  # O(1)
+        return 0  # O(1)
+    if a.cmd == "use":  # O(1)
+        try:  # O(1)
+            sid, path = use(a.plan, session_id=getattr(a, "id", None))  # O(S)
+        except ValueError as err:  # O(1)
+            print(f"session: {err}", file=sys.stderr)  # O(1)
+            return 2  # O(1)
+        print(f"session: using {sid} path={path}")  # O(1)
+        print(f"SUPERLITE_SESSION={sid}")  # O(1)
+        return 0  # O(1)
+    if a.cmd == "list":  # O(1)
+        print("\n".join(list_lines(a.plan)))  # O(S)
         return 0  # O(1)
     if a.cmd == "path":  # O(1)
         print(state_dir(a.plan))  # O(S)

@@ -31,7 +31,7 @@ A checkpoint is a hidden save of one task under `refs/superlite/*`; a commit is 
 | `history` | Run history: `write` rows to `history.jsonl` in the superlite home (`$SUPERLITE_HOME`, an existing `~/.superlite`, else `$XDG_DATA_HOME/superlite`), `read`, `derive` stats, `import` bench scores |
 | `graphify_gate` | Gates Graphify for search in non-trivial codebases |
 | `orchestrator` | Who orchestrates: `set human|ai`, `approve --review <plan>` (needs an approving human reply newer than the plan), `status` |
-| `session` | Isolates concurrent runs in one worktree: `start` / `end` / `status` / `path` under `.superlite/sessions/<id>/`. `finish` always ends the active session (deletes its dir). Restarting with the same host session ends the previous one first |
+| `session` | Isolates concurrent runs in one worktree: `start` / `end`/`discard` / `list` / `use` / `status` / `path` under `.superlite/sessions/<id>/`. `list` shows every registered session; `use` switches the active pointer. `finish` always ends the active session (deletes its dir). Restarting with the same host session ends the previous one first |
 | `report` | The end-of-build report: a short summary in the session, the full file next to the plan, projected against actual; in feature mode the prototype and the integration as two parts |
 | `suggest_flow` | `--text "<request>"`: one line, the suggested flow (regular, mvp, feature, debug, small, review, resume, status) from the request and the project state, with the other fits; deterministic |
 | `proto` | Feature mode's prototype: `start` (its own worktree on `superlite/<topic>-proto`), `tryout` (how to try it; `--approve` needs the human's reply in human mode), `status`, `discard`; state in `.superlite/feature.json` |
