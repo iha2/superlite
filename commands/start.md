@@ -27,6 +27,7 @@ Skip the menu for a clear one-line request you can size as trivial, or when the 
 - **Parallel (second chat live):** `sl session split --new <new> [--keep <open>]` (or `sl session create --slug <new> --worktree`). Move the agent root into the printed path.
 - **Serial (same host):** `sl session create --slug <new>` then work there; later `sl session use --slug <other>` parks/stashes and switches. See `docs/sessions.md`.
 - If `session use`/`create` prints `REDIRECT worktree=…`, **cd/open that worktree** — do not check the branch out a second time.
+- If `session use` reports a stash conflict: resolve, `git add`, then `sl session use --slug <slug> --continue`.
 - If the user refuses any isolation: offer Resume or Finish only.
 
 A **session HUD** line (`superlite session: …`) is injected each turn when a registry exists.

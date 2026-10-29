@@ -4,10 +4,11 @@ A **session** is one line of work: a branch `superlite/sessions/<slug>`, parked 
 
 | Concept | Path / rule |
 |---|---|
-| Hub | Primary checkout on `main`; holds `sessions.json` + `session-store/` |
+| Hub | Primary checkout on `main`; holds `sessions.json` + `session-store/`. Every `sl session` command finds it from any worktree of the repo |
 | Host worktree | `.superlite/worktrees/sessions/host` |
 | Parallel worktree | `.superlite/worktrees/sessions/<slug>` |
-| Branch | `superlite/sessions/<slug>` — one checkout only |
+| Branch | `superlite/sessions/<slug>` (or the branch recorded for the slug) — one checkout only |
+| Slugs | `a-z`, `0-9`, `-`; `host` is reserved |
 | Live run | Host’s `.superlite/` while that session is active |
 
 ## Why
@@ -44,21 +45,24 @@ sequenceDiagram
   Use->>Git: stash apply for B if any
 ```
 
-1. Park run state (stash does **not** hold ignored `.superlite/`).
-2. Stash dirty project files with message `superlite-session:<slug>`.
-3. Switch branch; restore store; apply stash (never silent `stash pop` on conflict).
-4. If the branch is already checked out in another worktree → **REDIRECT** (do not check it out here).
+1. Stash dirty project files (`superlite-session:<slug>`); the registry records the stash's object id, so `auth` never picks up `auth-api`'s stash.
+2. Park run files (stash does **not** hold ignored `.superlite/`). Checkouts under `.superlite/sandboxes/` and `.superlite/worktrees/` never move.
+3. Switch branch; restore store; apply the stash with `--index` (staged changes survive).
+4. On a conflict the session stays active with `stash:yes`. Resolve the files, `git add` them, then `sl session use --slug S --continue`: it checks nothing is unmerged and drops the stash without re-applying it.
+5. If the branch is already checked out in another worktree → **REDIRECT** (do not check it out here).
+
+All registry writes take `.superlite/sessions.lock` and replace `sessions.json` atomically, so concurrent chats never lose each other's rows.
 
 ## Commands
 
 | Command | Effect |
 |---|---|
-| `sl session create --slug S` | Host worktree + branch; make active |
+| `sl session create --slug S` | Host worktree + branch; make active (an existing slug: use `use`) |
 | `sl session create --slug S --worktree` | Parallel worktree + new branch |
 | `sl session use --slug S` | Park/stash/switch or REDIRECT |
-| `sl session split --new S [--keep K]` | Parallel: move open hub run + cut new worktree |
+| `sl session split --new S [--keep K]` | Parallel: move open hub run + cut new worktree. From a linked worktree (or when the base is busy elsewhere) the run stays where it is. Any failure rolls back run files, WIP and branches |
 | `sl session status [--json]` | List sessions |
-| `sl session discard --slug S` | Drop store/stash/branch; remove parallel tree |
+| `sl session discard --slug S [--keep-branch]` | Drop store/stash/branch; remove a parallel tree superlite cut. The active host session's uncommitted changes are discarded and the host is detached |
 
 ## Session HUD
 
@@ -75,7 +79,7 @@ flowchart LR
   hud --> line["Inject superlite session: …"]
 ```
 
-Opt out: `SUPERLITE_NO_SESSION_HUD=1`. Wired through `hooks/cost-report` via `session_hud.py`.
+Opt out: `SUPERLITE_NO_SESSION_HUD=1` (independent of `SUPERLITE_NO_COST_REPORT`). Wired through `hooks/cost-report` and `hooks/session-start` via `session_hud.py`; it shows in a fresh session worktree before it has a `.superlite/`.
 
 ## Start menu
 
