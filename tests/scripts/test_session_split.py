@@ -108,3 +108,86 @@ def test_sessions_doc_has_mermaid_and_is_indexed():
     assert "sl session split" in doc and "sessions.json" in doc
     index = (ROOT / "docs" / "README.md").read_text(encoding="utf-8")
     assert "sessions.md" in index
+
+
+def test_split_rolls_back_when_a_late_step_fails(repo):
+    (repo / "app.py").write_text("print('wip')\n")
+    (repo / "app.py.new").write_text("untracked\n")
+    sessions = repo / ".superlite" / "worktrees"
+    sessions.mkdir(parents=True)
+    (sessions / "sessions").write_text("not a dir\n")  # blocks worktree creation after the run moved
+    cp = run(SESSION, "split", "--keep", "export", "--new", "auth", cwd=repo)
+    assert cp.returncode == 1 and "rolling back" in cp.err, cp.both
+    assert (repo / ".superlite" / "orchestrator.json").is_file()
+    assert (repo / ".superlite" / "progress.md").read_text(encoding="utf-8") == "- start abc\n"
+    assert (repo / "app.py").read_text(encoding="utf-8") == "print('wip')\n"
+    assert (repo / "app.py.new").is_file()
+    assert git(repo, "branch", "--show-current").strip() == "main"
+    assert git(repo, "stash", "list").strip() == ""
+    assert "superlite/sessions/export" not in git(repo, "branch", "--list")
+
+
+def test_split_rejects_unknown_base_without_side_effects(repo):
+    (repo / "app.py").write_text("print('wip')\n")
+    cp = run(SESSION, "split", "--keep", "export", "--new", "auth", "--base", "nope", cwd=repo)
+    assert cp.returncode == 2 and "unknown --base" in cp.err
+    assert (repo / ".superlite" / "orchestrator.json").is_file()
+    assert (repo / "app.py").read_text(encoding="utf-8") == "print('wip')\n"
+
+
+def test_split_keeps_sandboxes_and_rebinds_checkpoints(repo):
+    box = repo / ".superlite" / "sandboxes" / "x-proto"
+    box.mkdir(parents=True)
+    (box / "keep.txt").write_text("k\n")
+    (repo / ".superlite" / "checkpoints.json").write_text(json.dumps({"branch": "refs/heads/main"}) + "\n")
+    cp = run(SESSION, "split", "--keep", "export", "--new", "auth", cwd=repo)
+    assert cp.returncode == 0, cp.both
+    assert (box / "keep.txt").is_file()
+    keep = repo / ".superlite" / "worktrees" / "sessions" / "export"
+    st = json.loads((keep / ".superlite" / "checkpoints.json").read_text(encoding="utf-8"))
+    assert st["branch"] == "refs/heads/superlite/sessions/export"
+
+
+def test_split_preserves_staged_changes(repo):
+    (repo / "app.py").write_text("print('staged')\n")
+    git(repo, "add", "app.py")
+    (repo / "app.py").write_text("print('worktree')\n")
+    assert run(SESSION, "split", "--keep", "export", "--new", "auth", cwd=repo).returncode == 0
+    keep = repo / ".superlite" / "worktrees" / "sessions" / "export"
+    assert git(keep, "show", ":app.py") == "print('staged')\n"
+    assert (keep / "app.py").read_text(encoding="utf-8") == "print('worktree')\n"
+
+
+def test_split_from_linked_feature_worktree_keeps_run_in_place(repo):
+    import shutil
+    run_dir = repo / ".superlite"
+    feat = run_dir / "worktrees" / "export"
+    git(repo, "worktree", "add", "-q", "-b", "superlite/export", str(feat), "main")
+    (feat / ".superlite").mkdir()
+    for name in ("orchestrator.json", "progress.md"):
+        shutil.move(str(run_dir / name), str(feat / ".superlite" / name))
+    cp = run(SESSION, "split", "--new", "auth", cwd=feat)
+    assert cp.returncode == 0, cp.both
+    assert (feat / ".superlite" / "orchestrator.json").is_file()
+    assert git(feat, "branch", "--show-current").strip() == "superlite/export"
+    new = repo / ".superlite" / "worktrees" / "sessions" / "auth"
+    assert git(new, "branch", "--show-current").strip() == "superlite/sessions/auth"
+    reg = json.loads((repo / ".superlite" / "sessions.json").read_text(encoding="utf-8"))
+    export = next(s for s in reg["sessions"] if s["slug"] == "export")
+    assert export["branch"] == "superlite/export" and export["owned"] is False
+    # a second split from the new worktree works too
+    (new / ".superlite").mkdir(exist_ok=True)
+    (new / ".superlite" / "orchestrator.json").write_text("{}\n")
+    assert run(SESSION, "split", "--new", "billing", cwd=new).returncode == 0
+    # discarding the in-place run never removes the user's worktree
+    assert run(SESSION, "discard", "--slug", "export", "--keep-branch", cwd=repo).returncode == 0
+    assert feat.is_dir()
+
+
+def test_use_honors_recorded_branch(repo):
+    git(repo, "checkout", "-q", "-b", "superlite/export")
+    assert run(SESSION, "split", "--new", "auth", cwd=repo).returncode == 0
+    cp = run(SESSION, "use", "--slug", "export", cwd=repo)
+    assert cp.returncode == 3 and "branch=superlite/export" in cp.out, cp.both
+    cp = run(SESSION, "create", "--slug", "export", cwd=repo)
+    assert cp.returncode == 3 and "branch=superlite/export" in cp.out, cp.both

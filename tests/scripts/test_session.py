@@ -116,3 +116,162 @@ def test_session_hud_line(repo):
     silent = subprocess.run([sys.executable, str(HUD), str(repo / ".superlite")], capture_output=True,
                             cwd=repo, env=env, text=True)
     assert silent.stdout.strip() == ""
+
+
+HOST_REL = Path(".superlite") / "worktrees" / "sessions" / "host"
+HOOK = ROOT / "hooks" / "cost-report"
+
+
+def reg_of(repo):
+    return json.loads((repo / ".superlite" / "sessions.json").read_text(encoding="utf-8"))
+
+
+def row_of(repo, slug):
+    return next(s for s in reg_of(repo)["sessions"] if s["slug"] == slug)
+
+
+def test_commands_find_hub_registry_from_inside_the_host(repo):
+    assert run(SESSION, "create", "--slug", "auth", cwd=repo).returncode == 0
+    host = repo / HOST_REL
+    cp = run(SESSION, "status", cwd=host)
+    assert cp.returncode == 0 and "auth" in cp.out, cp.both
+    assert run(SESSION, "create", "--slug", "export", cwd=host).returncode == 0
+    assert not (host / HOST_REL).exists()
+    assert run(SESSION, "use", "--slug", "auth", cwd=host).returncode == 0
+    assert reg_of(repo)["active"] == "auth"
+
+
+def test_host_slug_is_reserved(repo):
+    assert run(SESSION, "create", "--slug", "host", "--worktree", cwd=repo).returncode == 2
+    assert run(SESSION, "create", "--slug", "host", cwd=repo).returncode == 2
+
+
+def test_stash_restore_keeps_staged_changes(repo):
+    assert run(SESSION, "create", "--slug", "export", cwd=repo).returncode == 0
+    host = repo / HOST_REL
+    (host / "app.py").write_text("print('staged')\n")
+    git(host, "add", "app.py")
+    (host / "app.py").write_text("print('worktree')\n")
+    assert run(SESSION, "create", "--slug", "auth", cwd=repo).returncode == 0
+    assert run(SESSION, "use", "--slug", "export", cwd=repo).returncode == 0
+    assert git(host, "show", ":app.py") == "print('staged')\n"
+    assert (host / "app.py").read_text(encoding="utf-8") == "print('worktree')\n"
+
+
+def test_stash_matching_is_exact_per_session(repo):
+    host = repo / HOST_REL
+    assert run(SESSION, "create", "--slug", "auth", cwd=repo).returncode == 0
+    (host / "app.py").write_text("print('auth')\n")
+    assert run(SESSION, "create", "--slug", "auth-api", cwd=repo).returncode == 0
+    (host / "app.py").write_text("print('auth-api')\n")
+    assert run(SESSION, "create", "--slug", "other", cwd=repo).returncode == 0
+    assert run(SESSION, "use", "--slug", "auth", cwd=repo).returncode == 0
+    assert (host / "app.py").read_text(encoding="utf-8") == "print('auth')\n"
+    assert row_of(repo, "auth-api")["has_stash"] is True
+    assert run(SESSION, "discard", "--slug", "auth", cwd=repo).returncode == 0
+    assert run(SESSION, "use", "--slug", "auth-api", cwd=repo).returncode == 0
+    assert (host / "app.py").read_text(encoding="utf-8") == "print('auth-api')\n"
+
+
+def test_use_after_discard_restores_parked_wip(repo):
+    host = repo / HOST_REL
+    assert run(SESSION, "create", "--slug", "a", cwd=repo).returncode == 0
+    (host / ".superlite" / "progress.md").write_text("- a\n")
+    (host / "app.py").write_text("print('a-wip')\n")
+    assert run(SESSION, "create", "--slug", "b", cwd=repo).returncode == 0
+    assert run(SESSION, "discard", "--slug", "b", cwd=repo).returncode == 0
+    assert run(SESSION, "create", "--slug", "a", cwd=repo).returncode == 2  # exists: use, don't overwrite
+    cp = run(SESSION, "use", "--slug", "a", cwd=repo)
+    assert cp.returncode == 0, cp.both
+    assert (host / "app.py").read_text(encoding="utf-8") == "print('a-wip')\n"
+    assert (host / ".superlite" / "progress.md").read_text(encoding="utf-8") == "- a\n"
+    assert row_of(repo, "a")["has_stash"] is False
+    assert git(host, "stash", "list").strip() == ""
+
+
+def test_discard_active_serial_cleans_wip_and_branch(repo):
+    host = repo / HOST_REL
+    assert run(SESSION, "create", "--slug", "a", cwd=repo).returncode == 0
+    (host / "app.py").write_text("print('junk')\n")
+    (host / "new.txt").write_text("junk\n")
+    cp = run(SESSION, "discard", "--slug", "a", cwd=repo)
+    assert cp.returncode == 0, cp.both
+    assert (host / "app.py").read_text(encoding="utf-8") == "print('hi')\n"
+    assert not (host / "new.txt").exists()
+    assert "superlite/sessions/a" not in git(repo, "branch", "--list")
+    assert run(SESSION, "create", "--slug", "b", cwd=repo).returncode == 0
+    assert (host / "app.py").read_text(encoding="utf-8") == "print('hi')\n"
+
+
+def test_park_keeps_sandboxes_in_place(repo):
+    host = repo / HOST_REL
+    assert run(SESSION, "create", "--slug", "a", cwd=repo).returncode == 0
+    box = host / ".superlite" / "sandboxes" / "x-proto"
+    box.mkdir(parents=True)
+    (box / "keep.txt").write_text("k\n")
+    (host / ".superlite" / "feature.json").write_text("{}\n")
+    assert run(SESSION, "create", "--slug", "b", cwd=repo).returncode == 0
+    assert (box / "keep.txt").is_file()
+    assert not (host / ".superlite" / "feature.json").exists()
+    assert (repo / ".superlite" / "session-store" / "a" / "feature.json").is_file()
+
+
+def test_continue_drops_stash_without_reapplying(repo):
+    host = repo / HOST_REL
+    assert run(SESSION, "create", "--slug", "a", cwd=repo).returncode == 0
+    (host / "app.py").write_text("print('a-wip')\n")
+    assert run(SESSION, "create", "--slug", "b", cwd=repo).returncode == 0
+    tmp = repo.parent / "tmpwt"
+    git(repo, "worktree", "add", "-q", str(tmp), "superlite/sessions/a")
+    (tmp / "app.py").write_text("print('upstream')\n")
+    git(tmp, "commit", "-qam", "upstream")
+    git(repo, "worktree", "remove", str(tmp))
+    cp = run(SESSION, "use", "--slug", "a", cwd=repo)
+    assert cp.returncode == 2 and "--continue" in cp.err, cp.both
+    assert run(SESSION, "use", "--slug", "a", "--continue", cwd=repo).returncode == 2  # unmerged left
+    (host / "app.py").write_text("print('resolved')\n")
+    git(host, "add", "app.py")
+    cp = run(SESSION, "use", "--slug", "a", "--continue", cwd=repo)
+    assert cp.returncode == 0, cp.both
+    assert (host / "app.py").read_text(encoding="utf-8") == "print('resolved')\n"
+    assert row_of(repo, "a")["has_stash"] is False
+    assert git(host, "stash", "list").strip() == ""
+
+
+def test_concurrent_parallel_creates_all_register(repo):
+    env = dict(os.environ, PYTHONIOENCODING="utf-8")
+    procs = [subprocess.Popen([sys.executable, str(SESSION), "create", "--slug", f"p{i}", "--worktree"],
+                              cwd=repo, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+             for i in range(5)]
+    assert all(p.wait(timeout=120) == 0 for p in procs)
+    assert {s["slug"] for s in reg_of(repo)["sessions"]} == {f"p{i}" for i in range(5)}
+
+
+def test_hud_uses_path_components_and_works_from_worktree(repo):
+    assert run(SESSION, "create", "--slug", "auth", cwd=repo).returncode == 0
+    assert run(SESSION, "create", "--slug", "host-extra", "--worktree", cwd=repo).returncode == 0
+    wt = repo / ".superlite" / "worktrees" / "sessions" / "host-extra"
+    cp = run(HUD, str(wt), cwd=wt)
+    assert cp.out.startswith("superlite session: host-extra |"), cp.both
+    cp = run(HUD, str(repo / HOST_REL), cwd=repo)
+    assert cp.out.startswith("superlite session: auth |"), cp.both
+
+
+def test_cost_report_emits_hud_without_cost_or_run_dir(repo):
+    assert run(SESSION, "create", "--slug", "solo", "--worktree", cwd=repo).returncode == 0
+    wt = repo / ".superlite" / "worktrees" / "sessions" / "solo"
+    import shutil
+    shutil.rmtree(wt / ".superlite")
+    env = dict(os.environ, SUPERLITE_NO_COST_REPORT="1", SUPERLITE_PYTHON=sys.executable,
+               CLAUDE_PLUGIN_ROOT=str(ROOT))
+    for k in ("CURSOR_AGENT", "CURSOR_TRACE_ID", "CURSOR_PLUGIN_ROOT", "CLAUDE_PROJECT_DIR", "CURSOR_PROJECT_DIR"):
+        env.pop(k, None)
+    raw = json.dumps({"hook_event_name": "UserPromptSubmit", "prompt": "hi", "cwd": str(wt)})
+    out = subprocess.run(["bash", str(HOOK)], input=raw, capture_output=True, text=True, env=env).stdout
+    ctx = json.loads(out)["hookSpecificOutput"]["additionalContext"]
+    assert ctx.startswith("superlite session: solo |")
+
+
+def test_session_start_hook_includes_hud():
+    text = (ROOT / "hooks" / "session-start").read_text(encoding="utf-8")
+    assert "session_hud.py" in text
