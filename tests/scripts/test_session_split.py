@@ -148,6 +148,27 @@ def test_split_restores_run_state_after_partial_move(repo, monkeypatch):
     assert (repo / ".superlite" / "progress.md").read_text(encoding="utf-8") == "- start abc\n"
 
 
+def test_split_does_not_restore_run_state_when_first_move_fails(repo, monkeypatch):
+    original_move_run_state = session.move_run_state
+    restore_calls = 0
+
+    def fail_move(*args, **kwargs):
+        raise OSError("simulated move failure")
+
+    def track_move_run_state(*args, **kwargs):
+        nonlocal restore_calls
+        restore_calls += 1
+        return original_move_run_state(*args, **kwargs)
+
+    monkeypatch.setattr(session.shutil, "move", fail_move)
+    monkeypatch.setattr(session, "move_run_state", track_move_run_state)
+    result = session.main(["split", "--keep", "export", "--new", "auth", "--root", str(repo)])
+
+    assert result == 1
+    assert restore_calls == 1
+    assert (repo / ".superlite" / "orchestrator.json").is_file()
+
+
 def test_split_rejects_unknown_base_without_side_effects(repo):
     (repo / "app.py").write_text("print('wip')\n")
     cp = run(SESSION, "split", "--keep", "export", "--new", "auth", "--base", "nope", cwd=repo)

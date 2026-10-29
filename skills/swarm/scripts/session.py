@@ -748,10 +748,11 @@ def _split_move(root: Path, sl: Path, cur: str, base: str, keep_branch: str, wt_
     moved = []  # O(entries)
 
     def restore_run_state():
-        for source, target in reversed(moved):
-            if target.exists() or target.is_symlink():
-                shutil.move(str(target), str(source))
-        move_run_state(held, sl)
+        if moved or run_entries(held):
+            for source, target in reversed(moved):
+                if target.exists() or target.is_symlink():
+                    shutil.move(str(target), str(source))
+            move_run_state(held, sl)
         shutil.rmtree(tmp, ignore_errors=True)
 
     undo.append(restore_run_state)  # O(1)
