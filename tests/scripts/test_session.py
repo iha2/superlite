@@ -16,6 +16,8 @@ HUD = SCRIPTS / "session_hud.py"
 
 sys.path.insert(0, str(SCRIPTS))
 
+import session  # noqa: E402
+
 
 def run(script: Path, *args, cwd=None):
     env = dict(os.environ, PYTHONIOENCODING="utf-8")
@@ -81,6 +83,34 @@ def test_use_parks_and_restores_dirty_work(repo):
     assert git(host, "branch", "--show-current").strip() == "superlite/sessions/export"
     assert (host / "app.py").read_text(encoding="utf-8") == "print('export-wip')\n"
     assert (host / ".superlite" / "progress.md").read_text(encoding="utf-8") == "- start export\n"
+
+
+def test_restore_run_state_can_retry_after_partial_copy(tmp_path, monkeypatch):
+    store = tmp_path / "store"
+    live_sl = tmp_path / "live"
+    store.mkdir()
+    (store / "first.txt").write_text("first\n", encoding="utf-8")
+    (store / "second.txt").write_text("second\n", encoding="utf-8")
+    copy2 = session.shutil.copy2
+    calls = 0
+
+    def fail_second_copy(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("simulated copy failure")
+        return copy2(*args, **kwargs)
+
+    monkeypatch.setattr(session.shutil, "copy2", fail_second_copy)
+    with pytest.raises(OSError, match="simulated copy failure"):
+        session.restore_run_state(store, live_sl)
+
+    assert sorted(p.name for p in store.iterdir()) == ["first.txt", "second.txt"]
+    monkeypatch.setattr(session.shutil, "copy2", copy2)
+    session.restore_run_state(store, live_sl)
+    assert (live_sl / "first.txt").read_text(encoding="utf-8") == "first\n"
+    assert (live_sl / "second.txt").read_text(encoding="utf-8") == "second\n"
+    assert not store.exists()
 
 
 def test_use_redirects_when_branch_live_in_other_worktree(repo):

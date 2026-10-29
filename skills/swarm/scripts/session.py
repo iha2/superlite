@@ -299,7 +299,12 @@ def restore_run_state(store: Path, live_sl: Path) -> None:  # O(S)
     clear_run_state(live_sl)  # O(S)
     live_sl.mkdir(parents=True, exist_ok=True)  # O(1)
     if store.is_dir():  # O(1)
-        move_run_state(store, live_sl)  # O(S)
+        for p in run_entries(store):  # O(entries)
+            target = live_sl / p.name  # O(1)
+            if p.is_dir() and not p.is_symlink():  # O(1)
+                shutil.copytree(p, target, symlinks=True)  # O(S)
+            else:  # O(1)
+                shutil.copy2(p, target, follow_symlinks=False)  # O(S)
         shutil.rmtree(store, ignore_errors=True)  # O(1)
 
 
