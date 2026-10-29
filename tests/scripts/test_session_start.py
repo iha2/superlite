@@ -58,3 +58,38 @@ def test_intro_and_help_files_fit_a_terminal():
         assert f"/superlite:{c}" in help_text, c
     for c in commands - {"intro", "help"}:   # and on the intro screen
         assert f"/superlite:{c}" in intro, c
+
+
+def test_session_start_tells_user_about_open_sessions(tmp_path):
+    """Registered sessions survive stop; a new chat must be told they are still open."""
+    env = dict(os.environ, CLAUDE_PLUGIN_ROOT=str(ROOT), SUPERLITE_HOME=str(tmp_path / "home"))
+    (tmp_path / "home").mkdir()
+    quiet = subprocess.run([BASH, str(HOOK)], cwd=tmp_path, capture_output=True, text=True,
+                           encoding="utf-8", env=env)
+    assert quiet.returncode == 0
+    assert "still open" not in json.loads(quiet.stdout)["hookSpecificOutput"]["additionalContext"]
+
+    sl = tmp_path / ".superlite"
+    sid = "20261028T120000-open1"
+    (sl / "sessions" / sid).mkdir(parents=True)
+    (sl / "sessions" / sid / "stopped.md").write_text("paused\n", encoding="utf-8")
+    (sl / "sessions.json").write_text(json.dumps({
+        "sessions": {sid: {"created": "2026-10-28T12:00:00", "host_session": "chat-1"}},
+        "by_host": {"chat-1": sid},
+        "active": sid,
+    }) + "\n", encoding="utf-8")
+    (sl / "active").write_text(sid + "\n", encoding="utf-8")
+
+    loud = subprocess.run([BASH, str(HOOK)], cwd=tmp_path, capture_output=True, text=True,
+                          encoding="utf-8", env=env)
+    assert loud.returncode == 0, loud.stderr
+    ctx = json.loads(loud.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "still open" in ctx
+    assert sid in ctx
+    assert "/superlite:sessions" in ctx
+    assert "Tell the user" in ctx
+
+
+def test_sessions_command_tells_user_about_open_sessions():
+    text = (ROOT / "commands" / "sessions.md").read_text(encoding="utf-8")
+    assert "Tell the user" in text and "still open" in text
