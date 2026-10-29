@@ -87,15 +87,43 @@ if [ "${need_prefer:-0}" = 1 ]; then  # O(1)
 '"Ask once (plain text, one question): does the user want pre-implementation specs on by default? Specs define what done looks like and why; plans choose how. Default stays off until they choose. After they answer, run: bash ${PLUGIN_ROOT}/skills/swarm/scripts/sl agent_specs prefer on|off. Do not ask again after prefer is recorded."  # O(s)
 fi  # O(1)
 
+# Prefer SUPERLITE_PYTHON; else the first of python3/python that runs (matches cost-report / sl).
+_sl_py() {  # O(1)
+  if [ -n "${SUPERLITE_PYTHON:-}" ]; then  # O(1)
+    printf '%s' "$SUPERLITE_PYTHON"  # O(1)
+    return  # O(1)
+  fi  # O(1)
+  local cand  # O(1)
+  for cand in python3 python; do  # O(1)
+    command -v "$cand" >/dev/null 2>&1 && { printf '%s' "$cand"; return; }  # O(1)
+  done  # O(1)
+  printf '%s' python3  # O(1)
+}  # O(1)
+py="$(_sl_py)"  # O(1)
+
 # Always-on cost line when a superlite session is already active in this project.
 cost_line=""  # O(1)
 if [ -d .superlite ] && [ "${SUPERLITE_NO_COST_REPORT:-}" != "1" ]; then  # O(1)
-  cost_line="$("${SUPERLITE_PYTHON:-python}" "${PLUGIN_ROOT}/skills/swarm/scripts/cost_live.py" .superlite 2>/dev/null || true)"  # O(R)
+  cost_line="$("$py" "${PLUGIN_ROOT}/skills/swarm/scripts/cost_live.py" .superlite 2>/dev/null || true)"  # O(R)
 fi  # O(1)
 if [ -n "$cost_line" ]; then  # O(1)
   content="${content}"$'
 
 '"${cost_line}"  # O(s)
+fi  # O(1)
+
+# Still-open sessions (stop keeps them; finish/discard removes them). Tell the user so they can resume or clean up.
+if [ -f .superlite/sessions.json ]; then  # O(1)
+  open_list="$("$py" "${PLUGIN_ROOT}/skills/swarm/scripts/session.py" list --plan .superlite 2>/dev/null || true)"  # O(S)
+  if [[ "$open_list" == session:\ list\ active=*count=[1-9]* ]]; then  # O(1) any count >= 1
+    content="${content}"$'
+
+'"Tell the user these superlite sessions are still open in this worktree (do not skip this). Show the list below in plain language, then offer /superlite:sessions to switch or discard.
+
+\`\`\`text
+${open_list}
+\`\`\`"  # O(s+S)
+  fi  # O(1)
 fi  # O(1)
 
 # A superlite run suspends peer process plugins. The marker is removed by sl finish.
