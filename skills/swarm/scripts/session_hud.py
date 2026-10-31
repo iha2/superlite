@@ -102,6 +102,36 @@ def run_of(row: dict) -> str:  # O(1)
     return "finished" if row.get("run") == "finished" else "open"  # O(1)
 
 
+def _git(root: Path, *a: str) -> str | None:  # O(1)
+    r = subprocess.run(["git", *a], capture_output=True, text=True, cwd=root)  # O(1)
+    return r.stdout.strip() if r.returncode == 0 else None  # O(1)
+
+
+def ahead_of(root: Path | None, reg: dict, row: dict) -> tuple[int, str | None]:  # O(1)
+    """(commits the base gained since the row's base_sha, current base sha); (0, None) when unknown. One rev-parse; rev-list only when shas differ."""
+    base, bsha = reg.get("base"), row.get("base_sha")  # O(1)
+    if not root or not base or not bsha:  # O(1)
+        return 0, None  # O(1)
+    cur = _git(root, "rev-parse", "--verify", "-q", f"refs/heads/{base}")  # O(1)
+    if not cur or cur == bsha:  # O(1)
+        return 0, cur  # O(1)
+    n = _git(root, "rev-list", "--count", f"{bsha}..{cur}")  # O(1)
+    return (int(n) if n and n.isdigit() else 0), cur  # O(1)
+
+
+def moved_line(root: Path | None, reg: dict) -> str | None:  # O(N)
+    """Moved-out notice for a main checkout with no session: the most recently moved row."""
+    if not root:  # O(1)
+        return None  # O(1)
+    me = str(root.resolve())  # O(1)
+    rows = [s for s in reg["sessions"] if s.get("moved_from") and str(Path(s["moved_from"]).resolve()) == me
+            and s.get("worktree")]  # O(N)
+    if not rows:  # O(1)
+        return None  # O(1)
+    s = max(rows, key=lambda r: str(r.get("moved_at") or r.get("created_at") or ""))  # O(N)
+    return f"superlite session: {s.get('slug') or s.get('topic') or '?'} moved to {s['worktree']} \u2014 move the agent root there"  # O(1)
+
+
 def line_for(cwd: Path) -> str | None:  # O(N)
     if os.environ.get("SUPERLITE_NO_SESSION_HUD") == "1":  # O(1)
         return None  # O(1)
@@ -110,13 +140,26 @@ def line_for(cwd: Path) -> str | None:  # O(N)
         return None  # O(1)
     active = reg.get("active")  # O(1)
     if row is None:  # O(1)
+        moved = moved_line(root, reg)  # O(N)
+        if moved:  # O(1)
+            return moved  # O(1)
         return f"superlite session: none here (main checkout) | {len(reg['sessions'])} sessions"  # O(1)
     slug = row.get("slug") or row.get("topic") or "?"  # O(1)
     branch = row.get("branch") or git_cwd_branch(cwd) or "?"  # O(1)
     wt = short_path(row.get("worktree") or "", root)  # O(1)
     status = row.get("status") or ("active" if slug == active else "?")  # O(1)
     stash = "stash:yes" if row.get("has_stash") else "stash:no"  # O(1)
-    return f"superlite session: {slug} | branch {branch} | worktree {wt} | {status} | {stash} | run:{run_of(row)}"  # O(1)
+    out = f"superlite session: {slug} | branch {branch} | worktree {wt} | {status} | {stash} | run:{run_of(row)}"  # O(1)
+    n, cur = ahead_of(root, reg, row)  # O(1)
+    if n > 0:  # O(1)
+        out += f" | main:+{n}"  # O(1)
+    if row.get("sync") in ("conflict", "needs-sync"):  # O(1)
+        out += f" | {row['sync']}"  # O(1)
+    if n > 0 and row.get("sync_offered") != cur:  # O(1)
+        out += (f"\nsuperlite sync: local {reg.get('base')} moved ahead by {n} commit{'s' if n != 1 else ''} since this "
+                f"session last synced; ask the user whether to bring it in (sl session sync --slug {slug}), "
+                f"or record Later with sl session sync --slug {slug} --later")  # O(1)
+    return out  # O(1)
 
 
 def main(argv=None) -> int:  # O(N)

@@ -36,9 +36,10 @@ fi  # O(1)
 state="empty folder"  # O(1)
 shopt -s nullglob dotglob  # O(1)
 entries=(./*)  # O(n) directory entries
-if [[ $hud_line == *' | run:open' ]] && [ -f .superlite/orchestrator.json ]; then  # O(1) open run in this checkout
+hud_first="${hud_line%%$'\n'*}"  # O(s) first HUD line; later lines are offers
+if [[ $hud_first == *' | run:open'* ]] && [ -f .superlite/orchestrator.json ]; then  # O(1) open run in this checkout
   state="run in progress"  # O(1)
-elif [[ $hud_line == *' | run:'* ]]; then  # O(1) session row, no open run here: the code stays
+elif [[ $hud_first == *' | run:'* ]]; then  # O(1) session row, no open run here: the code stays
   state="existing code"  # O(1)
 elif [ -f .superlite/orchestrator.json ] && [ -d docs/plans ]; then  # O(1) no session row: the orchestrator check
   state="run in progress"  # O(1)
