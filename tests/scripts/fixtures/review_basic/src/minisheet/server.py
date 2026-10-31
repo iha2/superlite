@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 import json
+import socketserver
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from .workbook import Workbook
+
+
+class _Server(HTTPServer):
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)  # skip HTTPServer's reverse-DNS lookup: it hangs on macOS CI
+        self.server_name, self.server_port = self.server_address[:2]
 
 
 def create_server(wb: Workbook, port: int = 0) -> HTTPServer:
@@ -35,4 +42,4 @@ def create_server(wb: Workbook, port: int = 0) -> HTTPServer:
         def log_message(self, *args):
             pass
 
-    return HTTPServer(("127.0.0.1", port), Handler)
+    return _Server(("127.0.0.1", port), Handler)
