@@ -19,7 +19,7 @@ A checkpoint is a hidden save of one task under `refs/superlite/*`; a commit is 
 | `assign` | Scores idle agents and picks the most relevant one |
 | `checkpoint` | Checks scope, then records one or more tasks' owned files as checkpoints (default: hidden `refs/superlite/*`, branch untouched; real commits with autocommit on); `--dispatch` also prints the next dispatch. `commit_task` is its old name and still works |
 | `autocommit` | `on`/`off`/`status` opt-in real commits (`.superlite/autocommit.json`, env `SUPERLITE_AUTOCOMMIT=1`); `apply` turns checkpoints into commits on the current branch; `clean` deletes them |
-| `agent_specs` | `on`/`off`/`status` opt-in pre-impl specs (`.superlite/agent-specs.json`, env `SUPERLITE_AGENT_SPECS`); `open on\|off` toggles open-in-harness; `prefer on\|off` records the first-session global default in `$SUPERLITE_HOME/preferences.json`. Spec = done+why; plan = how |
+| `agent_specs` | `on`/`off`/`status` opt-in pre-impl specs (`.superlite/agent-specs.json`, env `SUPERLITE_AGENT_SPECS`); `open on\|off` toggles `open_in_harness` (opens plans and specs; `status` always shows it); `prefer on\|off` records the first-session global default in `$SUPERLITE_HOME/preferences.json`. Spec = done+why; plan = how |
 | `run_tests` | Runs the project's test command, with `--background`, then `--wait` for the summary; writes `.superlite/test-summary.json`. Probes for a hung run (see below) |
 | `testprobe` | The hung-test probe `run_tests` uses; run alone it prints the CPU-time method in use and the effective config |
 | `testcmd` | Resolves the project's test command: `.superlite/test-cmd.json`, else detection (npm, go, cargo, dotnet, Python) |

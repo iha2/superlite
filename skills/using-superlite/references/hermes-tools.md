@@ -20,6 +20,7 @@ Skills speak in Claude Code's tool names. On Hermes Agent they resolve as follow
 | `SendMessage` to an agent | no resume tool: call `delegate_task` again with the earlier report and the new findings in `context` |
 | `AskUserQuestion` | ask in plain text, batching up to 4 questions in one message |
 | Plan or todo list | `todo` tool (one item per wave) |
+| Open a plan or spec for the user (`open_in_harness`) | no open tool: path + five-line summary in chat |
 
 ## Instructions file
 

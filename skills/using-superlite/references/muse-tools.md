@@ -19,6 +19,7 @@ Skills speak in Claude Code's tool names. On Muse they resolve as follows.
 | `SendMessage` to an agent | no resume tool: `subagent_spawn` again with the earlier report and the new findings in the prompt |
 | `AskUserQuestion` | `request_user_input` |
 | Plan or todo list | `write_todos`, or a markdown task file via `write_file`/`edit_file` |
+| Open a plan or spec for the user (`open_in_harness`) | no open tool: path + five-line summary in chat |
 
 ## Instructions file
 

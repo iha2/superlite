@@ -5,7 +5,7 @@ NOT the agent plan. After the yes the coordinator writes the machine plan (taskg
 sizes) from it, with the header line `**Review plan:** <path>`. With an AI orchestrator there is no review plan.
 
 File: `docs/plans/<date>-<topic>.review.md`. Nothing is built, dispatched or written (except this file) before the human's approving
-reply. Show the human, in plain text and not with AskUserQuestion, the path, a five-line summary and "Reply approve to start, or tell me
+reply. When `open_in_harness` is on (`sl agent_specs status`), open the plan for the user first (`superlite:drafting`, After writing). Show the human, in plain text and not with AskUserQuestion, the path, a five-line summary and "Reply approve to start, or tell me
 what to change", then END THE TURN. If you understand the answer as approval, send approve:
 `sl orchestrator approve --review <path>` (do not pass their words through; records the path and its sha256 in `.superlite/orchestrator.json`).
 If you do not, revise and ask again.

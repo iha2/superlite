@@ -11,7 +11,7 @@ A **spec** defines what “done” looks like and **why**. A **plan** chooses **
 
 - Check `bash "$SL" agent_specs status`. If **off**, skip unless the user asked for a spec.
 - **Feature flow (default):** write one **feature-sized** spec before implementers code (and before or beside the `.feature.md` / machine plan as the success criteria). Optional task-local notes under `.superlite/specs/<plan-topic>/` refine *how* for a long-running task; they must stay consistent with the feature spec.
-- No human gate on task-local notes. Feature-level specs may be opened for the user when `open_in_harness` is on.
+- No human gate on task-local notes. Feature-level specs and plans may be opened for the user when `open_in_harness` is on.
 
 ## Paths
 
@@ -24,7 +24,7 @@ Use `templates/feature-spec.md`. Prefer diagrams and tables; keep prose outside 
 
 ## Open in harness
 
-When status shows `open_in_harness: on`, after writing the file, open it for the user (Cursor: `open_resource`; else path + five-line summary in chat). `sl agent_specs open off` turns that off without disabling specs.
+When status shows `open_in_harness: on`, after writing the file, open it for the user (`superlite:drafting`, After writing; the harness's open row is in `using-superlite/references/<harness>-tools.md`). The flag now covers plans and specs. `sl agent_specs open off` turns it off without disabling specs.
 
 ## Style (flows §9)
 

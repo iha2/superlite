@@ -20,6 +20,7 @@ Skills speak in Claude Code's tool names. On Gemini CLI they resolve as follows.
 | `AskUserQuestion` | `ask_user` (text, single-select or multi-select; up to 4 questions) |
 | Plan or todo list | `write_todos` (statuses: pending, in_progress, completed, cancelled, blocked); one item per wave |
 | Multiple parallel dispatches | multiple `invoke_agent` calls in the same response |
+| Open a plan or spec for the user (`open_in_harness`) | no open tool: path + five-line summary in chat |
 
 ## Instructions file
 
