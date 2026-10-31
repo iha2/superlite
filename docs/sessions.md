@@ -1,6 +1,6 @@
 # Sessions (worktrees + branches)
 
-A **session** is one line of work: a branch `superlite/sessions/<slug>`, parked run state under `.superlite/session-store/<slug>/`, and optional WIP stash. By default many sessions share one **host worktree** (saves space). A second worktree is only for **parallel** chats.
+A **session** is one line of work: a branch `superlite/sessions/<slug>`, parked run state under `.superlite/session-store/<slug>/`, and optional WIP stash. By default many sessions share one **host** (the main checkout; saves space). A second worktree is only for **parallel** chats.
 
 | Concept | Path / rule |
 |---|---|
@@ -60,7 +60,7 @@ All registry writes take `.superlite/sessions.lock` and replace `sessions.json` 
 | `sl session ensure --slug S` | Idempotent flow entry; see [Auto-start](#auto-start). Last line `SESSION worktree=<path> slug=<s> branch=<b>`; exit 3 `REDIRECT`, exit 4 `ASK untracked` |
 | `sl session close --slug S [--keep-branch]` | End of flow: mark `S` finished, park it and put the host back on the base branch, remove a parallel worktree `ensure` cut |
 | `sl session untracked [ask\|stash\|keep]` | Per-repo choice for untracked files (default `ask`); stored in the main checkout's `sessions.json` |
-| `sl session create --slug S` | Host worktree + branch; make active (an existing slug: use `use`) |
+| `sl session create --slug S` | Branch on the host (the main checkout, or an older registry's host worktree); make active (an existing slug: use `use`; asks before stashing untracked files) |
 | `sl session create --slug S --worktree` | Parallel worktree + new branch |
 | `sl session use --slug S` | Park/stash/switch or REDIRECT |
 | `sl session split --new S [--keep K]` | Parallel: move open hub run + cut new worktree. From a linked worktree (or when the base is busy elsewhere) the run stays where it is. Any failure rolls back run files, WIP and branches |
