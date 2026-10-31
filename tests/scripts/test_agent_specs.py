@@ -12,7 +12,8 @@ SCRIPT = SCRIPTS / "agent_specs.py"
 
 def run(*args, cwd, env=None):
     base = {k: v for k, v in os.environ.items() if k not in (
-        "SUPERLITE_AGENT_SPECS", "SUPERLITE_AGENT_SPECS_OPEN", "SUPERLITE_HOME")}
+        "SUPERLITE_AGENT_SPECS", "SUPERLITE_AGENT_SPECS_OPEN", "SUPERLITE_OPEN_IN_HARNESS",
+        "SUPERLITE_HOME")}
     if env:
         base.update(env)
     return subprocess.run(
@@ -37,7 +38,7 @@ def test_project_on_off(tmp_path):
     assert run("on", cwd=tmp_path, env=env).returncode == 0
     data = json.loads((tmp_path / ".superlite" / "agent-specs.json").read_text(encoding="utf-8"))
     assert data["agent_specs"] is True
-    assert data.get("open_in_harness") is True
+    assert "open_in_harness" not in data
     st = run("status", cwd=tmp_path, env=env)
     assert "agent_specs: on" in st.stdout and "open_in_harness: on" in st.stdout
     assert run("off", cwd=tmp_path, env=env).returncode == 0
@@ -90,3 +91,40 @@ def test_project_overrides_prefer(tmp_path):
     run("off", cwd=tmp_path, env=env)
     assert "agent_specs: off" in run("status", cwd=tmp_path, env=env).stdout
     assert "agent-specs.json" in run("status", cwd=tmp_path, env=env).stdout
+
+
+def test_open_shown_when_specs_off(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    r = run("status", cwd=tmp_path, env={"SUPERLITE_HOME": str(home)})
+    assert r.stdout.splitlines() == [
+        "agent_specs: off", "open_in_harness: on", "source: default (off)"]
+
+
+def test_open_alias_env(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    base = {"SUPERLITE_HOME": str(home)}
+    run("open", "off", cwd=tmp_path, env=base)
+    st = run("status", cwd=tmp_path, env=base)
+    assert "open_in_harness: off" in st.stdout
+    st = run("status", cwd=tmp_path,
+             env={**base, "SUPERLITE_OPEN_IN_HARNESS": "1"})
+    assert "open_in_harness: on" in st.stdout
+    st = run("status", cwd=tmp_path, env={
+        **base, "SUPERLITE_OPEN_IN_HARNESS": "1",
+        "SUPERLITE_AGENT_SPECS_OPEN": "0"})
+    assert "open_in_harness: off" in st.stdout
+
+
+def test_open_toggle_keeps_prefer(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    env = {"SUPERLITE_HOME": str(home)}
+    run("prefer", "on", cwd=tmp_path, env=env)
+    assert run("open", "off", cwd=tmp_path, env=env).returncode == 0
+    lines = run("status", cwd=tmp_path, env=env).stdout.splitlines()
+    assert lines[0] == "agent_specs: on"
+    assert lines[1] == "open_in_harness: off"
+    data = json.loads((tmp_path / ".superlite" / "agent-specs.json").read_text(encoding="utf-8"))
+    assert "agent_specs" not in data

@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Opt-in pre-implementation specs for feature (and later) flows.
 
+The open_in_harness flag covers both finished plans and specs.
+
     agent_specs.py on|off|status
     agent_specs.py open on|off
     agent_specs.py prefer on|off
 
 Default is OFF. Env SUPERLITE_AGENT_SPECS wins over project
 `.superlite/agent-specs.json`, which wins over `$SUPERLITE_HOME/preferences.json`
-(default per history.home(): XDG data dir, or an existing ~/.superlite). `open_in_harness` defaults ON when
-specs are on; toggle with `open on|off` (project) or prefer's global file.
+(default per history.home(): XDG data dir, or an existing ~/.superlite). `open_in_harness` (open plans and specs in the
+harness) defaults ON, whether specs are on or off; toggle with `open on|off` (project) or prefer's global file.
 `prefer` records the install/first-session choice in preferences.json so
 session-start asks only once.
 """
@@ -80,12 +82,14 @@ def is_on() -> bool:
 
 
 def open_in_harness() -> bool:
-    """Whether to open a newly written spec in the harness. Default on.
+    """Whether to open a finished plan or spec in the harness. Default on.
 
-    Env SUPERLITE_AGENT_SPECS_OPEN wins, then project, then preferences,
-    else True (open when specs are used).
+    Env SUPERLITE_AGENT_SPECS_OPEN wins, then SUPERLITE_OPEN_IN_HARNESS,
+    then project, then preferences, else True.
     """
     env = _env_bool("SUPERLITE_AGENT_SPECS_OPEN")
+    if env is None:
+        env = _env_bool("SUPERLITE_OPEN_IN_HARNESS")
     if env is not None:
         return env
     proj = _read_json(PROJECT)
@@ -103,10 +107,6 @@ def set_project(on: bool | None = None, open_flag: bool | None = None) -> None:
         data["agent_specs"] = bool(on)
     if open_flag is not None:
         data["open_in_harness"] = bool(open_flag)
-    if "agent_specs" not in data and on is None:
-        data["agent_specs"] = False
-    if "open_in_harness" not in data and open_flag is None:
-        data["open_in_harness"] = True
     _write_json(PROJECT, data)
 
 
@@ -124,8 +124,8 @@ def status_lines() -> list[str]:
     on = is_on()
     open_h = open_in_harness()
     lines = [
-        f"agent_specs: {'on' if on else 'off'}"
-        + (f" (open_in_harness: {'on' if open_h else 'off'})" if on else ""),
+        f"agent_specs: {'on' if on else 'off'}",
+        f"open_in_harness: {'on' if open_h else 'off'}",
     ]
     env = os.environ.get("SUPERLITE_AGENT_SPECS", "").strip()
     if env:
