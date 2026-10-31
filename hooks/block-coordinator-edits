@@ -48,10 +48,13 @@ jstr() {
 norm() {
   local p="${1//\\//}" re='^([A-Za-z]):/(.*)$'
   while [[ $p == *//* ]]; do p="${p//\/\//\/}"; done
-  [[ $p =~ $re ]] && p="/${BASH_REMATCH[1],,}/${BASH_REMATCH[2]}"
+  [[ $p =~ $re ]] && { lower "${BASH_REMATCH[1]}"; p="/$LOWER/${BASH_REMATCH[2]}"; }
   while [[ $p == */ && $p != / ]]; do p="${p%/}"; done
   NORM="$p"
 }
+
+# lower S: S in lower case (ASCII), into LOWER. bash 3.2 (stock macOS) has no ${var,,}.
+lower() { LOWER="$(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]')"; }
 
 proj="${CLAUDE_PROJECT_DIR:-${CURSOR_PROJECT_DIR:-}}"
 if [ -z "$proj" ]; then jstr cwd; proj="${REPLY//\\\\//}"; fi
@@ -216,7 +219,7 @@ if [ "$tool" = Agent ] || [ "$tool" = Task ]; then
   [ -n "$hit" ] || exit 0
 fi
 
-norm "$proj"; projn="$NORM"; projl="${projn,,}"
+norm "$proj"; projn="$NORM"; lower "$projn"; projl="$LOWER"
 
 prot=0
 # project_code PATH: succeeds when writing PATH is denied (sets prot=1 for protected files).
@@ -225,12 +228,12 @@ project_code() {
   norm "$1"; p="$NORM"; p="${p%\"}"; p="${p#\"}"; p="${p%\'}"; p="${p#\'}"
   case "$p" in ''|*'$'*|'~'*|/dev/*|-*) return 1 ;; esac
   case "$p" in
-    /*) pl="${p,,}"
+    /*) lower "$p"; pl="$LOWER"
         case "$pl" in "$projl"/*) rel="${p:$((${#projn}+1))}" ;; *) return 1 ;; esac ;;
     *) rel="${p#./}" ;;
   esac
   case "$rel" in ''|.|..|../*) return 1 ;; esac
-  pl="${rel,,}"
+  lower "$rel"; pl="$LOWER"
   case "$pl" in .superlite/human-replies.jsonl|.superlite/orchestrator.json|.superlite/feature.json) prot=1; return 0 ;; esac
   [ "$active" = 1 ] || return 1
   case "$rel" in
@@ -251,7 +254,7 @@ elif [ -z "$hit" ]; then
   cmd="${cmd//\\\\/$'\x01'}"   # JSON \\ first, so \\" and \\n keep their shell meaning
   cmd="${cmd//\\\"/\"}"; cmd="${cmd//\\t/ }"; cmd="${cmd//\\r/}"; cmd="${cmd//\\n/$'\n'}"
   cmd="${cmd//$'\x01'/\\}"
-  lc="${cmd,,}"
+  lower "$cmd"; lc="$LOWER"
   mentions=0
   [[ $lc == *human-replies.jsonl* || $lc == *orchestrator.json* || $lc == *.superlite/feature.json* ]] && mentions=1
   # sl tools that start a build are denied until the plan is approved.

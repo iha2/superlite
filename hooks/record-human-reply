@@ -72,8 +72,9 @@ if ! [[ $oj =~ $re_unappr ]]; then
 fi
 
 jstr prompt; text="$REPLY"
-lc="${text,,}"
-lc="${lc//$'\u2019'/\'}"; lc="${lc//$'\u2018'/\'}"
+# bash 3.2 (stock macOS) has neither ${var,,} nor $'\u': tr, and the curly quotes as UTF-8 bytes.
+lc="$(printf '%s' "$text" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+lc="${lc//$'\xe2\x80\x99'/\'}"; lc="${lc//$'\xe2\x80\x98'/\'}"
 
 # Drop real questions ("should I approve?", "can we go ahead?"). Keep every other clause, so
 # "looks good, can you add tests?" and a bare "approve?" still count.
@@ -117,12 +118,16 @@ done
 b='(^|[^[:alnum:]_])'; e='([^[:alnum:]_]|$)'
 re_yes="$b(approved|approve|absolutely|definitely|affirmative|accepted|agreed|agree|alright|all[[:space:]]+right|all[[:space:]]+good|go[[:space:]]+ahead|go[[:space:]]+for[[:space:]]+it|good[[:space:]]+to[[:space:]]+go|good[[:space:]]+enough|good[[:space:]]+with[[:space:]]+me|green[[:space:]]+light|looks[[:space:]]+great|looks[[:space:]]+good|looks[[:space:]]+fine|sounds[[:space:]]+great|sounds[[:space:]]+good|sounds[[:space:]]+fine|let'?s[[:space:]]+do[[:space:]]+this|lets[[:space:]]+do[[:space:]]+this|let'?s[[:space:]]+do[[:space:]]+it|lets[[:space:]]+do[[:space:]]+it|let'?s[[:space:]]+go|lets[[:space:]]+go|full[[:space:]]+send|fine[[:space:]]+by[[:space:]]+me|fine[[:space:]]+with[[:space:]]+me|works[[:space:]]+for[[:space:]]+me|it[[:space:]]+works|this[[:space:]]+works|that[[:space:]]+works|i'?m[[:space:]]+good|im[[:space:]]+good|i[[:space:]]+accept|i[[:space:]]+like[[:space:]]+it|love[[:space:]]+it|make[[:space:]]+it[[:space:]]+so|run[[:space:]]+with[[:space:]]+it|carry[[:space:]]+on|copy[[:space:]]+that|please[[:space:]]+continue|sign[[:space:]]+off|signed[[:space:]]+off|ship[[:space:]]+it|build[[:space:]]+it|send[[:space:]]+it|do[[:space:]]+this|do[[:space:]]+it|thumbs[[:space:]]+up|okay|ok|yeah|yep|yup|yes|sure|lgtm|sgtm|proceed|continue|perfect|roger)$e"
 approves=false
-# Thumbs-up, check mark, ok-hand: the character itself, or the \u escape JSON leaves in the prompt.
-[[ $statements =~ $re_yes || $text == *$'\U1F44D'* || $text == *$'\U2705'* || $text == *$'\U1F44C'* \
+# Thumbs-up, check mark, ok-hand: the character itself (as UTF-8 bytes), or the \u escape JSON leaves in the prompt.
+[[ $statements =~ $re_yes || $text == *$'\xf0\x9f\x91\x8d'* || $text == *$'\xe2\x9c\x85'* || $text == *$'\xf0\x9f\x91\x8c'* \
   || $lc == *'\ud83d\udc4d'* || $lc == *'\u2705'* || $lc == *'\ud83d\udc4c'* ]] && approves=true
 
 text="${text:0:160}"
 text="${text//\\/\\\\}"; text="${text//\"/\\\"}"
-now="${EPOCHREALTIME//[.,]/}"; now="${now:0:${#now}-3}"
+now="${EPOCHREALTIME//[.,]/}"; now="${now%???}"   # epoch ms
+# bash 3.2 (stock macOS) has no EPOCHREALTIME: date's %N (GNU, newer macOS), else perl, else whole seconds.
+[[ $now =~ ^[0-9]{13,}$ ]] || { now="$(date +%s%N)"; now="${now%??????}"; }
+[[ $now =~ ^[0-9]{13,}$ ]] || now="$(perl -MTime::HiRes=time -e 'printf "%d", time*1000' 2>/dev/null)"
+[[ $now =~ ^[0-9]{13,}$ ]] || now="$(date +%s)000"
 printf '{"t":%s,"approves":%s,"text":"%s"}\n' "$now" "$approves" "$text" >> "$sd/human-replies.jsonl" 2>/dev/null
 exit 0
