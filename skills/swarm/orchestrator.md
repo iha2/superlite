@@ -3,7 +3,7 @@
 When someone asks superlite to create something, it first settles who orchestrates (D40).
 
 - **Human orchestrator:** the human validates the plan before it is linted and sent off, in two phases. Phase 1: the review plan
-  (`docs/plans/<date>-<topic>.review.md`, plain words with diagrams; template in `../drafting/review-plan.md`) is shown with its
+  (`docs/plans/<date>-<topic>.review.md`, plain words with diagrams; template in `../drafting/review-plan.md`) is opened for the user first when `open_in_harness` is on (`sl agent_specs status`; `superlite:drafting`, After writing), then shown with its
   path and a five-line summary. The same message offers the read-only agent map, so approval stays the one stop: "Reply
   approve. Add `map` to watch the run in the agent map pane (`/superlite:agents`: agents, tasks and the ledger)." Phase 2,
   after the yes: `sl orchestrator approve --review <path>`, open the map if the reply asked for it (no terminal tail: the map
@@ -46,7 +46,7 @@ unattended signal (all mean AI). When no human can answer (a headless `claude -p
 ## The hard rule (human mode)
 No orchestrated build starts until the human approves the plan: nothing is linted, dispatched or sent to an agent before the human's
 approving reply. The approval is asked in PLAIN TEXT, never with AskUserQuestion, because the typed reply is what the hook verifies: show
-the review plan path, a five-line summary and "Reply approve to start, or tell me what to change", then end the turn. Read the answer.
+open the review plan first when `open_in_harness` is on (`superlite:drafting`, After writing), then the review plan path, a five-line summary and "Reply approve to start, or tell me what to change", then end the turn. Read the answer.
 If you understand it as approval, send `approve --review`. Do not pass their words through and do not ask them to retype approve.
 If you understand it as changes with no approval, revise and ask again. `set human` writes `approved: false`. The hook (`block-coordinator-edits`) denies superlite agent dispatch and the
 build tools while the mode is human and unapproved, and always denies the model writing `orchestrator.json` or `human-replies.jsonl`.
