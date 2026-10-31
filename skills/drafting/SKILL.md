@@ -173,7 +173,7 @@ Read the lint output:
 - **`MISSED TARGET`** is a warning, not a failure. Consider re-splitting or stubbing the tasks on the named critical path. If the chain is inherently sequential, accept the plan and record `Ruling: <why>`.
 - **`NOTE:`** (under low_min) is advice only.
 - **Every other error must be fixed**: placeholders, Consumes/Produces mismatches, diagram parse errors, `SIZE:` (over high_min), `CHAIN:`, `KIND:`, `OPUS-TASK:`, spec sections with no task. First dispatch every task on the `DISPATCH NOW:` line, then patch the FIX tasks listed under `--stable` (edit or rewrite; keep dispatched blocks unchanged), rerun `schedule --insert` then `lint --stable`, until only `MISSED TARGET` and `NOTE:` remain. Stable tasks need no rework: in delegated mode they dispatch now; with a human approver they wait for the yes (see "Who decides sets the mode").
-- **Open it:** every human-facing plan (review, feature, MVP, combined design+plan) is opened this way once written, in both orchestrator modes; an AI orchestrator opens it too and does not wait for the user. Never the machine, `.proto.md` or integration plans.
+- **Open it:** check `sl agent_specs status`. Only when `open_in_harness: on`, open every finished human-facing plan (review, feature, MVP, combined design+plan) using the open row in `using-superlite/references/<harness>-tools.md`. This applies in both orchestrator modes; an AI orchestrator opens it too and does not wait for the user. Never open the machine, `.proto.md` or integration plans.
 
 ## Self-review checklist
 
