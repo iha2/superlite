@@ -34,7 +34,7 @@ jstr() {
 
 # Project: Claude Code's env or cwd; Cursor runs plugin hooks elsewhere, so its env or the first
 # workspace root (sent as /c:/path) that holds a superlite run.
-jstr cwd; proj="${CLAUDE_PROJECT_DIR:-${CURSOR_PROJECT_DIR:-${REPLY//\\//}}}"
+jstr cwd; in_cwd="${REPLY//\\//}"; proj="${CLAUDE_PROJECT_DIR:-${CURSOR_PROJECT_DIR:-$in_cwd}}"
 if [ -z "$proj" ]; then
   re_roots='"workspace_roots"[[:space:]]*:[[:space:]]*\[([^]]*)\]'
   re_item='^[^"]*"(([^"\\]|\\.)*)"(.*)$'
@@ -58,6 +58,14 @@ while [ ! -f "$d/.superlite/orchestrator.json" ]; do
   up="${d%/*}"; { [ -z "$up" ] || [ "$up" = "$d" ]; } && break; d="$up"
 done
 [ -f "$d/.superlite/orchestrator.json" ] && proj="$d"
+# A session worktree sits below the project: the run at or above the working directory wins.
+if [ -n "$in_cwd" ]; then
+  d="$in_cwd"
+  while [ ! -f "$d/.superlite/orchestrator.json" ]; do
+    up="${d%/*}"; { [ -z "$up" ] || [ "$up" = "$d" ]; } && break; d="$up"
+  done
+  [ -f "$d/.superlite/orchestrator.json" ] && proj="$d"
+fi
 sd="$proj/.superlite"
 [ -f "$sd/orchestrator.json" ] || exit 0
 IFS= read -r -d '' oj < "$sd/orchestrator.json"

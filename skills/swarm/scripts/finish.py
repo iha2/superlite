@@ -214,6 +214,13 @@ def main(argv=None):  # O(R*w + I*w)
     import exclusive  # the run is done: peer plugins may load again | O(1)
     root = Path(a.ledger).resolve().parent  # .superlite, or the ledger's directory | O(1)
     print(exclusive.release(root if root.name == ".superlite" else root / ".superlite"))  # O(S)
+    try:  # fail open: no registry, no git, unreadable sessions.json -> no line | O(N)
+        import session  # O(1)
+        slug = session.mark_run((root if root.name == ".superlite" else root / ".superlite").parent, "finished")  # O(N)
+        if slug:  # O(1)
+            print(f"session: {slug} finished")  # O(1)
+    except Exception:  # O(1)
+        pass  # O(1)
     return 0  # O(1)
 
 

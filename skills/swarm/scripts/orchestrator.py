@@ -24,6 +24,7 @@ require(plan_or_dir, tool) -> exit code (prints the message), read_state, summar
 import argparse  # O(1)
 import hashlib  # O(1)
 import json  # O(1)
+import os  # O(1)
 import sys  # O(1)
 from datetime import datetime  # O(1)
 from pathlib import Path  # O(1)
@@ -156,6 +157,21 @@ def summary_line(plan_or_dir=None, review=None) -> str:  # O(file)
     return f"orchestrator: human, awaiting approval (set {st.get('time', '?')}; {reply_note(plan_or_dir, review)})"  # O(1)
 
 
+def warn_no_session(plan_or_dir=None) -> None:  # O(N)
+    """stderr hint when this checkout has no session row; fails open (no git, no registry file, bad json -> silent)."""
+    try:  # O(1)
+        if os.environ.get("SUPERLITE_NO_AUTO_SESSION") == "1":  # O(1)
+            return  # O(1)
+        sys.path.insert(0, str(Path(__file__).resolve().parent))  # O(1)
+        import session  # O(1)
+        here = session.toplevel(sl_dir(plan_or_dir).resolve().parent)  # O(1)
+        reg = session.read_reg(session.hub_root(here))  # O(file)
+        if session.row_at(reg, here, session.resolve_host(session.hub_root(here), reg)) is None:  # O(N)
+            print("session: none for this checkout; run sl session ensure --slug <topic> first", file=sys.stderr)  # O(1)
+    except Exception:  # O(1)
+        pass  # O(1)
+
+
 def now() -> str:  # O(1)
     return datetime.now().isoformat(timespec="seconds")  # O(1)
 
@@ -182,6 +198,7 @@ def main(argv=None):  # O(1)
             with f.open("a", encoding="utf-8") as fh:  # O(1)
                 fh.write(f"Ruling: {a.ruling}" + chr(10))  # O(1)
         print(summary_line(a.plan))  # O(1)
+        warn_no_session(a.plan)  # O(N)
         import exclusive  # peer plugins stay off until sl finish | O(1)
         print(exclusive.suspend(a.plan))  # O(S)
         return 0  # O(1)

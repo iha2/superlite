@@ -21,6 +21,8 @@
 
 Install it ([below](#install)), open a session in your project, and say what you want. superlite shows a one-screen intro the first time; `/superlite:intro` brings it back and `/superlite:help` has every detail.
 
+Each run starts its own session automatically (`sl session ensure`): a branch `superlite/sessions/<topic>` in your checkout, or a parallel worktree if another run is still open. Shipping closes it. See [Sessions](docs/sessions.md).
+
 ### Say what you want
 
 | Situation | Say something like | What happens |
