@@ -10,7 +10,7 @@ Skills speak in Claude Code's tool names. On Cursor they resolve as follows. Tru
 | `SendMessage` to an agent | `Task` with `resume` set to that agent id |
 | `AskUserQuestion` | Plain text in one message (up to 4 questions); Cursor has no AskUserQuestion tool |
 | Plan or todo list | Cursor todos / plan UI if present; else a markdown checklist |
-| Open a markdown spec (`agent_specs` open_in_harness) | `open_resource` on the workspace path; else path + summary in chat |
+| Open a plan or spec for the user (`open_in_harness`) | `open_resource` on the workspace path; else path + five-line summary in chat |
 
 ## When the plan is on Cursor
 

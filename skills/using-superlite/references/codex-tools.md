@@ -11,6 +11,7 @@ Skills speak in Claude Code's tool names. On Codex (App and CLI) they resolve as
 | Waiting for agents | `wait_agent` |
 | `AskUserQuestion` | `request_user_input` when available, otherwise plain text with up to 4 questions in one message |
 | Plan or todo list | `update_plan` (one step per wave) |
+| Open a plan or spec for the user (`open_in_harness`) | no open tool: path + five-line summary in chat |
 
 ## Subagent dispatch requires multi-agent support
 

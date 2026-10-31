@@ -10,6 +10,7 @@ Skills speak in Claude Code's tool names. On Pi they resolve as follows.
 | `SendMessage` to an agent | the subagent tool's resume workflow; otherwise dispatch again with the earlier report in the prompt |
 | `AskUserQuestion` | ask in plain text, batching up to 4 questions in one message |
 | Plan or todo list | an installed todo/task tool if available, otherwise the plan file or a repo-local `TODO.md` |
+| Open a plan or spec for the user (`open_in_harness`) | no open tool: path + five-line summary in chat |
 
 Pi's built-in coding tools are lowercase: `read`, `write`, `edit`, `bash`, plus optional `grep`, `find` and `ls`.
 

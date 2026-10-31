@@ -9,6 +9,7 @@ Claude Code is the reference harness: superlite's skills speak its vocabulary, s
 | Continue an agent | `SendMessage` to that agent |
 | Ask the user | `AskUserQuestion` (up to 4 questions per call) |
 | Plan or todo list | the harness's plan/todo tools (one item per wave) |
+| Open a plan or spec for the user (`open_in_harness`) | desktop app: `mcp__ccd_view__show_pane` with `pane: "file"` and the path; terminal CLI: a markdown link `[path](path)`; if neither works, path + five-line summary |
 
 Plugin agents exist here, so use `superlite:*` subagent types directly. `model` and `effort` on the call override the agent's frontmatter.
 

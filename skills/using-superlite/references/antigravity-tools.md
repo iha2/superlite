@@ -10,6 +10,7 @@ Skills speak in Claude Code's tool names. On the Antigravity CLI (`agy`) they re
 | `SendMessage` to an agent | no resume tool: dispatch a new subagent with the earlier report and the new findings in its prompt |
 | `AskUserQuestion` | ask in plain text, batching up to 4 questions in one message |
 | Plan or todo list | a **task artifact** (see [Task tracking](#task-tracking)). **Not** `manage_task`, which manages background processes. |
+| Open a plan or spec for the user (`open_in_harness`) | no open tool: path + five-line summary in chat |
 
 ## Running superlite's agents
 
