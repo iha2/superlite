@@ -1,5 +1,6 @@
 """Fixture HTTP service: GET/POST /echo; GET /crash closes the listener (a simulated server crash)."""
 import json
+import socketserver
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 
@@ -38,6 +39,10 @@ class Handler(BaseHTTPRequestHandler):
 
 
 class Server(HTTPServer):
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)  # skip HTTPServer's reverse-DNS lookup: it hangs on macOS CI
+        self.server_name, self.server_port = self.server_address[:2]
+
     def crash(self):
         self.socket.close()  # the serve loop dies on its next select
 

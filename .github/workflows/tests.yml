@@ -31,6 +31,13 @@ jobs:
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           python-version: "3.12"
+      - name: Time reverse-DNS lookups (HTTPServer.server_bind)
+        run: |
+          uv run python -c "
+          import socket, time
+          for h in ('127.0.0.1', '', socket.gethostname()):
+              t = time.time(); r = socket.getfqdn(h); print(repr(h), '->', repr(r), '%.2fs' % (time.time() - t))
+          "
       - name: Run tests under /bin/bash 3.2
         run: |
           export PATH="/bin:$PATH"
