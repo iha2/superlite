@@ -49,3 +49,26 @@ def test_shipping_closes_and_handles_ask():  # O(1)
     text = (ROOT / "skills/shipping/SKILL.md").read_text(encoding="utf-8")
     assert "sl session close" in text
     assert "ASK untracked" in text
+
+
+def _has(text: str, phrases) -> bool:  # O(n)
+    return all(p in text for p in phrases)
+
+
+FLOW_PHRASES = ("ASK move", "superlite sync:")
+SHIP_PHRASES = ("ASK move", "sl session status")
+NEW_CASES = [(rel, FLOW_PHRASES) for rel in FLOWS] + [("skills/shipping/SKILL.md", SHIP_PHRASES)]
+
+
+@pytest.mark.parametrize("rel,phrases", NEW_CASES)  # O(1)
+def test_move_and_sync_documented(rel, phrases):  # O(n)
+    assert _has((ROOT / rel).read_text(encoding="utf-8"), phrases), rel
+
+
+@pytest.mark.parametrize("rel,phrases", NEW_CASES)  # O(1)
+@pytest.mark.parametrize("idx", [0, 1])  # O(1)
+def test_move_and_sync_check_fails_without_phrase(rel, phrases, idx, tmp_path):  # O(n)
+    text = (ROOT / rel).read_text(encoding="utf-8")
+    p = tmp_path / Path(rel).name
+    p.write_text(text.replace(phrases[idx], ""), encoding="utf-8")
+    assert not _has(p.read_text(encoding="utf-8"), phrases), (rel, phrases[idx])
