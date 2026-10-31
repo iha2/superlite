@@ -57,7 +57,8 @@ norm() {
 lower() { LOWER="$(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]')"; }
 
 proj="${CLAUDE_PROJECT_DIR:-${CURSOR_PROJECT_DIR:-}}"
-if [ -z "$proj" ]; then jstr cwd; proj="${REPLY//\\\\//}"; fi
+jstr cwd; in_cwd="${REPLY//\\\\//}"
+if [ -z "$proj" ]; then proj="$in_cwd"; fi
 if [ -z "$proj" ]; then   # Cursor: the first workspace root that holds a superlite run
   re_roots='"workspace_roots"[[:space:]]*:[[:space:]]*\[([^]]*)\]'
   re_item='^[^"]*"(([^"\\]|\\.)*)"(.*)$'
@@ -80,6 +81,14 @@ while [ ! -f "$d/.superlite/orchestrator.json" ]; do
   up="${d%/*}"; { [ -z "$up" ] || [ "$up" = "$d" ]; } && break; d="$up"
 done
 [ -f "$d/.superlite/orchestrator.json" ] && proj="$d"
+# A session worktree sits below the project: the run at or above the working directory wins.
+if [ -n "$in_cwd" ]; then
+  d="$in_cwd"
+  while [ ! -f "$d/.superlite/orchestrator.json" ]; do
+    up="${d%/*}"; { [ -z "$up" ] || [ "$up" = "$d" ]; } && break; d="$up"
+  done
+  [ -f "$d/.superlite/orchestrator.json" ] && proj="$d"
+fi
 sd="$proj/.superlite"
 [ -d "$sd" ] || exit 0
 
