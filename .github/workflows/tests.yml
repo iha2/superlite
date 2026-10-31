@@ -34,9 +34,13 @@ jobs:
       - name: Time reverse-DNS lookups (HTTPServer.server_bind)
         run: |
           uv run python -c "
-          import socket, time
+          import socket, subprocess, sys
           for h in ('127.0.0.1', '', socket.gethostname()):
-              t = time.time(); r = socket.getfqdn(h); print(repr(h), '->', repr(r), '%.2fs' % (time.time() - t))
+              print('Looking up', repr(h), flush=True)
+              try:
+                  subprocess.run([sys.executable, '-u', '-c', 'import socket, sys, time; t = time.monotonic(); r = socket.getfqdn(sys.argv[1]); print(repr(sys.argv[1]), repr(r), time.monotonic() - t)', h], timeout=15)
+              except subprocess.TimeoutExpired:
+                  print('Lookup timed out:', repr(h), flush=True)
           "
       - name: Run tests under /bin/bash 3.2
         run: |
