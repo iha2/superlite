@@ -90,17 +90,19 @@ def test_ensure_is_idempotent(repo):
     assert (repo / ".superlite" / "sessions.json").read_text() == before
 
 
-def test_ensure_goes_parallel_while_active_is_open(repo):
+def test_ensure_moves_open_host_session_out_while_active_is_open(repo):
     run("ensure", "--slug", "demo", cwd=repo)
-    (repo / "docs" / "plans" / "other.md").write_text("# other\n")
-    cp = run("ensure", "--slug", "next", cwd=repo)
+    (repo / "app.py").write_text("print('wip')\n")
+    cp = run("ensure", "--slug", "next", "--move", "yes", cwd=repo)
     assert cp.returncode == 0, cp.both
     wt = repo / ".superlite" / "worktrees" / "sessions" / "next"
     assert branch(wt) == "superlite/sessions/next"
     assert last(cp) == f"SESSION worktree={wt} slug=next branch=superlite/sessions/next"
-    assert branch(repo) == "superlite/sessions/demo"
-    assert (repo / "docs" / "plans" / "other.md").is_file()
-    assert row_of(repo, "next")["owned"] is True and reg_of(repo)["active"] == "demo"
+    old = repo / ".superlite" / "worktrees" / "sessions" / "demo"
+    assert branch(old) == "superlite/sessions/demo" and (old / "app.py").read_text() == "print('wip')\n"
+    assert branch(repo) == "main" and git(repo, "status", "--porcelain").strip() == ""
+    assert row_of(repo, "next")["owned"] is True and reg_of(repo)["active"] is None
+    assert row_of(repo, "demo")["owned"] is True and row_of(repo, "demo")["status"] == "parallel"
 
 
 def test_finished_active_is_parked_and_new_session_goes_in_place(repo):
@@ -152,19 +154,19 @@ def test_close_host_parks_and_switches_back_keeping_branch(repo):
 
 def test_close_parallel_removes_owned_worktree_keeps_branch(repo):
     run("ensure", "--slug", "demo", cwd=repo)
-    run("ensure", "--slug", "next", cwd=repo)
+    run("ensure", "--slug", "next", "--move", "yes", cwd=repo)
     wt = repo / ".superlite" / "worktrees" / "sessions" / "next"
     cp = run("close", "--slug", "next", "--keep-branch", cwd=repo)
     assert cp.returncode == 0, cp.both
     assert not wt.exists()
     assert git(repo, "branch", "--list", "superlite/sessions/next").strip()
     assert row_of(repo, "next")["run"] == "finished"
-    assert branch(repo) == "superlite/sessions/demo"
+    assert branch(repo) == "main"
 
 
 def test_close_parallel_without_keep_branch_deletes_it(repo):
     run("ensure", "--slug", "demo", cwd=repo)
-    run("ensure", "--slug", "next", cwd=repo)
+    run("ensure", "--slug", "next", "--move", "yes", cwd=repo)
     assert run("close", "--slug", "next", cwd=repo).returncode == 0
     assert not git(repo, "branch", "--list", "superlite/sessions/next").strip()
     assert all(s["slug"] != "next" for s in reg_of(repo)["sessions"])
@@ -175,17 +177,18 @@ def test_close_unknown_slug_fails(repo):
     assert run("close", "--slug", "nope", cwd=repo).returncode == 2
 
 
-def test_legacy_run_is_adopted_then_new_slug_goes_parallel(repo):
+def test_legacy_run_is_adopted_then_moved_out_for_new_slug(repo):
     (repo / ".superlite").mkdir()
     (repo / ".superlite" / "orchestrator.json").write_text('{"mode":"ai"}\n')
     (repo / ".superlite" / "feature.json").write_text('{"topic":"old-thing"}\n')
-    cp = run("ensure", "--slug", "new", cwd=repo)
+    cp = run("ensure", "--slug", "new", "--move", "yes", cwd=repo)
     assert cp.returncode == 0, cp.both
     reg = reg_of(repo)
-    assert reg["active"] == "old-thing" and reg["host_worktree"] == repo.as_posix()
+    assert reg["active"] is None and reg["host_worktree"] == repo.as_posix()
     assert row_of(repo, "old-thing")["run"] == "open"
-    assert branch(repo) == "superlite/sessions/old-thing"
-    assert (repo / ".superlite" / "orchestrator.json").read_text() == '{"mode":"ai"}\n'
+    old = repo / ".superlite" / "worktrees" / "sessions" / "old-thing"
+    assert branch(old) == "superlite/sessions/old-thing" and branch(repo) == "main"
+    assert (old / ".superlite" / "orchestrator.json").read_text() == '{"mode":"ai"}\n'
     wt = repo / ".superlite" / "worktrees" / "sessions" / "new"
     assert wt.is_dir() and last(cp).startswith(f"SESSION worktree={wt} slug=new")
 
@@ -258,7 +261,7 @@ def test_mark_run_none_without_registry_or_row_and_never_raises(repo, tmp_path):
     assert session.mark_run(repo, "finished") is None
     assert session.mark_run(tmp_path / "missing", "finished") is None
     run("ensure", "--slug", "demo", cwd=repo)
-    run("ensure", "--slug", "next", cwd=repo)
+    run("ensure", "--slug", "next", "--move", "yes", cwd=repo)
     wt = repo / ".superlite" / "worktrees" / "sessions" / "next"
     assert session.mark_run(wt, "finished") == "next"
     assert row_of(repo, "next")["run"] == "finished" and row_of(repo, "demo")["run"] == "open"
@@ -347,7 +350,7 @@ def test_close_notes_untracked_files_before_closed_line(repo):
 
 def test_status_shows_removed_for_closed_parallel_worktree(repo):
     run("ensure", "--slug", "demo", cwd=repo)
-    run("ensure", "--slug", "next", cwd=repo)
+    run("ensure", "--slug", "next", "--move", "yes", cwd=repo)
     run("close", "--slug", "next", "--keep-branch", cwd=repo)
     out = run("status", cwd=repo).out
     assert "worktree (removed)" in out and "worktree None" not in out
@@ -473,5 +476,5 @@ def test_no_gitignore_uses_info_exclude(repo):
     assert not (repo / ".gitignore").exists()
     assert ".superlite/" in (repo / ".git" / "info" / "exclude").read_text().splitlines()
     assert git(repo, "status", "--porcelain").strip() == ""
-    run("ensure", "--slug", "next", cwd=repo)
+    run("ensure", "--slug", "next", "--move", "yes", cwd=repo)
     assert (repo / ".git" / "info" / "exclude").read_text().splitlines().count(".superlite/") == 1

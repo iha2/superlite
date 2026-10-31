@@ -62,7 +62,7 @@ def test_finish_marks_host_session_finished(repo):
 
 def test_finish_marks_parallel_worktree_only(repo):
     run("session.py", "ensure", "--slug", "demo", cwd=repo)
-    run("session.py", "ensure", "--slug", "next", cwd=repo)
+    run("session.py", "ensure", "--slug", "next", "--move", "yes", cwd=repo)
     wt = repo / ".superlite" / "worktrees" / "sessions" / "next"
     assert "session: next finished" in finish(wt).stdout
     rows = {s["slug"]: s for s in reg_of(repo)["sessions"]}
