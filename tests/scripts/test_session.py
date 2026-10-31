@@ -287,6 +287,12 @@ def test_hud_uses_path_components_and_works_from_worktree(repo):
     assert cp.out.startswith("superlite session: auth |"), cp.both
 
 
+def test_hud_silent_in_hub_without_active_session(repo):
+    assert run(SESSION, "create", "--slug", "side", "--worktree", cwd=repo).returncode == 0
+    cp = run(HUD, str(repo), cwd=repo)
+    assert cp.returncode == 0 and cp.out.strip() == "", cp.both
+
+
 def test_cost_report_emits_hud_without_cost_or_run_dir(repo):
     assert run(SESSION, "create", "--slug", "solo", "--worktree", cwd=repo).returncode == 0
     wt = repo / ".superlite" / "worktrees" / "sessions" / "solo"
