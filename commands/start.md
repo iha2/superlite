@@ -15,6 +15,8 @@ Start a superlite session. Arguments: $ARGUMENTS
    - On a `SESSION worktree=<path>` line, move the agent root to `<path>` when it differs from the current checkout. On `REDIRECT worktree=…`, open that worktree instead.
    - If ensure (or `use`/`close`) prints `ASK untracked=<N> slug=<s>: <files>` and exits 4, nothing changed. Ask in ONE AskUserQuestion: "Stash with <s>" / "Keep in the folder" / "Always stash (this repo)" / "Always keep (this repo)".
    - For an "Always" choice run `sl session untracked stash|keep` first; then rerun the same command with `--untracked stash|keep`.
+   - If ensure prints `ASK move slug=<s>: ...` and exits 4, nothing changed. Ask: "Move it" / "Not now"; on "Move it" rerun ensure with `--move yes`.
+   - If the hook printed `superlite sync:`, ask once: "Bring main in now" / "Later". "Now" runs `sl session sync --slug <s>`; "Later" runs it with `--later`. On `CONFLICT` (exit 5) dispatch a fixer agent to resolve the files and run the session's tests, then `sl session sync --slug <s> --continue`, or `--abort` if it cannot.
    - Then run `sl orchestrator set human|ai`.
 5. Load the skill for the mode and follow it:
    - Regular: print `assets/flows/regular.txt` the same way (one ```text block, verbatim, never redrawn), then `superlite:using-superlite` sizing and `superlite:inventing`.
