@@ -93,7 +93,7 @@ def line_for(cwd: Path) -> str | None:  # O(N)
     if row is None and active:  # O(1)
         row = next((s for s in reg["sessions"] if s.get("slug") == active), None)  # O(N)
     if row is None:  # O(1)
-        row = reg["sessions"][0]  # O(1)
+        return None  # O(1)  the hub with no active session belongs to none of them
     slug = row.get("slug") or row.get("topic") or "?"  # O(1)
     branch = row.get("branch") or git_cwd_branch(cwd) or "?"  # O(1)
     wt = short_path(row.get("worktree") or "", root)  # O(1)
