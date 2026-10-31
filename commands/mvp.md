@@ -7,7 +7,11 @@ Superlite MVP mode. Request: $ARGUMENTS
 
 First, read `${CLAUDE_PLUGIN_ROOT}/assets/flows/mvp.txt` (if the variable is not expanded, it is `assets/flows/mvp.txt` in the superlite plugin directory) and print it verbatim in one ```text block, before anything else. It is stored, so never redraw or edit it. Skip it only when it was already printed this turn.
 
-Design: `docs/mvp-flow.md`. If the request is empty, ask for it in one line. Then:
+Design: `docs/mvp-flow.md`. If the request is empty, ask for it in one line.
+Once the request is known, and BEFORE `sl orchestrator set`, run `sl session ensure --slug <topic>` (`<topic>`: a short slug of the request, a-z, 0-9, `-`; reuse it for plan file names). On a `SESSION worktree=<path>` line, move the agent root to `<path>` when it differs from the current checkout; on `REDIRECT worktree=…`, open that worktree instead.
+If ensure (or `use`/`close`) prints `ASK untracked=<N> slug=<s>: <files>` and exits 4, nothing changed. Ask in ONE AskUserQuestion: "Stash with <s>" / "Keep in the folder" / "Always stash (this repo)" / "Always keep (this repo)".
+For an "Always" choice run `sl session untracked stash|keep` first; then rerun the same command with `--untracked stash|keep`.
+Then:
 
 1. Ask the orchestrator choice (human or AI) unless the user already said; run `sl orchestrator set human|ai`.
 2. Write the MVP plan, `docs/plans/<date>-<topic>.mvp.md`. It can be extensive but is organised around features, because the goal is to agree on the MVP features. Open it with an ASCII diagram of how the product is used, in the form that fits the target, never a faux screen for a non-UI product: web, a screen wireframe plus main navigation; cli, a command tree plus one sample session; library, a box per module with its main calls plus a usage call flow; api or service, an endpoint table plus a request and response sequence; pipeline, bot or other, a data-flow diagram. Combine forms when the product needs it. Draw feature ids on the parts they add, so the plan reads as an experience first. Then the goal, the target kind (web, cli, library, api, other), and for each feature: id, title, what the user gets, how it is used, dependencies, size, priority (must/should/could) and an in-or-out recommendation with the reason. List the features considered and left out. Show screens, data and architecture only as far as a feature needs them. Load `superlite:inventing` only for what is unclear.
