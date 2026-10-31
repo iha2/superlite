@@ -64,12 +64,11 @@ def short_path(p: str, root: Path | None) -> str:  # O(1)
     return "/".join(parts[-3:]) if len(parts) > 3 else p  # O(1)
 
 
-def line_for(cwd: Path) -> str | None:  # O(N)
-    if os.environ.get("SUPERLITE_NO_SESSION_HUD") == "1":  # O(1)
-        return None  # O(1)
+def row_for(cwd: Path) -> tuple[Path | None, dict | None, dict | None]:  # O(N)
+    """(registry root, registry, the row this checkout is); registry is None when cwd is no session checkout, row is None in a main checkout with no active session."""
     root, reg = find_reg(cwd)  # O(depth)
     if not reg or not reg.get("sessions"):  # O(1)
-        return None  # O(1)
+        return root, None, None  # O(1)
     active = reg.get("active")  # O(1)
     row = None  # O(1)
     # Most specific worktree containing cwd (by path components); among rows sharing it, the active one.
@@ -82,6 +81,9 @@ def line_for(cwd: Path) -> str | None:  # O(N)
         p = Path(wt).resolve()  # O(1)
         if not here.is_relative_to(p):  # O(1)
             continue  # O(1)
+        is_active = s.get("status") == "active" or s.get("slug") == active  # O(1)
+        if root is not None and p == root.resolve() and not is_active:  # O(1) host row: only the active one names it
+            continue  # O(1)
         rank = len(p.parts) * 2 + (1 if s.get("status") == "active" or s.get("slug") == active else 0)  # O(1)
         if rank > best:  # O(1)
             best, row = rank, s  # O(1)
@@ -89,17 +91,32 @@ def line_for(cwd: Path) -> str | None:  # O(N)
         r = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True,
                            text=True, cwd=cwd)  # O(1)
         if r.returncode != 0 or root is None or Path(r.stdout.strip()).resolve() != root.resolve():  # O(1)
-            return None  # O(1)
+            return root, None, None  # O(1)
     if row is None and active:  # O(1)
         row = next((s for s in reg["sessions"] if s.get("slug") == active), None)  # O(N)
+    return root, reg, row  # O(1)
+
+
+def run_of(row: dict) -> str:  # O(1)
+    """'finished' or 'open'; a row without run is open."""
+    return "finished" if row.get("run") == "finished" else "open"  # O(1)
+
+
+def line_for(cwd: Path) -> str | None:  # O(N)
+    if os.environ.get("SUPERLITE_NO_SESSION_HUD") == "1":  # O(1)
+        return None  # O(1)
+    root, reg, row = row_for(cwd)  # O(N)
+    if not reg:  # O(1)
+        return None  # O(1)
+    active = reg.get("active")  # O(1)
     if row is None:  # O(1)
-        row = reg["sessions"][0]  # O(1)
+        return f"superlite session: none here (main checkout) | {len(reg['sessions'])} sessions"  # O(1)
     slug = row.get("slug") or row.get("topic") or "?"  # O(1)
     branch = row.get("branch") or git_cwd_branch(cwd) or "?"  # O(1)
     wt = short_path(row.get("worktree") or "", root)  # O(1)
     status = row.get("status") or ("active" if slug == active else "?")  # O(1)
     stash = "stash:yes" if row.get("has_stash") else "stash:no"  # O(1)
-    return f"superlite session: {slug} | branch {branch} | worktree {wt} | {status} | {stash}"  # O(1)
+    return f"superlite session: {slug} | branch {branch} | worktree {wt} | {status} | {stash} | run:{run_of(row)}"  # O(1)
 
 
 def main(argv=None) -> int:  # O(N)

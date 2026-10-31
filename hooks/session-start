@@ -20,11 +20,27 @@ escape_for_json() {  # O(s)
     printf '%s' "$s"  # O(s)
 }  # O(1)
 
+# Interpreter for the helper scripts: $SUPERLITE_PYTHON, else python, else python3 (builtin probe, no spawn).
+py="${SUPERLITE_PYTHON:-}"  # O(1)
+if [ -z "$py" ]; then  # O(1)
+  if command -v python >/dev/null 2>&1; then py=python; else py=python3; fi  # O(PATH)
+fi  # O(1)
+
+# Which superlite session (slug, branch, worktree) this checkout is, when sessions are registered.
+hud_line=""  # O(1)
+if [ "${SUPERLITE_NO_SESSION_HUD:-}" != "1" ] && { [ -d .superlite ] || [ -f .git ]; }; then  # O(1)
+  hud_line="$("$py" "${PLUGIN_ROOT}/skills/swarm/scripts/session_hud.py" . 2>/dev/null || true)"  # O(N)
+fi  # O(1)
+
 # Project state hint for the start menu: bash builtins only (no spawned process).
 state="empty folder"  # O(1)
 shopt -s nullglob dotglob  # O(1)
 entries=(./*)  # O(n) directory entries
-if [ -f .superlite/orchestrator.json ] && [ -d docs/plans ]; then  # O(1)
+if [[ $hud_line == *' | run:open' ]] && [ -f .superlite/orchestrator.json ]; then  # O(1) open run in this checkout
+  state="run in progress"  # O(1)
+elif [[ $hud_line == *' | run:'* ]]; then  # O(1) session row, no open run here: the code stays
+  state="existing code"  # O(1)
+elif [ -f .superlite/orchestrator.json ] && [ -d docs/plans ]; then  # O(1) no session row: the orchestrator check
   state="run in progress"  # O(1)
 elif [ -d .git ] || [ "${#entries[@]}" -gt 0 ]; then  # O(1)
   state="existing code"  # O(1)
@@ -83,12 +99,6 @@ if [ "${need_prefer:-0}" = 1 ]; then  # O(1)
 '"Ask once (plain text, one question): does the user want pre-implementation specs on by default? Specs define what done looks like and why; plans choose how. Default stays off until they choose. After they answer, run: bash ${PLUGIN_ROOT}/skills/swarm/scripts/sl agent_specs prefer on|off. Do not ask again after prefer is recorded."  # O(s)
 fi  # O(1)
 
-# Interpreter for the helper scripts below: $SUPERLITE_PYTHON, else python, else python3 (builtin probe, no spawn).
-py="${SUPERLITE_PYTHON:-}"  # O(1)
-if [ -z "$py" ]; then  # O(1)
-  if command -v python >/dev/null 2>&1; then py=python; else py=python3; fi  # O(PATH)
-fi  # O(1)
-
 # Always-on cost line when a superlite session is already active in this project.
 cost_line=""  # O(1)
 if [ -d .superlite ] && [ "${SUPERLITE_NO_COST_REPORT:-}" != "1" ]; then  # O(1)
@@ -100,11 +110,6 @@ if [ -n "$cost_line" ]; then  # O(1)
 '"${cost_line}"  # O(s)
 fi  # O(1)
 
-# Which superlite session (slug, branch, worktree) this checkout is, when sessions are registered.
-hud_line=""  # O(1)
-if [ "${SUPERLITE_NO_SESSION_HUD:-}" != "1" ] && { [ -d .superlite ] || [ -f .git ]; }; then  # O(1)
-  hud_line="$("$py" "${PLUGIN_ROOT}/skills/swarm/scripts/session_hud.py" . 2>/dev/null || true)"  # O(N)
-fi  # O(1)
 if [ -n "$hud_line" ]; then  # O(1)
   content="${content}"$'
 

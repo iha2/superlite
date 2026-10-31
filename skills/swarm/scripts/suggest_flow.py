@@ -20,6 +20,9 @@ import re  # O(1)
 import sys  # O(1)
 from pathlib import Path  # O(1)
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # O(1)
+import session_hud  # noqa: E402  O(1)
+
 FLOWS = ("regular", "mvp", "feature", "debug", "small", "review", "resume", "status")  # O(1)
 EMPTY, EXISTING, RUNNING = "empty folder", "existing code", "run in progress"  # O(1)
 
@@ -51,10 +54,22 @@ TRACE = re.compile(r"Traceback \(most recent call last\)|^\s+at \S+\(.*:\d+\)|\w
                    r"error\[E\d+\]|exit code [1-9]", re.MULTILINE)  # O(1)
 
 
+def _session_row(root: Path) -> dict | None:  # O(N)
+    """This checkout's row in the session registry, or None (no registry, not a session, main checkout with none)."""
+    try:  # O(1)
+        return session_hud.row_for(root)[2]  # O(N)
+    except (OSError, ValueError):  # O(1)
+        return None  # O(1)
+
+
 def project_state(root=".") -> str:  # O(n)
     """The session-start hook's line: run in progress, existing code or empty folder."""
     r = Path(root)  # O(1)
-    if (r / ".superlite" / "orchestrator.json").is_file() and (r / "docs" / "plans").is_dir():  # O(1)
+    row = _session_row(r)  # O(N)
+    if row is not None:  # O(1)
+        if session_hud.run_of(row) == "open" and (r / ".superlite" / "orchestrator.json").is_file():  # O(1)
+            return RUNNING  # O(1)
+    elif (r / ".superlite" / "orchestrator.json").is_file() and (r / "docs" / "plans").is_dir():  # O(1)
         return RUNNING  # O(1)
     try:  # O(1)
         has_entries = any(True for _ in r.iterdir())  # stops at the first entry | O(1)
