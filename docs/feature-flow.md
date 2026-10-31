@@ -39,7 +39,7 @@ flowchart TB
 
 ### Step 1: the feature plan
 
-The user is asked for the feature in their own words if the request is thin, with at most one batched question (the existing inventing rule). When `sl agent_specs status` is **on** (opt-in; default off; first session may `prefer on|off` into `~/.superlite/preferences.json`), write a durable **feature spec** (`docs/plans/<date>-<topic>.spec.md`) via `superlite:writing-specs` before or with the plan: a spec is what done looks like and why; a plan is how (one spec can outlive many plans). Open the spec in the harness when `open_in_harness` is on. Opus writes `docs/plans/<date>-<topic>.feature.md`:
+The user is asked for the feature in their own words if the request is thin, with at most one batched question (the existing inventing rule). When `sl agent_specs status` is **on** (opt-in; default off; first session may `prefer on|off` into `~/.superlite/preferences.json`), write a durable **feature spec** (`docs/plans/<date>-<topic>.spec.md`) via `superlite:writing-specs` before or with the plan: a spec is what done looks like and why; a plan is how (one spec can outlive many plans). When `open_in_harness` is on, open the spec and the feature plan in the harness. Opus writes `docs/plans/<date>-<topic>.feature.md`:
 
 - the goal and who it is for, in plain words;
 - what the user will see or do differently (screens, commands, endpoints, or outputs, by target kind, as in MVP mode);
@@ -59,7 +59,7 @@ Graphify is used when `sl graphify_gate` says so (a large repo), and installed o
 
 ### Step 3: the human validates the plan
 
-Human mode: the `.feature.md` plan is the review plan, approved with `sl orchestrator approve --review docs/plans/<date>-<topic>.feature.md`. Before approval only orchestration is blocked, as for any plan. AI mode: no approval; open choices become `Ruling:` lines.
+Human mode: the `.feature.md` plan is the review plan, opened for the user first when `open_in_harness` is on, approved with `sl orchestrator approve --review docs/plans/<date>-<topic>.feature.md`. Before approval only orchestration is blocked, as for any plan. AI mode: no approval; open choices become `Ruling:` lines.
 
 ### Step 4: the prototype, in its own worktree
 
