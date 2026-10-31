@@ -41,7 +41,7 @@ No further menus or typed confirmations. Act on the answer.
 
 ## 5. Execute the choice
 
-- **Merge locally:** if the work ran in a worktree, run the merge from the main checkout (where the base branch lives). Check out the base branch, merge the feature branch. If the merge was not a fast-forward or had conflicts, run `bash <skill-dir>/../swarm/scripts/sl run_tests --full` again. Close the session (step 6), then remove the worktree (step 7), then delete the feature branch with `git branch -d`.
+- **Merge locally:** if the work ran in a worktree, run the merge from the main checkout (where the base branch lives). Check out the base branch, merge the feature branch. If the merge was not a fast-forward or had conflicts, run `bash <skill-dir>/../swarm/scripts/sl run_tests --full` again. Close the session (step 6), then remove the worktree (step 7), then delete the feature branch with `git branch -d`. Finish by running `bash <skill-dir>/../swarm/scripts/sl session status`: each session now behind main shows `main:+N`, and is offered the update in its own chat. Nothing is synced automatically.
 - **Push and PR:** `git push -u origin <branch>`, then `gh pr create` with a title and a body holding the summary and test evidence. Report the PR URL. Keep the branch. Close the session (step 6), then remove the worktree (step 7).
 - **Keep:** report the branch name. If the worktree is clean, close the session (step 6), then remove it (step 7). If it has uncommitted work, leave it and report the path.
 
@@ -50,6 +50,8 @@ No further menus or typed confirmations. Act on the answer.
 Once the work is merged, has a PR, or is kept, and the agent is back in the main checkout, run `bash <skill-dir>/../swarm/scripts/sl session close --slug <slug> --keep-branch`. It marks the session finished, puts the main checkout back on the base branch when `<slug>` was its active session, and removes a parallel worktree that `ensure` cut (the branch stays). Run it before the worktree cleanup below. Skip it when the run has no session.
 
 If it prints `ASK untracked=<N> slug=<s>: <files>` and exits 4, nothing changed. Ask in ONE AskUserQuestion: "Stash with <s>" / "Keep in the folder" / "Always stash (this repo)" / "Always keep (this repo)". For an "Always" choice run `sl session untracked stash|keep` first; then rerun the same command with `--untracked stash|keep`.
+
+If it prints `ASK move slug=<s>: ...` and exits 4, nothing changed. Ask: "Move it" / "Not now"; on "Move it" rerun the same command with `--move yes`.
 
 ## 7. Worktree cleanup
 
