@@ -55,7 +55,10 @@ def reg_of(r):
 
 
 def row_of(r, slug):
-    return next(s for s in reg_of(r)["sessions"] if s["slug"] == slug)
+    reg = reg_of(r)
+    row = next((s for s in reg["sessions"] if s["slug"] == slug), None)
+    assert row is not None, f"no row {slug!r}; found {[s['slug'] for s in reg['sessions']]}"
+    return row
 
 
 def branch(cwd):
