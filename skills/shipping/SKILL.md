@@ -53,7 +53,7 @@ If it prints `ASK untracked=<N> slug=<s>: <files>` and exits 4, nothing changed.
 
 ## 7. Worktree cleanup
 
-A flow removes every worktree it created before it ends. Move the agent root back to the main checkout first, then from there run `git worktree remove <path>`.
+A flow removes every worktree it created before it ends. Move the agent root back to the main checkout first, then from there run `git worktree remove <path>`. Skip a worktree that `sl session close` already removed (`session: closed <slug>; removed its worktree`), and never remove one this flow did not cut.
 
 - Merged: remove the worktree, then `git branch -d` the feature branch.
 - Pushed: remove the worktree. Leave the branch.
