@@ -64,7 +64,7 @@ All registry writes take `.superlite/sessions.lock` and replace `sessions.json` 
 | `sl session create --slug S --worktree` | Parallel worktree + new branch |
 | `sl session use --slug S` | Park/stash/switch or REDIRECT |
 | `sl session split --new S [--keep K]` | Parallel: move open hub run + cut new worktree. From a linked worktree (or when the base is busy elsewhere) the run stays where it is. Any failure rolls back run files, WIP and branches |
-| `sl session sync --slug S [--untracked stash\|keep] [--continue\|--abort\|--later]` | Bring local main into `S`'s branch; see [Sync with main](#sync-with-main). Exit 5 `CONFLICT` |
+| `sl session sync --slug S [--untracked stash\|keep] [--continue\|--abort\|--later]` | Bring local main into `S`'s branch; see [Sync with main](#sync-with-main). Exit 4 `ASK untracked`, exit 5 `CONFLICT` |
 | `sl session status [--json]` | List sessions, each with `run:open` or `run:finished` |
 | `sl session discard --slug S [--keep-branch]` | Drop store/stash/branch; remove a parallel tree superlite cut. The active host session's uncommitted changes are discarded and the host is detached |
 
@@ -97,9 +97,9 @@ When the main checkout holds an open session and a new flow starts, `ensure` doe
 
 ## Sync with main
 
-The HUD adds `| main:+N` when local main is N commits ahead of the session's `base_sha`, plus an offer line: `superlite sync: local <base> moved ahead by N commits since this …`. The agent offers the update in that session's own chat; nothing is synced automatically. `sl session sync --slug S` fast-forwards when it can and otherwise merges local main in (`session: <s> synced with main (fast-forward|merge)`). `--later` records the offer as declined (`needs-sync` stays in the HUD).
+The HUD adds `| main:+N` when local main is N commits ahead of the session's `base_sha`, plus an offer line: `superlite sync: local <base> moved ahead by N commits since this …`. The agent offers the update in that session's own chat; nothing is synced automatically. `sl session sync --slug S` fast-forwards when it can and otherwise merges local main in (`session: <s> synced with main (fast-forward|merge)`). `--later` records the offer as declined for the current main tip, so the offer line stops showing until main moves again; `main:+N` stays in the HUD. If untracked files block the merge it prints `ASK untracked=<N> slug=<s>: <files>` and exits 4 (nothing changed); rerun with `--untracked stash|keep`.
 
-On a conflict it prints `CONFLICT <s>: <files>` and exits 5, HUD shows `| conflict`. Resolve the files and `git add` them, then `sl session sync --slug S --continue`; or `--abort` to restore the branch (`needs-sync`). Sync never runs `git fetch`, `push`, `pull` or `rebase`: it only uses the local main.
+On a conflict it prints `CONFLICT <s>: <files>` and exits 5, the HUD shows `| conflict`. Resolve the files and `git add` them, then `sl session sync --slug S --continue`; or `--abort` to restore the branch (the HUD then shows `| needs-sync`). Sync never runs `git fetch`, `push`, `pull` or `rebase`: it only uses the local main.
 
 ## Session HUD
 
