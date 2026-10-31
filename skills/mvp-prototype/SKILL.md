@@ -60,7 +60,7 @@ plan, then `build` again. After any hand edit of the page run `sl mvp_check stam
 
 ## 4. Human orchestrator
 
-Show the path, a five-line summary (goal, target, features in, features out, rough time and cost) and: open the page, cut or
+When `open_in_harness` is on (`sl agent_specs status`), open the `.mvp.md` for the user first (`superlite:drafting`, After writing). Show the path, a five-line summary (goal, target, features in, features out, rough time and cost) and: open the page, cut or
 reorder features, edit labels, leave notes, press Save feedback, then reply in chat. END THE TURN. The chat reply
 approves, never the file. If you understand that reply as approval, send approve: `sl orchestrator approve --review docs/plans/<date>-<topic>.mvp.md`, then
 `sl mvp_check fetch` (the project file, else the newest `mvp-feedback*.json` in Downloads, copied in; if none, ask the user to
