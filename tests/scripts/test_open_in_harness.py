@@ -56,3 +56,11 @@ def test_planless_flows_open_nothing(rel):
 @pytest.mark.parametrize("rel", SUMMARY_FILES)
 def test_five_line_summary_kept(rel):
     assert "five-line summary" in text(rel)
+
+
+def test_drafting_ai_rule_in_after_writing():
+    lines = text("skills/drafting/SKILL.md").splitlines()
+    opens = [l for l in lines if l.startswith("- **Open it:**")]
+    assert len(opens) == 1 and "AI orchestrator" in opens[0]
+    item2 = [l for l in lines if l.lstrip().startswith("2. When `open_in_harness`")]
+    assert len(item2) == 1 and "AI orchestrator" not in item2[0]
