@@ -2,10 +2,11 @@
 """ASCII task graph from a plan's %% taskgraph block.
 
     graph.py --plan PATH
-    graph.render(plan_path) -> str
+    graph.render(plan_path, critical=None) -> str
 
-Writes graph.txt in the run folder (cached by plan SHA-256). Lines <=79, ASCII,
-critical-path tasks marked with *. Stdlib only.
+Writes graph.txt in the run folder (cached by plan SHA-256 and the critical ids).
+Lines <=79, ASCII, critical-path tasks marked with *: the given ids, else the
+longest path by task count. Stdlib only.
 """
 from __future__ import annotations
 
@@ -31,7 +32,11 @@ def _parse_graph(text: str) -> dict[str, list[str]]:  # O(L)
     for a, b in plan.edges:
         deps.setdefault(a, set())
         deps.setdefault(b, set()).add(a)
-    return {t: sorted(ds, key=_nkey) for t, ds in deps.items()}
+    out = {t: sorted(ds, key=_nkey) for t, ds in deps.items()}
+    cycle = plan_tools.find_cycle(out)
+    if cycle:
+        raise ValueError("cycle in taskgraph: " + " -> ".join(cycle))
+    return out
 
 
 def _nkey(tid: str):
@@ -111,29 +116,30 @@ def _cache_path(plan_path: str) -> Path:
     return plan_tools.run_dir(plan_path) / "graph.txt"
 
 
-def render(plan_path: str) -> str:  # O(L + n+e)
-    """Render ASCII graph; cache graph.txt in the run folder by plan hash."""
+def render(plan_path: str, critical: list[str] | None = None) -> str:  # O(L + n+e)
+    """Render ASCII graph; cache graph.txt in the run folder by plan hash plus
+    the critical ids (none given: the longest path is starred)."""
     p = Path(plan_path)
     if not p.is_file():
         raise FileNotFoundError(plan_path)
     raw = p.read_bytes()
-    digest = hashlib.sha256(raw).hexdigest()
+    head = f"# hash: {hashlib.sha256(raw).hexdigest()}"
+    if critical:
+        head += " critical: " + " ".join(critical)
     cache = _cache_path(plan_path)
     if cache.is_file():
         prev = cache.read_text(encoding="utf-8")
-        first = prev.splitlines()[0] if prev else ""
-        if first.startswith("# hash:") and digest in first:
+        if prev.split("\n", 1)[0] == head:
             return prev
-    text = raw.decode("utf-8-sig")
-    deps = _parse_graph(text)
-    critical = set(_longest_path(deps))
-    body = _draw(deps, critical)
-    out = f"# hash: {digest}\n{body}"
-    if not out.isascii():
-        out = out.encode("ascii", "replace").decode("ascii")
-    for ln in out.splitlines():
+    deps = _parse_graph(raw.decode("utf-8-sig"))
+    stars = set(critical) if critical else set(_longest_path(deps))
+    body = _draw(deps, stars)
+    if not body.isascii():
+        body = body.encode("ascii", "replace").decode("ascii")
+    for ln in body.splitlines():  # the head line may be wider: it is stripped before showing
         if len(ln) > WIDTH:
             raise AssertionError(f"line wider than {WIDTH}: {ln!r}")
+    out = f"{head}\n{body}"
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(out, encoding="utf-8", newline="\n")
     return out

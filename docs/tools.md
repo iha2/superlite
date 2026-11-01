@@ -7,6 +7,7 @@ A checkpoint is a hidden save of one task under `refs/superlite/*`. superlite ne
 | Tool | What it does |
 |---|---|
 | `plan_tools` | Plan lint (`--stable` freezes tasks and tiers), task graph, stubs, schedule (prints only), and the `adapter`, `packet` and `contract` review subcommands |
+| `graph` | `--plan <plan>`: the plan's task graph in ASCII, one row per level, `*` on the critical path (cached in `.superlite/graph.txt`); `lint --stable` prints it framed as `GRAPH ... END GRAPH` on the first lint and when the drawing changes, starring lint's own critical path |
 | `wave0` | Builds the Wave 0 skeleton brief for `implementer-haiku` from the plan alone |
 | `routing` | Maps each task's plan features to a tier (haiku or sonnet) using `routing.json` |
 | `predict` | Predicts each task's time, context and cost; `--refit` fits the coefficients |

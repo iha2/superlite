@@ -58,3 +58,29 @@ def test_cache_file_hash(tmp_path):
     out2 = graph.render(str(plan))
     assert out2 == out1
     assert cache.stat().st_mtime_ns == mtime1
+
+
+def test_critical_argument_marks_exactly_those_tasks(tmp_path):
+    plan = str(tiny_plan(tmp_path))
+    out = graph.render(plan, ["T1", "T4"])
+    assert "[T1*]" in out and "[T4*]" in out
+    assert "[T2]" in out and "[T3]" in out
+
+
+def test_one_argument_render_ignores_a_critical_cache(tmp_path):
+    plan = str(tiny_plan(tmp_path))
+    graph.render(plan, ["T1", "T4"])
+    out = graph.render(plan)
+    assert "[T2*]" in out and "[T3*]" in out and "[T4]" in out
+
+
+def test_cycle_is_a_value_error(tmp_path):
+    plan = tiny_plan(tmp_path)
+    text = plan.read_text(encoding="utf-8").replace("T1 --> T4", "T3 --> T1")
+    plan.write_text(text, encoding="utf-8")
+    try:
+        graph.render(str(plan))
+    except ValueError as e:
+        assert "cycle" in str(e)
+    else:
+        raise AssertionError("cycle not reported")
