@@ -310,3 +310,37 @@ def test_recovery_for_row_without_worktree_exits2(parked_p):
     """sync --abort for a parked row with no worktree exits 2 without crashing."""
     cp = cli("session_sync.py", "--slug", "p", "--abort", cwd=parked_p)
     assert cp.returncode == 2, cp.stdout + cp.stderr
+
+
+@pytest.fixture
+def two_bases(tmp_path):
+    """Session b is cut from main; session c later starts on feature, which moves the registry base."""
+    r = tmp_path.resolve() / "bases"
+    r.mkdir()
+    git(r, "init", "-q", "-b", "main")
+    git(r, "config", "user.email", "t@example.com")
+    git(r, "config", "user.name", "t")
+    (r / ".gitignore").write_text(".superlite/\n")
+    commit(r, "app.py", "one\n", "init")
+    assert cli("session.py", "ensure", "--slug", "a", cwd=r).returncode == 0
+    assert cli("session.py", "ensure", "--slug", "b", "--move", "yes", cwd=r).returncode == 0
+    git(r, "switch", "-q", "-c", "feature")
+    commit(r, "feat.txt", "feature\n", "feature work")
+    assert cli("session.py", "ensure", "--slug", "c", cwd=r).returncode == 0
+    reg = json.loads((r / ".superlite" / "sessions.json").read_text(encoding="utf-8"))
+    assert reg["base"] == "feature"
+    return r
+
+
+def test_sync_merges_the_rows_own_base(two_bases):
+    """sync for b brings in main (its own base), never the feature branch the registry now names."""
+    r = two_bases
+    wt = r / ".superlite" / "worktrees" / "sessions" / "b"
+    tmpw = r.parent / "mainwt"
+    git(r, "worktree", "add", "-q", str(tmpw), "main")
+    commit(tmpw, "m.txt", "m\n", "main work")
+    git(r, "worktree", "remove", "--force", str(tmpw))
+    cp = cli("session_sync.py", "--slug", "b", cwd=wt)
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert (wt / "m.txt").is_file()
+    assert not (wt / "feat.txt").exists(), "b was synced with the registry base, not its own"

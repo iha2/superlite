@@ -111,3 +111,23 @@ def test_shipping_merge_uses_temporary_checkout_when_main_hosts_other_session():
     assert m, "Merge locally step not found"
     for phrase in ("temporary", "git worktree add", ".superlite/worktrees/", "session status"):
         assert phrase in m.group(1), phrase
+
+
+def test_review_keeps_path_targets_on_the_current_branch():  # O(n)
+    text = (ROOT / "commands" / "review.md").read_text(encoding="utf-8")
+    assert "path" in text and "`<target>` is the current branch" in text, text
+
+
+def test_start_passes_the_review_target_to_ensure():  # O(n)
+    text = (ROOT / "commands" / "start.md").read_text(encoding="utf-8")
+    assert re.search(r"Review.*--branch <target>", text), "start.md does not hand the review target to ensure"
+
+
+def test_feature_cleanup_uses_the_started_session_and_discards_first():  # O(n)
+    text = (ROOT / "commands" / "feature.md").read_text(encoding="utf-8")
+    m = re.search(r"^6\. \*\*Integration build\.\*\*.*?(?=\n\n|\Z)", text, re.S | re.M)
+    assert m, "step 6 not found"
+    step = m.group(0)
+    assert "sl session close --slug <topic>" not in step, step
+    assert "SESSION" in step, step
+    assert step.index("sl proto discard") < step.index("sl session close"), step

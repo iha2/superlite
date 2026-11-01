@@ -112,7 +112,7 @@ def _git(root: Path, *a: str) -> str | None:  # O(1)
 
 def ahead_of(root: Path | None, reg: dict, row: dict) -> tuple[int, str | None]:  # O(1)
     """(commits the base gained since the row's base_sha, current base sha); (0, None) when unknown. One rev-parse; rev-list only when shas differ."""
-    base, bsha = reg.get("base"), row.get("base_sha")  # O(1)
+    base, bsha = row.get("base") or reg.get("base"), row.get("base_sha")  # the row's own base; legacy: registry | O(1)
     if not root or not base or not bsha:  # O(1)
         return 0, None  # O(1)
     cur = _git(root, "rev-parse", "--verify", "-q", f"refs/heads/{base}")  # O(1)
@@ -159,7 +159,7 @@ def line_for(cwd: Path) -> str | None:  # O(N)
     if row.get("sync") in ("conflict", "needs-sync"):  # O(1)
         out += f" | {row['sync']}"  # O(1)
     if n > 0 and row.get("sync_offered") != cur:  # O(1)
-        out += (f"\nsuperlite sync: local {reg.get('base')} moved ahead by {n} commit{'s' if n != 1 else ''} since this "
+        out += (f"\nsuperlite sync: local {row.get('base') or reg.get('base')} moved ahead by {n} commit{'s' if n != 1 else ''} since this "
                 f"session last synced; ask the user whether to bring it in (sl session sync --slug {slug}), "
                 f"or record Later with sl session sync --slug {slug} --later")  # O(1)
     return out  # O(1)

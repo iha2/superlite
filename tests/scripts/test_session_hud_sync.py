@@ -95,3 +95,18 @@ def test_moved_out_line(hub):
     (hub / ".superlite" / "sessions.json").write_text(json.dumps(
         {"base": "main", "active": None, "sessions": [row("a", p, moved_from=str(hub))]}))
     assert hud(hub) == [f"superlite session: a moved to {p} — move the agent root there"]
+
+
+def test_ahead_uses_the_rows_own_base(hub):
+    """A row that records base main is measured against main even when the registry base is another branch."""
+    commit(hub, "c0")
+    p = wt(hub, "b")
+    sha = git(hub, "rev-parse", "HEAD")
+    git(hub, "branch", "other")
+    commit(hub, "c1")
+    (hub / ".superlite").mkdir()
+    (hub / ".superlite" / "sessions.json").write_text(json.dumps(
+        {"base": "other", "active": None, "sessions": [row("b", p, base="main", base_sha=sha)]}))
+    out = hud(p)
+    assert out[0].endswith("| main:+1"), out
+    assert out[1].startswith("superlite sync: local main moved ahead by 1 commit"), out

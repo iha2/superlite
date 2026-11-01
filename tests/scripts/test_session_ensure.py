@@ -816,3 +816,113 @@ def test_collision_on_41_char_slug_yields_valid_slug(repo):
     assert new != long_slug and len(new) <= 41 and session.SLUG.match(new), new
     cp = run("close", "--slug", new, cwd=repo)
     assert cp.returncode == 0, cp.both
+
+
+def test_ensure_branch_from_open_parallel_session_targets_requested_branch(repo):
+    """From an open parallel session, `ensure --branch feature` hands back feature, not the session's own branch."""
+    assert run("ensure", "--slug", "a", cwd=repo).returncode == 0
+    assert run("ensure", "--slug", "b", "--move", "yes", cwd=repo).returncode == 0
+    git(repo, "branch", "feature", "main")
+    (repo / "app.py").write_text("print('main wip')\n")
+    cp = run("ensure", "--slug", "rev", "--branch", "feature", cwd=wt_of(repo, "b"))
+    assert cp.returncode == 0, cp.both
+    assert last(cp).endswith(" branch=feature"), cp.out
+    wt = last(cp).split("worktree=", 1)[1].split(" slug=", 1)[0]
+    assert branch(wt) == "feature"
+    assert Path(wt).resolve() not in (repo.resolve(), wt_of(repo, "b").resolve())
+    assert branch(repo) == "main" and (repo / "app.py").read_text() == "print('main wip')\n"
+
+
+def test_ensure_branch_from_linked_checkout_does_not_move_the_host_session(repo):
+    """A linked checkout asking for a branch never triggers ASK move for the session in the main checkout."""
+    assert run("ensure", "--slug", "a", cwd=repo).returncode == 0
+    x = repo.parent / "x"
+    git(repo, "worktree", "add", "-q", "-b", "x", str(x), "main")
+    git(repo, "branch", "feature", "main")
+    cp = run("ensure", "--slug", "rev", "--branch", "feature", cwd=x)
+    assert cp.returncode == 0, cp.both
+    assert "ASK move" not in cp.out, cp.out
+    assert branch(repo) == "superlite/sessions/a"
+
+
+def test_redirect_to_a_finished_session_names_its_slug(repo):
+    """REDIRECT to a checkout whose row already exists prints that row's slug."""
+    assert run("ensure", "--slug", "a", cwd=repo).returncode == 0
+    assert run("ensure", "--slug", "b", "--move", "yes", cwd=repo).returncode == 0
+    cp = run("ensure", "--slug", "rev", "--branch", "superlite/sessions/b", cwd=repo)
+    assert cp.returncode == 3, cp.both
+    assert "slug=b " in cp.out, cp.out
+
+
+def test_redirect_to_unregistered_worktree_registers_it(repo):
+    """REDIRECT to an unregistered checkout of the requested branch registers it as a session first."""
+    x = repo.parent / "x"
+    git(repo, "worktree", "add", "-q", "-b", "feature", str(x))
+    cp = run("ensure", "--slug", "rev", "--branch", "feature", cwd=repo)
+    assert cp.returncode == 3, cp.both
+    assert "REDIRECT" in cp.out, cp.out
+    rows = [s for s in reg_of(repo)["sessions"] if s.get("branch") == "feature"]
+    assert len(rows) == 1, reg_of(repo)
+    assert Path(rows[0]["worktree"]).resolve() == x.resolve()
+    assert rows[0].get("run", "open") == "open"
+    assert rows[0].get("adopted_branch") is True
+
+
+def test_session_on_base_branch_stays_in_place_when_second_flow_starts(repo):
+    """An open session that adopted the base branch stays in the main checkout; the new one goes parallel."""
+    cp = run("ensure", "--slug", "a", "--branch", "main", cwd=repo)
+    assert cp.returncode == 0, cp.both
+    cp = run("ensure", "--slug", "b", "--move", "yes", cwd=repo)
+    assert cp.returncode == 0, cp.both
+    assert branch(repo) == "main"
+    assert Path(row_of(repo, "a")["worktree"]).resolve() == repo.resolve()
+    assert reg_of(repo)["active"] == "a"
+    assert Path(row_of(repo, "b")["worktree"]).resolve() == wt_of(repo, "b").resolve()
+
+
+def test_session_on_base_branch_does_not_ask_to_move(repo):
+    """No ASK move for a session on the base branch: it cannot leave the main checkout."""
+    assert run("ensure", "--slug", "a", "--branch", "main", cwd=repo).returncode == 0
+    cp = run("ensure", "--slug", "b", cwd=repo)
+    assert cp.returncode == 0, cp.both
+    assert "ASK move" not in cp.out, cp.out
+
+
+def test_rows_record_their_own_base(repo):
+    """Each row keeps the base it was cut from, so a later session on another base does not change it."""
+    assert run("ensure", "--slug", "a", cwd=repo).returncode == 0
+    assert run("ensure", "--slug", "b", "--move", "yes", cwd=repo).returncode == 0
+    assert row_of(repo, "b")["base"] == "main"
+    git(repo, "switch", "-q", "-c", "feature")
+    commit_file(repo, "feat.txt", "feature\n", "feature work")
+    assert run("ensure", "--slug", "c", cwd=repo).returncode == 0
+    assert reg_of(repo)["base"] == "feature"
+    assert row_of(repo, "c")["base"] == "feature"
+    assert row_of(repo, "b")["base"] == "main"
+
+
+def test_status_measures_each_row_against_its_own_base(repo):
+    """`session status` counts main:+N for a row cut from main even after the registry base moved to feature."""
+    assert run("ensure", "--slug", "a", cwd=repo).returncode == 0
+    assert run("ensure", "--slug", "b", "--move", "yes", cwd=repo).returncode == 0
+    git(repo, "switch", "-q", "-c", "feature")
+    assert run("ensure", "--slug", "c", cwd=repo).returncode == 0
+    advance_main(repo, 2)
+    cp = run("status", cwd=repo)
+    row_line = next(ln for ln in cp.out.splitlines() if " b | branch" in ln)
+    assert " | main:+2" in row_line, row_line
+
+
+def test_review_of_finished_sessions_branch_keeps_its_uncommitted_work(repo):
+    """ensure --branch <the finished session's own branch> reopens it in place; its uncommitted fix stays."""
+    assert run("ensure", "--slug", "s", cwd=repo).returncode == 0
+    (repo / "app.py").write_text("print('fixed')\n")
+    finish_active(repo)
+    stashes = git(repo, "stash", "list")
+    cp = run("ensure", "--slug", "review", "--branch", "superlite/sessions/s", cwd=repo)
+    assert cp.returncode == 0, cp.both
+    assert (repo / "app.py").read_text() == "print('fixed')\n"
+    assert git(repo, "stash", "list") == stashes
+    assert branch(repo) == "superlite/sessions/s"
+    assert last(cp).endswith(" branch=superlite/sessions/s"), cp.out
+    assert row_of(repo, "s").get("run") == "open"

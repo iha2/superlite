@@ -23,11 +23,11 @@ def sha(cwd: Path, ref: str) -> str:  # O(1)
 
 
 def base_sha(root: Path, reg: dict, row: dict) -> str:  # O(1)
-    """session.base_sha_of when T1 provides it, else the merge base of the branch and the registry base."""
+    """session.base_sha_of when T1 provides it, else the merge base of the branch and the row's base."""
     fn = getattr(session, "base_sha_of", None)  # O(1)
     if fn is not None:  # O(1)
         return fn(root, reg, row)  # O(1)
-    base = reg.get("base") or session.default_base(root)  # O(1)
+    base = row.get("base") or reg.get("base") or session.default_base(root)  # O(1)
     return git("merge-base", row["branch"], base, cwd=root).stdout.strip()  # O(1)
 
 
@@ -104,7 +104,7 @@ def do_continue(root: Path, reg: dict, row: dict, cwd: Path) -> int:  # O(diff)
     if git("commit", "--no-edit", cwd=cwd, check=False).returncode != 0:  # O(tree)
         print("session: could not commit the merge; fix and rerun --continue, or --abort", file=sys.stderr)  # O(1)
         return 2  # O(1)
-    target = row.get("sync_target") or sha(root, reg.get("base") or session.default_base(root))  # O(1)
+    target = row.get("sync_target") or sha(root, session.row_base(root, reg, row))  # O(1)
     rc = finish(root, reg, row, cwd, target, row.get("sync_stash"))  # O(diff)
     if rc == 0:  # O(1)
         print(f"session: {row['slug']} synced with main (merge)")  # O(1)
@@ -184,7 +184,7 @@ def main(argv: list[str] | None = None) -> int:  # O(tree + diff)
             if row is None:  # O(1)
                 print(f"session: unknown session {a.slug}", file=sys.stderr)  # O(1)
                 return 2  # O(1)
-            base = reg.get("base") or session.default_base(root)  # O(1)
+            base = session.row_base(root, reg, row)  # the base this session was cut from | O(1)
             cwd = checkout_of(root, reg, row)  # O(1)
             if a.later:  # O(1)
                 return do_later(root, reg, row, base)  # O(1)

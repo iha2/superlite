@@ -233,3 +233,13 @@ def test_use_honors_recorded_branch(repo):
     assert cp.returncode == 3 and "branch=superlite/export" in cp.out, cp.both
     cp = run(SESSION, "create", "--slug", "export", cwd=repo)
     assert cp.returncode == 3 and "branch=superlite/export" in cp.out, cp.both
+
+
+def test_split_rows_record_their_base(repo):
+    """split --base records that base on both rows, so sync and the HUD measure them against it."""
+    git(repo, "branch", "develop")
+    cp = run(SESSION, "split", "--keep", "export", "--new", "auth", "--base", "develop", cwd=repo)
+    assert cp.returncode == 0, cp.both
+    reg = json.loads((repo / ".superlite" / "sessions.json").read_text(encoding="utf-8"))
+    bases = {s["slug"]: s.get("base") for s in reg["sessions"]}
+    assert bases == {"export": "develop", "auth": "develop"}, bases
