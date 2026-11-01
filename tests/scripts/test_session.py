@@ -17,6 +17,7 @@ HUD = SCRIPTS / "session_hud.py"
 
 sys.path.insert(0, str(SCRIPTS))
 
+import base  # noqa: E402
 import session  # noqa: E402
 import session_registry  # noqa: E402
 
@@ -292,7 +293,8 @@ def test_prompt_hook_emits_hud_without_cost_or_run_dir(repo):
     for k in ("CURSOR_AGENT", "CURSOR_TRACE_ID", "CURSOR_PLUGIN_ROOT", "CLAUDE_PROJECT_DIR", "CURSOR_PROJECT_DIR"):
         env.pop(k, None)
     raw = json.dumps({"hook_event_name": "UserPromptSubmit", "prompt": "hi", "cwd": str(wt)})
-    out = subprocess.run(["bash", str(ROOT / "hooks" / "prompt")], input=raw, capture_output=True, text=True, env=env).stdout
+    out = subprocess.run([base.bash(), str(ROOT / "hooks" / "prompt")], input=raw, capture_output=True, text=True,
+                         encoding="utf-8", env=env).stdout
     ctx = json.loads(out)["hookSpecificOutput"]["additionalContext"]
     assert ctx.startswith("superlite session: solo |")
 

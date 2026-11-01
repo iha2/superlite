@@ -1,6 +1,7 @@
 """Shared base: git, json files, locks, processes, flags. Stdlib only."""
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -130,6 +131,26 @@ def spawn_background(argv: list, log: Path) -> int:
     with open(log, "ab") as fh:
         return subprocess.Popen(list(argv), stdin=subprocess.DEVNULL, stdout=fh, stderr=subprocess.STDOUT,
                                 env=env, close_fds=True, **kw).pid
+
+
+def bash() -> str:
+    """A real bash: SUPERLITE_BASH, else Git's on Windows (a bare "bash" there resolves to System32's WSL stub
+    before PATH), else whatever is on PATH."""
+    if os.environ.get("SUPERLITE_BASH"):
+        return os.environ["SUPERLITE_BASH"]
+    if os.name == "nt":
+        found = git_bash(shutil.which("git"), os.environ.get("ProgramFiles", r"C:\Program Files"))
+        if found:
+            return found
+    return shutil.which("bash") or "bash"
+
+
+def git_bash(git_exe: str | None, program_files: str) -> str | None:
+    """Git for Windows' bash.exe, next to the git on PATH or under Program Files; None if neither has one."""
+    roots = [Path(git_exe).parent.parent] if git_exe else []
+    roots.append(Path(program_files) / "Git")
+    return next((str(r / sub / "bash.exe") for r in roots for sub in ("bin", "usr/bin")
+                 if (r / sub / "bash.exe").is_file()), None)
 
 
 def flag(env: str, path: Path, key: str, default: bool) -> bool:

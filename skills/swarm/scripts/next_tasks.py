@@ -18,6 +18,7 @@ from pathlib import Path
 SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 import planfile  # noqa: E402
+import base  # noqa: E402
 import state  # noqa: E402
 
 DEFAULT_PLAN = f"{state.DIR_NAME}/plan.md"
@@ -32,9 +33,9 @@ def die(msg, code=2):  # O(len msg)
 def sl_command(tool, *args):  # O(args)
     """Command line that runs another superlite tool through the `superlite-cli` launcher (D18).
 
-    SUPERLITE_CLI replaces the launcher (tests); SUPERLITE_BASH picks the bash."""
+    SUPERLITE_CLI replaces the launcher (tests); base.bash picks the bash (SUPERLITE_BASH wins)."""
     launcher = os.environ.get("SUPERLITE_CLI") or str(SCRIPTS / "superlite-cli")
-    return [os.environ.get("SUPERLITE_BASH") or "bash", launcher, tool,
+    return [base.bash(), launcher, tool,
             *map(str, args)]
 
 
