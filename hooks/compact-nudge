@@ -10,15 +10,22 @@ fi
 
 IFS= read -r -d '' input || true
 
-proj="${CLAUDE_PROJECT_DIR:-}"
-if [ -z "$proj" ]; then
-  re='"cwd"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
-  if [[ ${input:-} =~ $re ]]; then
-    proj="${BASH_REMATCH[1]//\\\\//}"
-    proj="${proj//\\\"/\"}"
-  fi
+re='"cwd"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
+in_cwd=""
+if [[ ${input:-} =~ $re ]]; then
+  in_cwd="${BASH_REMATCH[1]//\\\\//}"
+  in_cwd="${in_cwd//\\\"/\"}"
 fi
+proj="${CLAUDE_PROJECT_DIR:-$in_cwd}"
 [ -n "$proj" ] || proj="$PWD"
+# A session worktree sits below the project: the run at or above the input cwd wins.
+if [ -n "$in_cwd" ]; then
+  d="$in_cwd"
+  while [ ! -f "$d/.superlite/orchestrator.json" ]; do
+    up="${d%/*}"; { [ -z "$up" ] || [ "$up" = "$d" ]; } && break; d="$up"
+  done
+  [ -f "$d/.superlite/orchestrator.json" ] && proj="$d"
+fi
 sl_dir="${proj}/.superlite"
 [ -d "$sl_dir" ] || exit 0
 

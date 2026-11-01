@@ -26,8 +26,16 @@ esc() {
 jstr tool_name; tool="$REPLY"
 case "$tool" in ''|Agent|Task) ;; *) exit 0 ;; esac
 
-jstr cwd; proj="${CLAUDE_PROJECT_DIR:-${REPLY//\\//}}"
+jstr cwd; in_cwd="${REPLY//\\//}"; proj="${CLAUDE_PROJECT_DIR:-$in_cwd}"
 [ -n "$proj" ] || proj="$PWD"
+# A session worktree sits below the project: the run at or above the working directory wins.
+if [ -n "$in_cwd" ]; then
+  d="$in_cwd"
+  while ! { [ -f "$d/.superlite/stable.json" ] || [ -f "$d/.superlite/prime.md" ] || [ -f "$d/.superlite/pool.json" ] || [ -f "$d/.superlite/orchestrator.json" ] || [ -f "$d/.superlite/feature.json" ]; }; do
+    up="${d%/*}"; { [ -z "$up" ] || [ "$up" = "$d" ]; } && break; d="$up"
+  done
+  { [ -f "$d/.superlite/stable.json" ] || [ -f "$d/.superlite/prime.md" ] || [ -f "$d/.superlite/pool.json" ] || [ -f "$d/.superlite/orchestrator.json" ] || [ -f "$d/.superlite/feature.json" ]; } && proj="$d"
+fi
 [ -f "$proj/.superlite/stable.json" ] || [ -f "$proj/.superlite/prime.md" ] || [ -f "$proj/.superlite/pool.json" ] || [ -f "$proj/.superlite/orchestrator.json" ] || [ -f "$proj/.superlite/feature.json" ] || exit 0
 
 jstr agentId; id="$REPLY"                 # Claude tool_response.agentId

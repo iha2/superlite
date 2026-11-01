@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 from test_plan_tools import SCRIPTS, run
@@ -333,3 +334,49 @@ def test_orchestrator_uses_the_run_of_a_parent_folder(tmp_path):
 def test_set_in_a_folder_without_a_run_still_starts_one_there(tmp_path):
     assert run(ORCH, "set", "human", cwd=tmp_path).returncode == 0
     assert (tmp_path / ".superlite" / "orchestrator.json").exists()
+
+
+SESSION = SCRIPTS / "session.py"
+
+
+def git_repo(path):
+    path.mkdir()
+    for args in (["init", "-q", "-b", "main"], ["config", "user.email", "t@example.com"],
+                 ["config", "user.name", "t"]):
+        subprocess.run(["git", *args], cwd=path, check=True, capture_output=True)
+    (path / ".gitignore").write_text(".superlite/\n")
+    subprocess.run(["git", "add", "-A"], cwd=path, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=path, check=True, capture_output=True)
+    return path
+
+
+def test_set_in_parallel_worktree_writes_its_own_state(tmp_path):
+    """orchestrator set inside a parallel session worktree writes that worktree's state, not the main checkout's."""
+    repo = git_repo(tmp_path.resolve() / "app")
+    assert run(SESSION, "ensure", "--slug", "a", cwd=repo).returncode == 0
+    cp = run(SESSION, "ensure", "--slug", "b", "--move", "yes", cwd=repo)
+    assert cp.returncode == 0, cp.both
+    wt = repo / ".superlite" / "worktrees" / "sessions" / "b"
+    main_file = repo / ".superlite" / "orchestrator.json"
+    main_file.write_text(json.dumps({"mode": "ai", "approved": True}), encoding="utf-8")
+    main_bytes = main_file.read_bytes()
+    assert not (wt / ".superlite" / "orchestrator.json").exists()
+    cp = run(ORCH, "set", "human", cwd=wt)
+    assert cp.returncode == 0, cp.both
+    own = wt / ".superlite" / "orchestrator.json"
+    assert own.is_file(), "set did not write the parallel worktree's own state"
+    assert json.loads(own.read_text(encoding="utf-8"))["mode"] == "human"
+    assert main_file.read_bytes() == main_bytes
+    sub = wt / "sub" / "dir"
+    sub.mkdir(parents=True)
+    st = run(ORCH, "status", cwd=sub)
+    assert st.returncode == 0, st.both
+    assert "human" in st.out and "AI" not in st.out, st.out
+
+
+def test_status_inside_git_dir_uses_the_checkout_root(tmp_path):
+    """orchestrator status from inside .git of a repo with no .superlite does not create state there."""
+    repo = git_repo(tmp_path.resolve() / "app")
+    cp = run(ORCH, "status", cwd=repo / ".git")
+    assert cp.returncode == 0, cp.both
+    assert not (repo / ".git" / ".superlite").exists()
