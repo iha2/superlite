@@ -74,12 +74,17 @@ def row_for(cwd: Path) -> tuple[Path | None, dict | None, dict | None]:  # O(N)
     # Most specific worktree containing cwd (by path components); among rows sharing it, the active one.
     here = cwd.resolve()  # O(1)
     best = -1  # O(1)
+    r = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, cwd=cwd)  # O(1) the one toplevel call
+    top = Path(r.stdout.strip()).resolve() if r.returncode == 0 and r.stdout.strip() else None  # O(1)
+    at_root = root is not None and top == root.resolve()  # O(1)
     for s in reg["sessions"]:  # O(N)
         wt = s.get("worktree") or ""  # O(1)
         if not wt:  # O(1)
             continue  # O(1)
         p = Path(wt).resolve()  # O(1)
         if not here.is_relative_to(p):  # O(1)
+            continue  # O(1)
+        if root is not None and p == root.resolve() and not at_root:  # O(1) nested worktree is not the main checkout
             continue  # O(1)
         is_active = s.get("status") == "active" or s.get("slug") == active  # O(1)
         if root is not None and p == root.resolve() and not is_active:  # O(1) host row: only the active one names it
@@ -88,9 +93,7 @@ def row_for(cwd: Path) -> tuple[Path | None, dict | None, dict | None]:  # O(N)
         if rank > best:  # O(1)
             best, row = rank, s  # O(1)
     if row is None:  # O(1)
-        r = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True,
-                           text=True, cwd=cwd)  # O(1)
-        if r.returncode != 0 or root is None or Path(r.stdout.strip()).resolve() != root.resolve():  # O(1)
+        if not at_root:  # O(1)
             return root, None, None  # O(1)
     if row is None and active:  # O(1)
         row = next((s for s in reg["sessions"] if s.get("slug") == active), None)  # O(N)

@@ -35,7 +35,7 @@ Write what you understood (separate what the user said from your assumptions), t
 
 ## 4. Approve once, then build
 
-**Bounded:** present the design in chat and stop until the user says yes. Then implement with `superlite:testing`. No spec file, no plan doc.
+**Bounded:** present the design in chat and stop until the user says yes. Then implement with `superlite:testing`. No spec file, no plan doc. After the tests pass, run `sl finish` in the session checkout: it marks the session finished and leaves uncommitted work in place.
 
 **Architectural:**
 

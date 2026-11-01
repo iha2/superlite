@@ -378,8 +378,6 @@ def unmerged(cwd: Path) -> list[str]:  # O(tree)
 
 def hide_superlite(root: Path) -> None:  # O(1)
     """Keep .superlite/ out of `git status` via .git/info/exclude, never by editing a tracked .gitignore."""
-    if git("check-ignore", "-q", ".superlite/x", cwd=root, check=False).returncode == 0:  # O(1)
-        return  # O(1)
     common = git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=root).stdout.strip()  # O(1)
     f = Path(common) / "info" / "exclude"  # O(1)
     f.parent.mkdir(parents=True, exist_ok=True)  # O(1)
@@ -458,6 +456,18 @@ def enter_session(root: Path, reg: dict, host: Path, row: dict) -> int:  # O(S +
     return 0  # O(1)
 
 
+def behind_base(root: Path, reg: dict, row: dict, cur: str | None = None) -> int:  # O(1)
+    """Commits the local base gained since the row's base_sha; 0 when unknown. rev-list only when the shas differ."""
+    base, bsha = reg.get("base"), row.get("base_sha")  # O(1)
+    if not base or not bsha:  # O(1)
+        return 0  # O(1)
+    cur = sha_of(root, f"refs/heads/{base}") if cur is None else cur  # O(1)
+    if not cur or cur == bsha:  # O(1)
+        return 0  # O(1)
+    n = git("rev-list", "--count", f"{bsha}..{cur}", cwd=root, check=False).stdout.strip()  # O(1)
+    return int(n) if n.isdigit() else 0  # O(1)
+
+
 def cmd_status(a) -> int:  # O(N)
     root = hub_root(start_dir(a))  # O(1)
     reg = read_reg(root)  # O(file)
@@ -468,10 +478,13 @@ def cmd_status(a) -> int:  # O(N)
         print("session: none (no sessions in .superlite/sessions.json)")  # O(1)
         return 0  # O(1)
     print(f"session: active={reg.get('active') or '-'} host={reg.get('host_worktree') or '-'}")  # O(1)
+    base_sha = sha_of(root, f"refs/heads/{reg['base']}") if reg.get("base") else ""  # one lookup for all rows | O(1)
     for s in reg["sessions"]:  # O(N)
         stash = "stash:yes" if s.get("has_stash") else "stash:no"  # O(1)
+        behind = behind_base(root, reg, s, base_sha)  # O(1)
         print(f"session: {s.get('status', '?')} {s['slug']} | branch {s.get('branch')} | "
-              f"worktree {s.get('worktree') or '(removed)'} | {stash} | run:{s.get('run') or 'open'}")  # O(1)
+              f"worktree {s.get('worktree') or '(removed)'} | {stash} | run:{s.get('run') or 'open'}"
+              + (f" | {reg.get('base')}:+{behind}" if behind else ""))  # O(1)
     return 0  # O(1)
 
 
@@ -718,10 +731,12 @@ def mark_run(cwd: Path, state: str) -> str | None:  # O(N)
 
 def free_slug(root: Path, reg: dict, slug: str) -> str:  # O(N * k)
     cand, n = slug, 1  # O(1)
+    stem = slug  # O(1)
     while (find_row(reg, cand) or branch_exists(root, branch_for(cand))
            or (root / SESSIONS_REL / cand).exists()):  # O(N)
         n += 1  # O(1)
-        cand = f"{slug}-{n}"  # O(1)
+        stem = slug[:41 - len(str(n)) - 1].rstrip("-") or slug[:1]  # keep stem-N within the slug limit | O(1)
+        cand = f"{stem}-{n}"  # O(1)
     return cand  # O(1)
 
 
@@ -855,7 +870,7 @@ def untracked_gate(host: Path, slug: str, mode: str | None, target: str) -> tupl
 
 
 def start_in_host(root: Path, reg: dict, host: Path, slug: str, base: str, mode: str | None = None,
-                  existing: str | None = None) -> int:  # O(S + diff)
+                  existing: str | None = None, topic: str | None = None) -> int:  # O(S + diff)
     """Park a finished active session (WIP stashed), else carry WIP along; cut the branch (or adopt `existing`) and enter it."""
     branch = existing or branch_for(slug)  # O(1)
     note, keep = None, False  # O(1)
@@ -885,7 +900,8 @@ def start_in_host(root: Path, reg: dict, host: Path, slug: str, base: str, mode:
     try:  # O(1)
         rc = enter_session(root, reg, host, {"slug": slug, "branch": branch, "worktree": host.as_posix(),
                                              "has_stash": False, "run": "open",
-                                             "created_at": int(time.time() * 1000), **base_row(root, reg, existing),
+                                             "created_at": int(time.time() * 1000), **({"topic": topic} if topic else {}),
+                                             **base_row(root, reg, existing),
                                              **({"adopted_branch": True} if existing else {})})  # O(S)
     finally:  # O(1)
         if held is not None:  # O(1)
@@ -936,7 +952,7 @@ def cmd_ensure(a) -> int:  # O(tree)
                 upsert_row(reg, {"slug": slug, "branch": exist, "worktree": here.as_posix(),
                                  "store": store_path(root, slug).as_posix(), "has_stash": False,
                                  "status": "active" if at_host else "parallel", "owned": False, "adopted_branch": True,
-                                 "run": "open", "created_at": int(time.time() * 1000),
+                                 "run": "open", "created_at": int(time.time() * 1000), "topic": want,
                                  **base_row(root, reg, exist)})  # O(N)
                 if at_host:  # O(1)
                     reg["active"] = slug  # O(1)
@@ -945,7 +961,7 @@ def cmd_ensure(a) -> int:  # O(tree)
                 print(f"session: registered {slug} in place on {exist} ({here.as_posix()})")  # O(1)
                 session_line(here, slug, exist)  # O(1)
                 return 0  # O(1)
-        if is_open(row) and (row['slug'] == want or not same(here, host)):  # host: a new topic goes parallel | O(1)
+        if is_open(row) and (row['slug'] == want or row.get('topic') == want or not same(here, host)):  # host: a new topic goes parallel | O(1)
             print(f"session: {row['slug']} already open here")  # O(1)
             session_line(row.get("worktree") or here, row["slug"], row.get("branch") or branch_for(row["slug"]))  # O(1)
             return 0  # O(1)
@@ -955,8 +971,9 @@ def cmd_ensure(a) -> int:  # O(tree)
             branch = current_branch(here)  # O(1)
             upsert_row(reg, {"slug": slug, "branch": branch, "worktree": here.as_posix(),
                              "store": store_path(root, slug).as_posix(), "has_stash": False, "status": "parallel",
-                             "owned": False, "run": "open", "created_at": int(time.time() * 1000),
+                             "owned": False, "run": "open", "created_at": int(time.time() * 1000), "topic": want,
                              **base_now(root, reg)})  # O(N)
+            hide_superlite(root)  # O(1)
             write_reg(root, reg)  # O(N)
             print(f"session: registered {slug} where it is ({here.as_posix()}) on {branch}")  # O(1)
             session_line(here, slug, branch)  # O(1)
@@ -1020,7 +1037,7 @@ def cmd_ensure(a) -> int:  # O(tree)
                 upsert_row(reg, {"slug": slug, "branch": branch, "worktree": wt.as_posix(),
                                  "store": store_path(root, slug).as_posix(), "has_stash": False, "status": "parallel",
                                  "owned": True, "run": "open", "created_at": int(time.time() * 1000),
-                                 **base_row(root, reg, exist), **({"adopted_branch": True} if exist else {})})  # O(N)
+                                 "topic": want, **base_row(root, reg, exist), **({"adopted_branch": True} if exist else {})})  # O(N)
                 write_reg(root, reg)  # O(N)
             except Exception as e:  # O(1)
                 print(f"session: ensure failed: {e}; rolling back", file=sys.stderr)  # O(1)
@@ -1041,7 +1058,7 @@ def cmd_ensure(a) -> int:  # O(tree)
         cur = current_branch(host) if host.is_dir() else "HEAD"  # O(1)
         base = fresh_base(root, reg, host, exist) or reg.get("base") or (cur if cur != "HEAD" else default_base(root))  # O(1)
         rc = start_in_host(root, reg, host, slug, base, getattr(a, 'untracked', None) or reg.get('untracked'),
-                           existing=exist)  # O(S)
+                           existing=exist, topic=want)  # O(S)
         if rc != 0:  # O(1)
             return rc  # O(1)
         if not same(here, host):  # a separate host stays the host | O(1)

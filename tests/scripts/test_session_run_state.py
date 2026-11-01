@@ -112,7 +112,9 @@ def test_row_without_orchestrator_is_existing_code(hub):
 
 
 def test_hooks_parse_under_bin_bash():
-    assert subprocess.run(["/bin/bash", "-n", str(HOOK)]).returncode == 0
+    if not BASH:
+        pytest.skip("bash not available")
+    assert subprocess.run([BASH, "-n", str(HOOK)]).returncode == 0
 
 
 def test_parked_host_row_is_none_here(hub):

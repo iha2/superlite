@@ -87,9 +87,11 @@ def test_compact_nudge_reads_worktree_run(tree):
 
 
 def test_hooks_parse_under_bash(tree):
+    if not BASH:
+        pytest.skip("bash not available")
     for h in ("record-human-reply", "block-coordinator-edits", "capture-agent-launch",
               "capture-agent-stop", "compact-nudge"):
-        assert subprocess.run(["/bin/bash", "-n", str(HOOKS / h)]).returncode == 0
+        assert subprocess.run([BASH, "-n", str(HOOKS / h)]).returncode == 0
 
 
 @pytest.mark.parametrize("cwd", ["", "/", "C:\\\\Users\\\\x", "/no such/dir with \\\"quote", "relative/dir", None])

@@ -28,8 +28,9 @@ fi  # O(1)
 
 # Which superlite session (slug, branch, worktree) this checkout is, when sessions are registered.
 hud_line=""  # O(1)
-if [ "${SUPERLITE_NO_SESSION_HUD:-}" != "1" ] && { [ -d .superlite ] || [ -f .git ]; }; then  # O(1)
-  hud_line="$("$py" "${PLUGIN_ROOT}/skills/swarm/scripts/session_hud.py" . 2>/dev/null || true)"  # O(N)
+hud_off="${SUPERLITE_NO_SESSION_HUD:-}"  # O(1) display switch only; the state below is always computed
+if [ -d .superlite ] || [ -f .git ]; then  # O(1)
+  hud_line="$(SUPERLITE_NO_SESSION_HUD=0 "$py" "${PLUGIN_ROOT}/skills/swarm/scripts/session_hud.py" . 2>/dev/null || true)"  # O(N)
 fi  # O(1)
 
 # Project state hint for the start menu: bash builtins only (no spawned process).
@@ -111,7 +112,7 @@ if [ -n "$cost_line" ]; then  # O(1)
 '"${cost_line}"  # O(s)
 fi  # O(1)
 
-if [ -n "$hud_line" ]; then  # O(1)
+if [ -n "$hud_line" ] && [ "$hud_off" != "1" ]; then  # O(1)
   content="${content}"$'
 
 '"${hud_line}"  # O(s)
