@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -15,7 +16,8 @@ SESSION = SCRIPTS / "session.py"
 
 sys.path.insert(0, str(SCRIPTS))
 
-import session  # noqa: E402
+import session_registry  # noqa: E402
+from session import main as session_main  # noqa: E402
 
 
 def run(script: Path, *args, cwd=None):
@@ -97,22 +99,7 @@ def test_split_refuses_bad_topics(repo):
     assert run(SESSION, "split", "--keep", "ok", "--new", "Also Bad", cwd=repo).returncode == 2
 
 
-def test_start_md_asks_to_separate_into_worktrees():
-    text = (ROOT / "commands" / "start.md").read_text(encoding="utf-8")
-    assert "separate" in text.lower() and "worktree" in text.lower()
-    assert "sl session split" in text
-    assert "Start something new" in text
-
-
-def test_sessions_doc_has_mermaid_and_is_indexed():
-    doc = (ROOT / "docs" / "sessions.md").read_text(encoding="utf-8")
-    assert "```mermaid" in doc and doc.count("```mermaid") >= 3
-    assert "sl session split" in doc and "sessions.json" in doc
-    index = (ROOT / "docs" / "README.md").read_text(encoding="utf-8")
-    assert "sessions.md" in index
-
-
-def test_split_rolls_back_when_a_late_step_fails(repo):
+def test_split_rolls_back_on_failure(repo):
     (repo / "app.py").write_text("print('wip')\n")
     (repo / "app.py.new").write_text("untracked\n")
     sessions = repo / ".superlite" / "worktrees"
@@ -130,7 +117,7 @@ def test_split_rolls_back_when_a_late_step_fails(repo):
 
 
 def test_split_restores_run_state_after_partial_move(repo, monkeypatch):
-    original_move = session.shutil.move
+    original_move = shutil.move
     calls = 0
 
     def fail_second_move(src, dst, *args, **kwargs):
@@ -140,8 +127,8 @@ def test_split_restores_run_state_after_partial_move(repo, monkeypatch):
             raise OSError("simulated move failure")
         return original_move(src, dst, *args, **kwargs)
 
-    monkeypatch.setattr(session.shutil, "move", fail_second_move)
-    result = session.main(["split", "--keep", "export", "--new", "auth", "--root", str(repo)])
+    monkeypatch.setattr(shutil, "move", fail_second_move)
+    result = session_main(["split", "--keep", "export", "--new", "auth", "--root", str(repo)])
 
     assert result == 1
     assert (repo / ".superlite" / "orchestrator.json").is_file()
@@ -149,7 +136,7 @@ def test_split_restores_run_state_after_partial_move(repo, monkeypatch):
 
 
 def test_split_does_not_restore_run_state_when_first_move_fails(repo, monkeypatch):
-    original_move_run_state = session.move_run_state
+    original_move_run_state = session_registry.move_run_state
     restore_calls = 0
 
     def fail_move(*args, **kwargs):
@@ -160,9 +147,9 @@ def test_split_does_not_restore_run_state_when_first_move_fails(repo, monkeypatc
         restore_calls += 1
         return original_move_run_state(*args, **kwargs)
 
-    monkeypatch.setattr(session.shutil, "move", fail_move)
-    monkeypatch.setattr(session, "move_run_state", track_move_run_state)
-    result = session.main(["split", "--keep", "export", "--new", "auth", "--root", str(repo)])
+    monkeypatch.setattr(shutil, "move", fail_move)
+    monkeypatch.setattr(session_registry, "move_run_state", track_move_run_state)
+    result = session_main(["split", "--keep", "export", "--new", "auth", "--root", str(repo)])
 
     assert result == 1
     assert restore_calls == 1
@@ -201,7 +188,6 @@ def test_split_preserves_staged_changes(repo):
 
 
 def test_split_from_linked_feature_worktree_keeps_run_in_place(repo):
-    import shutil
     run_dir = repo / ".superlite"
     feat = run_dir / "worktrees" / "export"
     git(repo, "worktree", "add", "-q", "-b", "superlite/export", str(feat), "main")

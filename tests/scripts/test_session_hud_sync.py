@@ -60,7 +60,7 @@ def test_ahead_and_offer(hub):
     assert len(out) == 2
     assert out[0].endswith("| run:open | main:+2")
     assert out[1].startswith("superlite sync: local main moved ahead by 2 commits")
-    assert "sl session sync --slug b --later" in out[1]
+    assert "superlite-cli session sync --slug b --later" in out[1]
 
 
 def test_offered_suppresses_offer_and_flags(hub):

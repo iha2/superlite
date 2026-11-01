@@ -38,7 +38,7 @@ Codex has no plugin agents, so the `superlite:*` agents (`implementer`, `impleme
 | fixer-opus | opus-class (top tier) | high |
 | final-reviewer | opus-class (top tier) | high |
 
-The final-reviewer reads only its review packet and uses no tools; say so in the prompt. Run tests with `bash <skill-dir>/scripts/sl run_tests`. Role files under `~/.codex/agents/` (Codex 0.145+) attach via `agent_type`; use that only if you have set up roles from these files.
+The final-reviewer reads only its review packet and uses no tools; say so in the prompt. Run tests with `bash <skill-dir>/scripts/superlite-cli run_tests`. Role files under `~/.codex/agents/` (Codex 0.145+) attach via `agent_type`; use that only if you have set up roles from these files.
 
 - **Spawning:** give children a clean context with `spawn_agent {fork_turns: "none"}`; the default `"all"` copies your whole transcript into the child.
 - **Model and effort:** set `model` AND `reasoning_effort` on every `spawn_agent`. Setting `model` alone leaves the child's effort at that model's default. Never copy a model name from a skill or old session without checking it against your current spawn allowlist; V2 hard-errors on unsupported presets.

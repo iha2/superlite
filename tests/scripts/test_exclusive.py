@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 from test_plan_tools import SCRIPTS, run
@@ -78,3 +79,54 @@ def test_session_start_mentions_the_suspension_only_while_it_holds(tmp_path):
     loud = subprocess.run([BASH, str(HOOK)], cwd=tmp_path, capture_output=True, text=True, encoding="utf-8", env=env)
     ctx = json.loads(loud.stdout)["hookSpecificOutput"]["additionalContext"]
     assert "superpowers" in ctx and "can be used again" in ctx
+
+
+def test_peers_released_after_last_run(tmp_path, monkeypatch):
+    monkeypatch.setenv("CLAUDE_CODE", "1")
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+    monkeypatch.delenv("SUPERLITE_NO_AUTO_SESSION", raising=False)
+    repo = tmp_path / "app"
+    repo.mkdir()
+    for cmd in (["init", "-q", "-b", "main"], ["config", "user.email", "t@t"], ["config", "user.name", "t"]):
+        subprocess.run(["git", *cmd], cwd=repo, check=True)
+    (repo / ".gitignore").write_text(".superlite/\n.claude/\n")
+    (repo / "a.txt").write_text("a\n")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
+    session = SCRIPTS / "session.py"
+    assert run(session, "ensure", "--slug", "a", cwd=repo).returncode == 0
+    assert run(session, "create", "--slug", "b", "--worktree", cwd=repo).returncode == 0
+    wt = repo / ".superlite" / "worktrees" / "sessions" / "b"
+    run(EX, "on", cwd=repo)
+    settings = repo / ".claude" / "settings.local.json"
+    assert json.loads(settings.read_text(encoding="utf-8"))["enabledPlugins"][PEER] is False
+    # the run in the main checkout finishes while b is still open: peers stay off
+    held = run(EX, "off", cwd=repo)
+    assert "suspended" in held.out and "b" in held.out
+    assert (repo / ".superlite" / "peers.json").is_file()
+    assert json.loads(settings.read_text(encoding="utf-8"))["enabledPlugins"][PEER] is False
+    # b finishes last: peers are released
+    sys.path.insert(0, str(SCRIPTS))
+    import session as session_mod
+    assert session_mod.mark_run(wt, "finished") == "b"
+    done = run(EX, "off", cwd=repo)
+    assert "clear" in done.out
+    assert not (repo / ".superlite" / "peers.json").is_file()
+    assert not settings.is_file()
+
+
+def test_release_takes_the_registry_lock(tmp_path, monkeypatch):
+    sys.path.insert(0, str(SCRIPTS))
+    import exclusive
+    import session_registry
+    seen = []
+    real = session_registry.registry_lock
+
+    def spy(root):
+        seen.append(root)
+        return real(root)
+    monkeypatch.setattr(session_registry, "registry_lock", spy)
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / ".superlite").mkdir()
+    exclusive.release(tmp_path / ".superlite")
+    assert seen

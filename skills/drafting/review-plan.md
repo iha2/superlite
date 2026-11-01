@@ -5,9 +5,9 @@ NOT the agent plan. After the yes the coordinator writes the machine plan (taskg
 sizes) from it, with the header line `**Review plan:** <path>`. With an AI orchestrator there is no review plan.
 
 File: `docs/plans/<date>-<topic>.review.md`. Nothing is built, dispatched or written (except this file) before the human's approving
-reply. When `open_in_harness` is on (`sl agent_specs status`), open the plan for the user first (`superlite:drafting`, After writing). Show the human, in plain text and not with AskUserQuestion, the path, a five-line summary and "Reply approve to start, or tell me
+reply. When `open_in_harness` is on (`superlite-cli agent_specs status`), open the plan for the user first (`superlite:drafting`, After writing). Show the human, in plain text and not with AskUserQuestion, the path, a five-line summary and "Reply approve to start, or tell me
 what to change", then END THE TURN. If you understand the answer as approval, send approve:
-`sl orchestrator approve --review <path>` (do not pass their words through; records the path and its sha256 in `.superlite/orchestrator.json`).
+`superlite-cli orchestrator approve --review <path>` (do not pass their words through; records the path and its sha256 in `.superlite/orchestrator.json`).
 If you do not, revise and ask again.
 
 ## Required sections, in this order
@@ -68,7 +68,6 @@ flowchart TB
 ## Decisions you can change
 - Characters counted as: Unicode characters (default) | bytes
 - Output: three labelled lines (default) | one line like `wc`
-- Commits: leave my work uncommitted, superlite takes hidden checkpoints (default) | commit each task on my branch
 
 ## Risks
 - Very large files: read in chunks (default) so memory stays small.
@@ -89,7 +88,7 @@ About 3 to 6 minutes and $1 to $2 (rough, until linted).
 - Name parts by what they do for the human, not by file or function.
 - Keep each diagram at 12 nodes or fewer, with labels in plain words.
 - Quote every `subgraph` title and any label with spaces or punctuation (`subgraph W1["Wave 1, in parallel"]`), so the diagram renders.
-- Say what you assumed; keep decisions as `default | alternative`. Always list the Commits decision; if the human picks per-task commits, run `sl autocommit on` after approval.
+- Say what you assumed; keep decisions as `default | alternative`.
 - Keep scope and parts exactly what the machine plan will contain. After the approval the human is not asked again: a later change
   to scope or to an interface the human saw becomes a `Ruling: [scope] ...`, listed at finish under "Changed from the approved plan".
 

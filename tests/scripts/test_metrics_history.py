@@ -150,6 +150,27 @@ def test_budget_line_warn_and_over_cap(tmp_path):
     assert "OVER CAP" not in ok and "WARN" not in ok
 
 
+def test_budget_lines_69_70_100(tmp_path, monkeypatch, capsys):
+    """Nothing below 70% of the cap, WARN at 70%, OVER CAP past 100%; each line prints once."""
+    import budget
+    (tmp_path / "metrics.jsonl").write_text("{}\n", encoding="utf-8")
+    cap = 10.0
+
+    def fake(spent):
+        return {"coordinator_usd": 0.0, "agents_usd": spent, "cost_usd": spent, "cap_usd": cap, "elapsed_min": 1.0,
+                "projected_min": 1.0, "projected_usd": None, "target_min": None, "pct_cap": spent / cap, "stats": "n=0",
+                "late": False, "late_path": [], "hint": None,
+                "state": "over" if spent > cap else "warn" if spent >= budget.WARN_AT * cap else "ok"}
+    for spent, word in ((6.9, None), (7.0, "WARN"), (10.01, "OVER CAP")):
+        (tmp_path / "budget.state").unlink(missing_ok=True)
+        monkeypatch.setattr(budget, "compute", lambda *a, _s=spent, **k: fake(_s))
+        for _ in range(2):
+            budget.maybe_print("plan.md", tmp_path)
+        out = capsys.readouterr().out
+        assert out.count("budget:") == 1
+        assert all((w in out) == (w == word) for w in ("WARN", "OVER CAP"))
+
+
 def test_budget_changed_prints_once(tmp_path):
     p = mech_plan(tmp_path, 2)
     setup_run(tmp_path)

@@ -1,4 +1,4 @@
-"""Slim Sonnet prime (rules, plan header, constraints, stable tasks' interfaces) and the `sl task` lookup."""
+"""Slim Sonnet prime (rules, plan header, constraints, stable tasks' interfaces) and the `superlite-cli task` lookup."""
 from __future__ import annotations
 
 import hashlib
@@ -84,7 +84,7 @@ def test_slim_content_header_constraints_and_stable_interfaces_only(tmp_path):
     assert "Owns: pkg/t1.go, pkg/t1_test.go" in ifaces
     assert "T4" not in ifaces and "beta.Main" not in text  # FIX task: no interface line
     assert "BODY-OF-T" not in text and "SPEC-" not in text and "mermaid" not in text and "## Spec sections" not in text
-    assert "NEEDS_CONTEXT" in text and "sl task Tn" in text
+    assert "NEEDS_CONTEXT" in text and "superlite-cli task Tn" in text
 
 
 def test_slim_without_stable_json_treats_every_task_as_stable(tmp_path):
@@ -120,7 +120,7 @@ def test_prime_override_config_and_bad_plan(tmp_path):
     assert bad.returncode == 2 and "not found" in bad.err and not (tmp_path / "y.md").exists()
 
 
-# ----------------------------------------------------------------- sl task
+# ----------------------------------------------------------------- superlite-cli task
 
 def test_task_prints_the_block_and_the_produces_of_what_it_consumes(tmp_path):
     p = make(tmp_path)
@@ -158,8 +158,3 @@ def test_task_default_plan_comes_from_the_pool(tmp_path):
     (tmp_path / ".superlite" / "pool.json").write_text(json.dumps({"plan": str(p), "agents": []}), encoding="utf-8")
     cp = run(TASK, "T2", cwd=tmp_path)
     assert cp.returncode == 0 and "BODY-OF-T2" in cp.out
-
-
-def test_sl_launcher_knows_task():
-    sl = (SCRIPTS / "sl").read_text(encoding="utf-8")
-    assert " task," in sl and (SCRIPTS / "task.py").is_file()

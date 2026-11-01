@@ -1,7 +1,7 @@
 # `mvp-feedback.json`
 
-Written by the page's Save feedback (human) or by `sl mvp_check ai` (AI orchestrator). Read from
-`.superlite/mvp/mvp-feedback.json`; `sl mvp_check fetch` copies it in from Downloads when the browser saved it there.
+Written by the page's Save feedback (human) or by `superlite-cli mvp_check ai` (AI orchestrator). Read from
+`.superlite/mvp/mvp-feedback.json`; `superlite-cli mvp_check fetch` copies it in from Downloads when the browser saved it there.
 
 ```json
 {
@@ -22,7 +22,7 @@ Written by the page's Save feedback (human) or by `sl mvp_check ai` (AI orchestr
 }
 ```
 
-Rules `sl mvp_check check` enforces:
+Rules `superlite-cli mvp_check check` enforces:
 
 | Field | Rule |
 |---|---|

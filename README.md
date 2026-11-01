@@ -12,7 +12,7 @@
   <img alt="license" src="https://img.shields.io/badge/license-MIT-6366f1">
   <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-2dd4bf">
   <img alt="parallel agents" src="https://img.shields.io/badge/parallel%20agents-up%20to%2018-c084fc">
-  <a href="https://github.com/hashgraph-online/hol-guard"><img alt="HOL Guard Scanner" src="https://img.shields.io/badge/HOL%20Guard-passing-00a67e"></a>
+  <a href="https://github.com/iha2/superlite/actions/workflows/plugin-scanner.yml"><img alt="HOL Guard Scanner" src="https://github.com/iha2/superlite/actions/workflows/plugin-scanner.yml/badge.svg"></a>
 </p>
 
 ---
@@ -21,7 +21,7 @@
 
 Install it ([below](#install)), open a session in your project, and say what you want. superlite shows a one-screen intro the first time; `/superlite:intro` brings it back and `/superlite:help` has every detail.
 
-Each run starts its own session automatically (`sl session ensure`): a branch `superlite/sessions/<topic>` in your checkout, or a parallel worktree if another run is still open. Shipping closes it. See [Sessions](docs/sessions.md).
+Each run starts its own session automatically (`superlite-cli session ensure`): a branch `superlite/sessions/<topic>` in your checkout, or a parallel worktree if another run is still open. Shipping closes it. See [Sessions](docs/sessions.md).
 
 ### Say what you want
 
@@ -48,7 +48,7 @@ Each run starts its own session automatically (`sl session ensure`): a branch `s
 | `/superlite:human`, `/superlite:ai`, `/superlite:approve` | Choose who orchestrates; approve the review plan |
 | `/superlite:status`, `/superlite:stop`, `/superlite:resume` | Watch, stop or resume a build |
 | `/superlite:agents`, `/superlite:tail` | Watch a run: the agent map pane, or the same run as a terminal feed without the mod |
-| `/superlite:review`, `/superlite:report`, `/superlite:commit`, `/superlite:finish` | Review a branch, read build reports, turn checkpoints into commits, finish the branch |
+| `/superlite:review`, `/superlite:report`, `/superlite:finish` | Review a branch, read build reports, finish the branch |
 | `/superlite:setup`, `/superlite:intro`, `/superlite:help [section]` | First-run check, the intro screen, the detailed help |
 
 Plain words work just as well; the commands are shortcuts.
@@ -58,7 +58,7 @@ Plain words work just as well; the commands are shortcuts.
 - **Human orchestrator.** You get a plain-language review plan with diagrams (a `.review.md`, about two pages, with a rough time and cost), and nothing is linted, dispatched or sent to an agent until you reply approve. Any clear approval counts (yes, go ahead, looks good, or similar), including a longer note. After that you are not asked again: any change to scope is recorded as a ruling and listed at the end under "Changed from the approved plan". Small inline work needs only your yes in chat.
 - **AI orchestrator.** It plans, lints, dispatches and rules on open choices itself, with no review plan and no questions.
 
-Both stop for destructive, outward (push, merge, publish) or security-sensitive actions, and nothing is committed unless you ask: finished tasks are kept as hidden checkpoints until you run `/superlite:commit`. A checkpoint is a hidden save of one task under `refs/superlite/*`; a commit is a real git commit on your branch, made only by `/superlite:commit` or `sl autocommit on`.
+Both stop for destructive, outward (push, merge, publish) or security-sensitive actions, and superlite never commits during a run: finished tasks are hidden checkpoints. A checkpoint is a hidden save of one task under `refs/superlite/*`. At session end, shipping asks once: "Commit to <session branch>" or "Leave uncommitted".
 
 ### Watch a run
 
@@ -79,7 +79,7 @@ flowchart LR
 A read-only view, offered when you approve the plan (reply `approve map`), or opened any time:
 
 - `/superlite:agents` opens the **agent map** in Claude Desktop: a tree from the main session down, each agent under the one that spawned it, green while it runs, red if it was aborted or blocked, grey when done. Each node shows its tier, time, tokens and tasks (✓ once checkpointed); click a row for its details and its ledger lines. It needs the `claude-agent-map` mod: `/plugin install claude-agent-map@superlite-dev`.
-- Without the mod (a terminal session, another harness), `/superlite:tail` prints the same run as a **live feed**: every agent start and finish from `metrics.jsonl` and every ledger line from `progress.md` (`sl tail --dir .superlite`).
+- Without the mod (a terminal session, another harness), `/superlite:tail` prints the same run as a **live feed**: every agent start and finish from `metrics.jsonl` and every ledger line from `progress.md` (`superlite-cli tail --dir .superlite`).
 
 ---
 
@@ -107,7 +107,7 @@ superlite plans a build, splits it into tasks that can run side by side, hands e
 
 ### Not a rival to superpowers
 
-superlite is **not a competitor** to [superpowers](https://github.com/obra/superpowers). superpowers is a careful, collaborative workflow that keeps a human close to every step, and it is excellent at that. superlite starts from its ideas (the plugin layout, the session-start hook, the lifecycle skills, with credit) and tunes them for a different job: **autonomous development, at speed**. If you want to steer each step, use superpowers. If you want to hand over a spec and come back to working code, use superlite. A superlite run suspends superpowers until `sl finish`; after that, superpowers can be used again.
+superlite is **not a competitor** to [superpowers](https://github.com/obra/superpowers). superpowers is a careful, collaborative workflow that keeps a human close to every step, and it is excellent at that. superlite starts from its ideas (the plugin layout, the session-start hook, the lifecycle skills, with credit) and tunes them for a different job: **autonomous development, at speed**. If you want to steer each step, use superpowers. If you want to hand over a spec and come back to working code, use superlite. A superlite run suspends superpowers until `superlite-cli finish`; after that, superpowers can be used again.
 
 ---
 
@@ -429,7 +429,7 @@ Arms are `superpowers` and `superlite`. Environment variables: `SUPERLITE_PLUGIN
 Analysis scripts:
 
     python bench/report_mechanical.py bench/results/combo-superlite-x1.mechanical.json bench/results/*.json
-    python bench/report_mechanical.py --history ~/.superlite/history.jsonl [--focus opus,haiku] [--baseline sonnet]
+    python bench/report_mechanical.py --history $XDG_DATA_HOME/superlite/history.jsonl [--focus opus,haiku] [--baseline sonnet]
     python bench/mechanical_ab.py RUN_DIR [--tasks T8,T5] [--n 3] [--cost-cap 2.0] [--timeout 300] [--dry-run] [--wait]
     python bench/routing_evidence.py [--write]
     python bench/build_shape_audit.py [--runs DIR] [--write]
@@ -449,7 +449,7 @@ Analysis scripts:
 
 ## Note
 
-While a superlite run is in progress, superpowers is suspended (`sl orchestrator set` writes `.superlite/peers.json` and, on Claude Code, turns `superpowers@claude-plugins-official` off in `.claude/settings.local.json`). The lifecycle skills are named `inventing`, `drafting`, `swarm`, `testing`, `diagnosis`, `proof`, and `shipping`, so a short-name lookup does not open the superpowers file. Both plugins still inject a session bootstrap. `sl finish` removes the marker and restores the previous setting, so superpowers or anything like it can be used again.
+While a superlite run is in progress, superpowers is suspended (`superlite-cli orchestrator set` writes `.superlite/peers.json` and, on Claude Code, turns `superpowers@claude-plugins-official` off in `.claude/settings.local.json`). The lifecycle skills are named `inventing`, `drafting`, `swarm`, `testing`, `diagnosis`, `proof`, and `shipping`, so a short-name lookup does not open the superpowers file. Both plugins still inject a session bootstrap. `superlite-cli finish` removes the marker and restores the previous setting, so superpowers or anything like it can be used again.
 
 ## License
 

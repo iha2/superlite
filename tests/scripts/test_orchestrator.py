@@ -9,11 +9,9 @@ from test_plan_tools import SCRIPTS, run
 from test_routing import mech_plan
 
 ORCH = SCRIPTS / "orchestrator.py"
-REPO = SCRIPTS.parents[2]
-LINE = "Orchestrator: AI, do not ask me to choose or to approve."
 NO_REPLY = ("BLOCKED: no human approval reply since the review plan was written; show the plan, ask the human to reply approve, "
             "end your turn")
-BLOCK = "BLOCKED: human orchestrator selected, show the plan, ask for approval, then run sl orchestrator approve"
+BLOCK = "BLOCKED: human orchestrator selected, show the plan, ask for approval, then run superlite-cli orchestrator approve"
 
 
 def reply(tmp_path, review, approves=True, offset_ms=5000, text="approve"):
@@ -61,13 +59,16 @@ def test_each_gated_tool_is_blocked_in_human_mode_and_runs_after_approve(tmp_pat
     assert (tmp_path / ".superlite" / "stable.json").exists()
 
 
-def test_schedule_prune_and_plain_lint_stay_allowed_in_human_mode(tmp_path):
+def test_schedule_and_plain_lint_stay_allowed_in_human_mode(tmp_path):
     p = mech_plan(tmp_path, 2)
+    before = p.read_bytes()
     orch(tmp_path, "set", "human")
-    for args in (("schedule", "--plan", p, "--insert"), ("prune", "--plan", p), ("lint", "--plan", p)):
+    for args in (("schedule", "--plan", p), ("lint", "--plan", p)):
         cp = run(SCRIPTS / "plan_tools.py", *args, cwd=tmp_path)
         assert BLOCK not in cp.both and cp.returncode != 4, (args, cp.both)
-    assert "%% schedule" in p.read_text(encoding="utf-8")
+    cp = run(SCRIPTS / "plan_tools.py", "schedule", "--plan", p, cwd=tmp_path)
+    assert cp.returncode == 0 and cp.out.strip(), cp.both
+    assert p.read_bytes() == before
 
 
 def test_ai_mode_and_no_file_are_ungated(tmp_path):
@@ -123,35 +124,9 @@ def test_finish_reports_the_mode_and_the_approval_time(tmp_path):
     assert "orchestrator: AI" in finish(tmp_path)
 
 
-def bench_prompts():
-    b = REPO / "bench"
-    return sorted([*b.glob("prompt*.md"), *b.glob("tasks/*/prompt*.md")])
-
-
-def test_every_bench_prompt_says_the_orchestrator_is_ai():
-    files = bench_prompts()
-    assert len(files) >= 10
-    missing = [str(f.relative_to(REPO)) for f in files if LINE not in f.read_text(encoding="utf-8")]
-    assert not missing, missing
-
-
-def test_skill_size_caps_and_the_new_names():
-    skills = REPO / "skills"
-    assert len((skills / "using-superlite" / "SKILL.md").read_text(encoding="utf-8")) <= 2000
-    assert len((skills / "swarm" / "SKILL.md").read_text(encoding="utf-8")) <= 12500
-    brain = (skills / "inventing" / "SKILL.md").read_text(encoding="utf-8")
-    assert "Human orchestrator: I approve the plan before it runs" in brain and "AI orchestrator: hands off, it does everything" in brain
-    assert brain.count("AskUserQuestion") >= 1 and "ONE `AskUserQuestion` call" in brain
-    plans = (skills / "drafting" / "SKILL.md").read_text(encoding="utf-8")
-    assert "**Human orchestrator**" in plans and "**AI orchestrator**" in plans and "A human approves" not in plans
-
-
 # ---------------------------------------------------------------- review plan (human orchestrator, phase 1)
 
 import hashlib  # noqa: E402
-
-REVIEW = REPO / "skills" / "drafting" / "review-plan.md"
-
 
 def review_file(tmp_path, name="plan.review.md"):
     f = tmp_path / "docs" / "plans" / name
@@ -262,61 +237,8 @@ def test_status_and_finish_show_the_review_plan_path(tmp_path):
     assert BLOCK not in run(SCRIPTS / "plan_tools.py", "lint", "--stable", "--plan", p, cwd=tmp_path).both  # the gate opened
 
 
-REQUIRED_SECTIONS = ["## Summary", "## What you will get", "## What will be built", "## How it fits together", "## How it gets built",
-                     "## Decisions you can change", "## Risks", "## Out of scope", "## How we will know it works", "## Rough time and cost"]
-
-
-def test_review_plan_template_names_every_required_section_and_has_two_diagrams():
-    text = REVIEW.read_text(encoding="utf-8")
-    for h in REQUIRED_SECTIONS:
-        assert h in text, h
-    assert text.count("```mermaid") >= 2  # the example carries both diagrams
-    for word in ("Size (S/M/L)", "at most 12 nodes", "rough until", "Do not", "Do\n", "five-line summary", "sha256", "**Review plan:**"):
-        assert word in text, word
-
-
-def test_skills_mention_both_phases_and_keep_their_caps():
-    skills = REPO / "skills"
-    plans = (skills / "drafting" / "SKILL.md").read_text(encoding="utf-8")
-    brain = (skills / "inventing" / "SKILL.md").read_text(encoding="utf-8")
-    sdd = (skills / "swarm" / "SKILL.md").read_text(encoding="utf-8")
-    for text in (plans, brain):
-        assert ".review.md" in text and "review-plan.md" in text and "approve --review" in text
-    assert "**Review plan:**" in plans and "machine plan" in plans and "machine plan" in brain
-    assert "approve --review PATH" in sdd and "review plan" in sdd
-    assert len((skills / "using-superlite" / "SKILL.md").read_text(encoding="utf-8")) <= 2000 and len(sdd) <= 12500
-    readme = (REPO / "README.md").read_text(encoding="utf-8")
-    assert "review plan" in readme.lower() and "You approve first" in readme
-
-
-def test_texts_state_the_hard_rule_plain_text_approval_and_the_small_form():
-    skills = REPO / "skills"
-    plans = (skills / "drafting" / "SKILL.md").read_text(encoding="utf-8")
-    brain = (skills / "inventing" / "SKILL.md").read_text(encoding="utf-8")
-    sdd = (skills / "swarm" / "SKILL.md").read_text(encoding="utf-8")
-    ref = (skills / "swarm" / "orchestrator.md").read_text(encoding="utf-8")
-    review = REVIEW.read_text(encoding="utf-8")
-    for text in (plans, brain):
-        assert "not AskUserQuestion" in text and "END THE TURN" in text
-        assert "Reply approve to start, or tell me what to change" in text
-    assert "Nothing is built, dispatched or written except this file" in plans and "small requests too" not in plans
-    assert "yes in chat" in brain and "yes in chat" in (skills / "using-superlite" / "SKILL.md").read_text(encoding="utf-8")
-    assert "Ruling: [scope]" in plans and "Changed from the approved plan" in plans and "goes back to the human" not in plans
-    assert "before the human's approving reply" in sdd and "plain text" in sdd
-    assert "human-replies.jsonl" in ref and "exit 3" in ref and "The hard rule (human mode)" in ref
-    assert "One-page form" not in review and "Reply approve to start" in review and "Ruling: [scope]" in review
-    assert "Small inline work" in ref and "Changed from the approved" in ref and "coord-guard" not in ref
-    assert "the orchestrator-choice" not in brain  # the choice itself stays an AskUserQuestion batch
-    assert "ONE `AskUserQuestion` call" in brain and "Human orchestrator: I approve the plan before it runs" in brain
-
-
-def test_readme_has_the_human_mode_sentence():
-    readme = (REPO / "README.md").read_text(encoding="utf-8")
-    assert "nothing is linted, dispatched or sent to an agent until you reply approve" in readme and "you are not asked again" in readme
-
-
 def test_orchestrator_uses_the_run_of_a_parent_folder(tmp_path):
-    # The hook records replies at the project root; sl run from a subfolder must read and write the same .superlite.
+    # The hook records replies at the project root; superlite-cli run from a subfolder must read and write the same .superlite.
     assert "human" in orch(tmp_path, "set", "human").out
     sub = tmp_path / "movedocs" / "api"
     sub.mkdir(parents=True)

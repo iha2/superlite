@@ -3,43 +3,40 @@
   "hooks": {
     "sessionStart": [
       {
-        "command": "git -c 'alias.sl-hook=!cd \"${GIT_PREFIX:-.}\" && exec bash ./hooks/session-start' sl-hook"
+        "command": "git -c 'alias.superlite-hook=!cd \"${GIT_PREFIX:-.}\" && exec bash ./hooks/session-start' superlite-hook"
       }
     ],
     "beforeSubmitPrompt": [
       {
-        "command": "git -c 'alias.sl-hook=!cd \"${GIT_PREFIX:-.}\" && exec bash ./hooks/record-human-reply' sl-hook"
-      },
-      {
-        "command": "git -c 'alias.sl-hook=!cd \"${GIT_PREFIX:-.}\" && exec bash ./hooks/cost-report' sl-hook"
+        "command": "git -c 'alias.superlite-hook=!cd \"${GIT_PREFIX:-.}\" && exec bash ./hooks/prompt' superlite-hook"
       }
     ],
     "preToolUse": [
       {
-        "command": "git -c 'alias.sl-hook=!cd \"${GIT_PREFIX:-.}\" && exec bash ./hooks/block-coordinator-edits' sl-hook"
+        "command": "git -c 'alias.superlite-hook=!cd \"${GIT_PREFIX:-.}\" && exec bash ./hooks/pre-tool' superlite-hook"
       }
     ],
     "subagentStart": [
       {
-        "command": "git -c 'alias.sl-hook=!cd \"${GIT_PREFIX:-.}\" && exec bash ./hooks/capture-agent-launch' sl-hook"
+        "command": "git -c 'alias.superlite-hook=!cd \"${GIT_PREFIX:-.}\" && exec bash ./hooks/capture-agent-launch' superlite-hook"
       }
     ],
     "subagentStop": [
       {
-        "command": "git -c 'alias.sl-hook=!cd \"${GIT_PREFIX:-.}\" && exec bash ./hooks/capture-agent-stop' sl-hook"
+        "command": "git -c 'alias.superlite-hook=!cd \"${GIT_PREFIX:-.}\" && exec bash ./hooks/capture-agent-stop' superlite-hook"
       },
       {
-        "command": "git -c 'alias.sl-hook=!cd \"${GIT_PREFIX:-.}\" && exec bash ./hooks/capture-host-usage' sl-hook"
+        "command": "git -c 'alias.superlite-hook=!cd \"${GIT_PREFIX:-.}\" && exec bash ./hooks/capture-host-usage' superlite-hook"
       }
     ],
     "stop": [
       {
-        "command": "git -c 'alias.sl-hook=!cd \"${GIT_PREFIX:-.}\" && exec bash ./hooks/capture-host-usage' sl-hook"
+        "command": "git -c 'alias.superlite-hook=!cd \"${GIT_PREFIX:-.}\" && exec bash ./hooks/capture-host-usage' superlite-hook"
       }
     ],
     "afterAgentResponse": [
       {
-        "command": "git -c 'alias.sl-hook=!cd \"${GIT_PREFIX:-.}\" && exec bash ./hooks/capture-host-usage' sl-hook"
+        "command": "git -c 'alias.superlite-hook=!cd \"${GIT_PREFIX:-.}\" && exec bash ./hooks/capture-host-usage' superlite-hook"
       }
     ]
   }

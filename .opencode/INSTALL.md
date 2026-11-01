@@ -40,7 +40,7 @@ Verify by asking: "Tell me about your superlite skills"
 
 OpenCode uses its own plugin install. If you also use Claude Code, Codex, or
 another harness, install Superlite separately for each one. A superlite run
-suspends the plugin it was derived from until `sl finish`.
+suspends the plugin it was derived from until `superlite-cli finish`.
 
 ## Usage
 
@@ -139,7 +139,7 @@ Skills speak in Claude Code's tool names. The plugin injects a flavor-specific m
 - Search file contents or find files -> `grep`, `glob`
 - Fetch a URL -> `webfetch`; search the web -> `websearch`
 
-OpenCode has no plugin agents. To run superlite's `implementer`, `implementer-haiku`, `package-reviewer`, `final-reviewer` or a fixer (`fixer-sonnet`, `fixer-sonnet-high`, `fixer-opus`) (tests run through `sl run_tests`, not an agent), dispatch the generic subagent with the full text of `agents/<name>.md` (minus frontmatter) followed by the brief as its prompt, on the model tier named in that file.
+OpenCode has no plugin agents. To run superlite's `implementer`, `implementer-haiku`, `package-reviewer`, `final-reviewer` or a fixer (`fixer-sonnet`, `fixer-sonnet-high`, `fixer-opus`) (tests run through `superlite-cli run_tests`, not an agent), dispatch the generic subagent with the full text of `agents/<name>.md` (minus frontmatter) followed by the brief as its prompt, on the model tier named in that file.
 
 ## Getting Help
 

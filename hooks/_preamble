@@ -1,0 +1,219 @@
+# Sourced by hooks/pre-tool and hooks/prompt (not run on its own). Reads the hook's stdin JSON once and
+# finds the plugin root, the project, and the run state folder. Bash builtins only (each external process
+# costs ~250 ms on Windows). Sets: input, root, in_cwd, proj0 (where the host says the project is), proj (the
+# folder at or above it that holds the run), sd (proj/.superlite), active (1 while a build run is on).
+
+# The first 8192 characters come from the builtin (it reads a pipe byte by byte, ~0.5 s per MB); the rest of a
+# large input, if any, comes from one cat. The builtin returns 1 at EOF, which is fine.
+IFS= read -r -d '' -n 8192 input && input="$input$(cat)"
+
+# jstr KEY: first JSON string value for KEY, still JSON-escaped, into REPLY (empty if absent).
+jstr() {
+  local re='"'"$1"'"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
+  REPLY=""
+  [[ $input =~ $re ]] && REPLY="${BASH_REMATCH[1]}"
+}
+
+# lower S: S in lower case (ASCII), into LOWER. bash 3.2 (stock macOS) has no ${var,,}.
+lower() { LOWER="$(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]')"; }
+
+# esc VAR: JSON-escape the string in VAR.
+esc() {
+  local s="${!1}"
+  s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; s="${s//$'\n'/\\n}"; s="${s//$'\r'/}"; s="${s//$'\t'/\\t}"
+  printf -v "$1" '%s' "$s"
+}
+
+# ---- linear text helpers. In bash 3.2 ${s//pat/rep} costs time quadratic in the length of s as soon as pat occurs
+# in it (0.5 s for 100 KB, 15 s for 1 MB), and `read` costs 0.5 s per MB. Strings of BIG characters or more are
+# instead split at one character by word splitting (one pass) and put back together.
+BIG=4096
+nl=$'\n'
+
+# split_at CHAR STRING: split STRING at each CHAR (one character, not a space, tab or newline) into the array
+# SPLIT. The last field carries an extra "x" so that a trailing empty field is kept; callers cut it off.
+split_at() {
+  local IFS="$1"
+  set -f
+  SPLIT=( $2"x" )
+  set +f
+}
+
+# gsub_char VAR CHAR TO: replace every CHAR (one character, not a space, tab or newline) in VAR by TO.
+gsub_char() {
+  local s="${!1}" f n
+  case "$s" in *"$2"*) ;; *) return 0 ;; esac
+  if [ "${#s}" -lt "$BIG" ]; then printf -v "$1" '%s' "${s//"$2"/$3}"; return 0; fi
+  split_at "$2" "$s"; n=$(( ${#SPLIT[@]} - 1 ))
+  SPLIT[n]="${SPLIT[n]%x}"
+  f="${3//\\/\\\\}"; f="${f//%/%%}"
+  printf -v s "%s$f" "${SPLIT[@]}"
+  printf -v "$1" '%s' "${s%"$3"}"
+}
+
+# count_char VAR CHAR: how many times CHAR (one character, not a space, tab or newline) occurs in VAR, into COUNT.
+count_char() {
+  local s="${!1}"
+  COUNT=0
+  case "$s" in *"$2"*) ;; *) return 0 ;; esac
+  split_at "$2" "$s"
+  COUNT=$(( ${#SPLIT[@]} - 1 ))
+}
+
+# The loops below walk SPLIT with `for p in "${SPLIT[@]}"` inside $( ) and print pieces: in bash 3.2 an array is a
+# linked list, and `+=` on a string copies it. The sentinel x on the last field keeps $( )
+# from trimming trailing newlines; it is cut off after.
+
+# pair_to_nl VAR CHAR: replace every non-overlapping pair CHAR CHAR (a run of m CHARs gives m/2 newlines, plus
+# one CHAR when m is odd) in VAR by a newline.
+pair_to_nl() {
+  local s="${!1}" out
+  case "$s" in *"$2$2"*) ;; *) return 0 ;; esac
+  if [ "${#s}" -lt "$BIG" ]; then printf -v "$1" '%s' "${s//"$2$2"/$nl}"; return 0; fi
+  split_at "$2" "$s"
+  out=$(
+    first=1; pending=0
+    for p in "${SPLIT[@]}"; do
+      if [ "$first" = 1 ]; then first=0; printf '%s' "$p"; continue; fi
+      if [ -z "$p" ]; then pending=$((pending+1)); continue; fi   # another CHAR follows at once
+      m=$((pending+1)); pending=0
+      while [ "$m" -ge 2 ]; do printf '\n'; m=$((m-2)); done
+      [ "$m" = 1 ] && printf '%s' "$2"
+      printf '%s' "$p"
+    done
+  )
+  printf -v "$1" '%s' "${out%x}"
+}
+
+# join_continuations VAR: delete every backslash-newline (a shell line continuation) in VAR.
+join_continuations() {
+  local s="${!1}" out
+  [[ $s == *\\$nl* ]] || return 0
+  if [ "${#s}" -lt "$BIG" ]; then printf -v "$1" '%s' "${s//\\$nl/}"; return 0; fi
+  out=$(
+    while IFS= read -r line; do
+      if [[ $line == *\\ ]]; then printf '%s' "${line%\\}"; else printf '%s\n' "$line"; fi
+    done <<< "$s"
+    printf x
+  )
+  out="${out%x}"
+  case "$s" in *\\) printf -v "$1" '%s' "$out\\" ;; *) printf -v "$1" '%s' "${out%$nl}" ;; esac   # a last backslash has no newline to join
+}
+
+# amp_placeholders VAR: in VAR, ">&" becomes \x02 and then "&>" becomes \x03 (so 2>&1 and &> are not read as a
+# separator).
+amp_placeholders() {
+  local s="${!1}" out
+  case "$s" in *'>&'*|*'&>'*) ;; *) return 0 ;; esac
+  if [ "${#s}" -lt "$BIG" ]; then
+    s="${s//>&/$'\x02'}"; s="${s//&>/$'\x03'}"
+    printf -v "$1" '%s' "$s"
+    return 0
+  fi
+  split_at '&' "$s"
+  out=$(
+    first=1; prev=""
+    for p in "${SPLIT[@]}"; do   # a field boundary was one &
+      orig="$p"
+      if [ "$first" = 1 ]; then first=0
+      else
+        if [[ $prev == *'>' ]]; then printf '\002'                       # >& : the > ended the field before
+        elif [[ $p == '>'* && $p != '>' ]]; then printf '\003'; p="${p#>}"   # &> (a lone > is taken by the next >&)
+        else printf '&'; fi
+      fi
+      [[ $orig == *'>' ]] && p="${p%>}"
+      printf '%s' "$p"
+      prev="$orig"
+    done
+  )
+  printf -v "$1" '%s' "${out%x}"
+}
+
+# jdecode VAR MODE: decode the JSON escapes in VAR (a string value still JSON-escaped), pair-aware (\\ first).
+# MODE kill: \n \r \t become a space, other escapes stay. edits: \" is ", \n a newline, \r nothing, \t a space,
+# \\ one backslash, \/ stays. rewrite: as edits, but \t is a tab and \/ is /.
+jdecode() {
+  local s="${!1}" en er et eq es eb out
+  case "$s" in *\\*) ;; *) return 0 ;; esac
+  case "$2" in
+    kill)  en=" "; er=" "; et=" "; eq='\"'; es='\/'; eb='\\' ;;
+    edits) en=$nl; er=""; et=" "; eq='"'; es='\/'; eb='\' ;;
+    *)     en=$nl; er=""; et=$'\t'; eq='"'; es='/'; eb='\' ;;
+  esac
+  if [ "${#s}" -lt "$BIG" ]; then
+    s="${s//\\\\/$'\x01'}"
+    [[ $s == *'\"'* ]] && s="${s//\\\"/$eq}"
+    [[ $s == *'\n'* ]] && s="${s//\\n/$en}"
+    [[ $s == *'\r'* ]] && s="${s//\\r/$er}"
+    [[ $s == *'\t'* ]] && s="${s//\\t/$et}"
+    [[ $s == *'\/'* ]] && s="${s//\\\//$es}"
+    [[ $s == *$'\x01'* ]] && s="${s//$'\x01'/$eb}"
+    printf -v "$1" '%s' "$s"
+    return 0
+  fi
+  split_at '\' "$s"
+  out=$(
+    first=1; lit=0
+    for p in "${SPLIT[@]}"; do   # fields after the first start with an escape character
+      if [ "$first" = 1 ]; then first=0; printf '%s' "$p"; continue; fi
+      if [ "$lit" = 1 ]; then lit=0; printf '%s' "$p"; continue; fi   # text after an escaped backslash
+      case "$p" in   # (the leading parentheses keep bash 3.2 parsing a case inside $( ) )
+        ('')   printf '%s' "$eb"; lit=1 ;;   # \\ : the empty field is the second backslash
+        (n*)   printf '%s%s' "$en" "${p:1}" ;;
+        (r*)   printf '%s%s' "$er" "${p:1}" ;;
+        (t*)   printf '%s%s' "$et" "${p:1}" ;;
+        ('"'*) printf '%s%s' "$eq" "${p:1}" ;;
+        (/*)   printf '%s%s' "$es" "${p:1}" ;;
+        (*)    printf '\\%s' "$p" ;;
+      esac
+    done
+  )
+  printf -v "$1" '%s' "${out%x}"
+}
+
+# Plugin root: CLAUDE_PLUGIN_ROOT, CURSOR_PLUGIN_ROOT, else the root of the plugin this file lives in.
+root="${CLAUDE_PLUGIN_ROOT:-${CURSOR_PLUGIN_ROOT:-}}"
+if [ -z "$root" ]; then
+  self="${BASH_SOURCE[0]//\\//}"
+  case "$self" in /*|?:/*) ;; *) self="${PWD//\\//}/$self" ;; esac
+  root="${self%/hooks/*}"
+fi
+root="${root//\\//}"
+
+# up_to_run DIR: the nearest folder at or above DIR that holds .superlite/orchestrator.json, else DIR, into UP.
+up_to_run() {
+  local d="$1" up
+  while [ ! -f "$d/.superlite/orchestrator.json" ]; do
+    up="${d%/*}"; { [ -z "$up" ] || [ "$up" = "$d" ]; } && { UP="$1"; return 0; }; d="$up"
+  done
+  UP="$d"
+}
+
+jstr cwd; in_cwd="${REPLY//\\\\/$'\x01'}"; in_cwd="${in_cwd//\\\"/\"}"; in_cwd="${in_cwd//\\\//\/}"; in_cwd="${in_cwd//$'\x01'//}"
+proj0="${CLAUDE_PROJECT_DIR:-${CURSOR_PROJECT_DIR:-}}"
+[ -n "$proj0" ] || proj0="$in_cwd"
+if [ -z "$proj0" ]; then   # Cursor: the first workspace root that holds a superlite run
+  re_roots='"workspace_roots"[[:space:]]*:[[:space:]]*\[([^]]*)\]'
+  re_item='^[^"]*"(([^"\\]|\\.)*)"(.*)$'
+  re_drive='^/([A-Za-z]:/.*)$'
+  if [[ $input =~ $re_roots ]]; then
+    rest="${BASH_REMATCH[1]}"
+    while [[ $rest =~ $re_item ]]; do
+      rest="${BASH_REMATCH[3]}"; r="${BASH_REMATCH[1]//\\\\//}"
+      [[ $r =~ $re_drive ]] && r="${BASH_REMATCH[1]}"
+      [ -n "$proj0" ] || proj0="$r"
+      [ -d "$r/.superlite" ] && { proj0="$r"; break; }
+    done
+  fi
+fi
+[ -n "$proj0" ] || proj0="$PWD"
+# The session folder can sit below the project (the desktop app moves the working directory), and a session
+# worktree sits below it too: the run at or above the project, then at or above the working directory, wins.
+proj="$proj0"
+up_to_run "$proj"; proj="$UP"
+if [ -n "$in_cwd" ]; then up_to_run "$in_cwd"; [ -f "$UP/.superlite/orchestrator.json" ] && proj="$UP"; fi
+sd="$proj/.superlite"
+
+active=0
+{ [ -f "$sd/stable.json" ] || [ -f "$sd/prime.md" ] || [ -f "$sd/pool.json" ]; } && active=1
+true

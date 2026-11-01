@@ -91,8 +91,6 @@
                                     where the agent map mod is not installed.
    /superlite:review [branch]       Review and harden an existing branch.
    /superlite:report [plan] [full]  Build reports: summary, full, history.
-   /superlite:commit                Turn hidden checkpoints into commits,
-                                    one per task, after you confirm.
    /superlite:finish                Verify, then offer merge or PR options.
    /superlite:setup                 First-run check: toolchain, test command,
                                     model tiers, plugin conflicts.
@@ -109,13 +107,13 @@
  ------------------------------------------------------------------------------
  RULES HELD BY CODE, NOT BY PROMPTS
 
-   The coordinator never writes project code     block-coordinator-edits
-   No build before you approve (human mode)       block-coordinator-edits,
-                                                  record-human-reply
-   Raw test runs become background runs           rewrite-test-runs
-   No killing processes by name                   block-unsafe-kill
-   No integration before your try-out (feature)   block-coordinator-edits,
-                                                  sl proto tryout --approve
+   The coordinator never writes project code     hooks/pre-tool
+   No build before you approve (human mode)       hooks/pre-tool,
+                                                  hooks/prompt
+   Raw test runs become background runs           hooks/pre-tool
+   No killing processes by name                   hooks/pre-tool
+   No integration before your try-out (feature)   hooks/pre-tool,
+                                                  proto tryout --approve
    A plan must lint before work starts            lint --stable
    Same plan, same model tiers                    routing.json
    Every run is measured                          capture hooks, history
@@ -136,21 +134,20 @@
  ------------------------------------------------------------------------------
  COMMITS
 
-   superlite never commits on its own. Finished tasks are hidden checkpoints
-   under refs/superlite/*. Run /superlite:commit to turn them into one commit
-   per task, or `sl autocommit on` before a build for real commits as it goes.
-   A checkpoint is a hidden save of one task under refs/superlite/*; a commit
-   is a real git commit on your branch, made only by /superlite:commit or
-   `sl autocommit on`.
+   superlite never commits during a run. Finished tasks are saved as
+   hidden checkpoints under refs/superlite/*. At session end, shipping
+   asks once: "Commit to <session branch>" or "Leave uncommitted".
 
  ------------------------------------------------------------------------------
  TIPS
 
    - Say it in plain words if you prefer; the commands are shortcuts.
-   - Tools the flows use (bash <skill-dir>/scripts/sl <tool>):
-     sl suggest_flow --text "<request>"   the suggested flow, one line
-     sl proto start|tryout|status|discard the feature-mode prototype
-     sl agent_specs on|off|status|open|prefer
+   - Tools the flows use (bash <skill-dir>/scripts/superlite-cli <tool>):
+     superlite-cli suggest_flow --text "<request>"
+       the suggested flow, one line
+     superlite-cli proto start|tryout|status|discard
+       the feature-mode prototype
+     superlite-cli agent_specs on|off|status|open|prefer
        opt-in specs (done+why); plan = how; default off
    - Do not enable superpowers in the same project: both inject session
      context and share skill names. /superlite:setup checks this.

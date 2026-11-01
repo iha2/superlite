@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Test double for the superlite-cli launcher: maps tool names to the fakes next to it.
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+tool="$1"; shift
+case "$tool" in
+  plan_tools) exec "$SL_TEST_PYTHON" "$here/fake_plan_tools.py" "$@" ;;
+  incident) exec "$SL_TEST_PYTHON" "$here/fake_incident.py" "$@" ;;
+  probe_run) exec "$SL_TEST_PYTHON" "$here/fake_probe.py" "$@" ;;
+  pt_review) exec "$SL_TEST_PYTHON" "$here/fake_pt_review.py" "$@" ;;
+  *) echo "fake_cli: unknown tool $tool" >&2; exit 2 ;;
+esac

@@ -14,7 +14,9 @@ SCRIPTS = ROOT / "skills" / "swarm" / "scripts"
 SESSION = SCRIPTS / "session.py"
 sys.path.insert(0, str(SCRIPTS))
 
+import base  # noqa: E402
 import session  # noqa: E402
+import session_registry  # noqa: E402
 
 REAL = os.environ.get("SUPERLITE_REAL") == "1"
 
@@ -106,6 +108,20 @@ def test_check2_both_sessions_move_out(started):
     assert ra["base_sha"] == main_sha and rb["base_sha"] == main_sha
 
 
+def test_move_then_untracked_asked_before_any_change(started):
+    (started / "notes.txt").write_text("x\n")
+    before = snapshot(started)
+    cp = run("ensure", "--slug", "b", cwd=started)
+    lines = cp.out.splitlines()
+    assert cp.returncode == 4 and lines[0].startswith("ASK move slug=a:") and lines[1].startswith("ask: ")
+    assert "yes" in lines[1] and snapshot(started) == before
+    cp = run("ensure", "--slug", "b", "--move", "yes", cwd=started)
+    lines = cp.out.splitlines()
+    assert cp.returncode == 4 and lines[0].startswith("ASK untracked=1 slug=a:") and lines[1].startswith("ask: ")
+    assert "stash" in lines[1] and "keep" in lines[1] and snapshot(started) == before
+    assert not wt_of(started, "a").exists() and not wt_of(started, "b").exists()
+
+
 def test_check3_untracked_gate_then_stash_or_keep(started):
     (started / "notes.txt").write_text("x\n")
     before = snapshot(started)
@@ -117,7 +133,7 @@ def test_check3_untracked_gate_then_stash_or_keep(started):
     assert (wt_of(started, "a") / "notes.txt").is_file() and not (started / "notes.txt").exists()
 
 
-def test_check3_keep_leaves_untracked_in_main_checkout(started):
+def test_keep_leaves_untracked_on_main(started):
     (started / "notes.txt").write_text("x\n")
     cp = run("ensure", "--slug", "b", "--move", "yes", "--untracked", "keep", cwd=started)
     assert cp.returncode == 0, cp.both
@@ -143,13 +159,13 @@ def test_check5_finished_host_session_still_reuses_main_checkout(started):
 def test_rollback_on_failure_leaves_everything_unchanged(started, monkeypatch, capsys):
     (started / "notes.txt").write_text("x\n")
     before = snapshot(started)
-    real_git = session.git
+    real_git = base.git
 
     def failing(*args, **kw):
         if args[:2] == ("worktree", "add") and "-b" in args:
-            raise session.GitError("boom")
+            raise base.GitError(args, "boom")
         return real_git(*args, **kw)
-    monkeypatch.setattr(session, "git", failing)
+    monkeypatch.setattr(base, "git", failing)
     rc = session.main(["ensure", "--slug", "b", "--move", "yes", "--untracked", "stash", "--root", str(started)])
     assert rc == 1 and "rolling back" in capsys.readouterr().err
     assert snapshot(started) == before
@@ -211,12 +227,12 @@ def test_existing_worktree_path_changes_nothing(started):
     assert (started / ".superlite" / "orchestrator.json").is_file()
 
 
-def test_base_checked_out_elsewhere_rolls_back(started, tmp_path):
+def test_base_checked_out_elsewhere_is_refused_before_any_change(started, tmp_path):
     git(started, "worktree", "add", "-q", str(tmp_path / "other"), "main")
     (started / "notes.txt").write_text("x\n")
     before = snapshot(started)
     cp = run("ensure", "--slug", "b", "--move", "yes", "--untracked", "stash", cwd=started)
-    assert cp.returncode == 1 and "rolling back" in cp.err, cp.both
+    assert cp.returncode == 2 and "nothing changed" in cp.err, cp.both
     assert snapshot(started) == before
     assert (started / "app.py").read_text() == "print('wip')\n" and (started / "notes.txt").is_file()
     assert (started / ".superlite" / "checkpoints.json").is_file()
@@ -225,15 +241,45 @@ def test_base_checked_out_elsewhere_rolls_back(started, tmp_path):
 
 def test_stash_apply_failure_in_keep_worktree_rolls_back(started, monkeypatch, capsys):
     before = snapshot(started)
-    real = session.restore_stash
+    real = session_registry.restore_stash
     calls = []
 
     def fake(cwd, oid):
         calls.append(cwd)
         return False if len(calls) == 1 else real(cwd, oid)
-    monkeypatch.setattr(session, "restore_stash", fake)
+    monkeypatch.setattr(session_registry, "restore_stash", fake)
     rc = session.main(["ensure", "--slug", "b", "--move", "yes", "--root", str(started)])
     assert rc == 1 and "rolling back" in capsys.readouterr().err
     assert snapshot(started) == before and (started / "app.py").read_text() == "print('wip')\n"
     assert (started / ".superlite" / "orchestrator.json").read_text() == '{"mode":"ai"}\n'
     assert not wt_of(started, "a").exists()
+
+
+MUTATING = {("stash", "push"), ("stash", "apply"), ("stash", "drop"), ("worktree", "add"), ("worktree", "remove"),
+            ("worktree", "prune")}
+
+
+@pytest.mark.parametrize("fail_at", range(1, 9))
+def test_failed_switch_restores_everything(started, monkeypatch, capsys, fail_at):
+    """Git fails at each changing step in turn: the move is undone and no work is lost."""
+    (started / "notes.txt").write_text("x\n")
+    before = snapshot(started) + (git(started, "stash", "list"),)
+    real_git, seen = base.git, []
+
+    def failing(*args, **kw):
+        if args[:2] in MUTATING or args[:1] in (("checkout",), ("switch",), ("branch",)):
+            seen.append(args)
+            if len(seen) == fail_at:
+                raise base.GitError(args, "injected failure")
+        return real_git(*args, **kw)
+    monkeypatch.setattr(base, "git", failing)
+    rc = session.main(["ensure", "--slug", "b", "--move", "yes", "--untracked", "stash", "--root", str(started)])
+    if rc == 0:
+        pytest.skip(f"the move has fewer than {fail_at} changing steps")
+    assert rc == 1 and "injected failure" in capsys.readouterr().err
+    monkeypatch.setattr(base, "git", real_git)
+    assert snapshot(started) + (git(started, "stash", "list"),) == before
+    assert (started / "app.py").read_text() == "print('wip')\n" and (started / "notes.txt").is_file()
+    assert (started / ".superlite" / "orchestrator.json").read_text() == '{"mode":"ai"}\n'
+    assert (started / ".superlite" / "checkpoints.json").is_file()
+    assert not wt_of(started, "a").exists() and not wt_of(started, "b").exists()

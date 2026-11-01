@@ -10,7 +10,7 @@ PROMPT = """
 You already have READY. Your batch is T1, T2, T3 in that order.
 T1 is finished and checkpointed. You are about to start T2. The plan for T2 says
 "return the parsed value" but never says which type. You cannot resolve it from
-`sl task` or the SPEC. Do not write any file. What is your immediate reply?
+`superlite-cli task` or the SPEC. Do not write any file. What is your immediate reply?
 """
 
 

@@ -1,4 +1,4 @@
-"""sl session sync: ff, merge, conflict, --continue, --abort, --later, no fetch (feature checks 6-10)."""
+"""superlite-cli session sync: fast-forward only, --later, no fetch (feature checks 6-10)."""
 from __future__ import annotations
 
 import json
@@ -14,6 +14,7 @@ SCRIPTS = ROOT / "skills" / "swarm" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 import session  # noqa: E402
+import session_registry  # noqa: E402
 import session_sync  # noqa: E402
 
 
@@ -27,15 +28,14 @@ def commit(cwd, name, text, msg):
     git(cwd, "commit", "-q", "-m", msg)
 
 
-@pytest.fixture(autouse=True)
-def fake_or_real(monkeypatch):
-    """Fake base_sha_of by default (merge-base); the real one when SUPERLITE_REAL=1 and T1 provides it."""
-    if os.environ.get("SUPERLITE_REAL") == "1" and hasattr(session, "base_sha_of"):
-        return
-
-    def fake(root, reg, row):
-        return git(root, "merge-base", row["branch"], reg["base"]).strip()
-    monkeypatch.setattr(session, "base_sha_of", fake, raising=False)
+def commit_main(r, name, text, msg):
+    """Commit on main while the main checkout hosts session b: through a short-lived worktree."""
+    tmp = r.parent / "mainwt"
+    git(r, "worktree", "add", "-q", str(tmp), "main")
+    try:
+        commit(tmp, name, text, msg)
+    finally:
+        git(r, "worktree", "remove", "--force", str(tmp))
 
 
 @pytest.fixture
@@ -55,7 +55,7 @@ def repo(tmp_path):
 
 
 def host(r):
-    return r / ".superlite" / "worktrees" / "sessions" / "host"
+    return r
 
 
 def row(r, slug="b"):
@@ -68,73 +68,16 @@ def sync(r, *a):
 
 
 def test_fast_forward_records_base_sha(repo, capsys):
-    commit(repo, "m1.txt", "1", "m1")
-    commit(repo, "m2.txt", "2", "m2")
+    commit_main(repo, "m1.txt", "1", "m1")
+    commit_main(repo, "m2.txt", "2", "m2")
     assert sync(repo) == 0
     assert "session: b synced with main (fast-forward)" in capsys.readouterr().out
     assert row(repo)["base_sha"] == git(repo, "rev-parse", "main").strip()
     assert (host(repo) / "m2.txt").exists()
 
 
-def test_merge_with_wip_restored(repo, capsys):
-    commit(host(repo), "mine.txt", "m", "mine")
-    commit(repo, "other.py", "y\n", "main other")
-    (host(repo) / "app.py").write_text("one\ntwo\nthree\nwip\n")
-    assert sync(repo) == 0
-    assert "synced with main (merge)" in capsys.readouterr().out
-    assert len(git(host(repo), "log", "-1", "--format=%P").split()) == 2
-    assert (host(repo) / "app.py").read_text().endswith("wip\n")
-    assert git(host(repo), "stash", "list") == ""
-
-
-def conflict(repo):
-    commit(host(repo), "app.py", "one\nB\nthree\n", "b edit")
-    commit(repo, "app.py", "one\nM\nthree\n", "main edit")
-    (host(repo) / "other.py").write_text("wip\n")
-    return sync(repo)
-
-
-def test_conflict_exit5_leaves_merge_and_row(repo, capsys):
-    assert conflict(repo) == 5
-    assert "CONFLICT b: app.py" in capsys.readouterr().out
-    assert session.in_progress(host(repo))
-    assert row(repo)["sync"] == "conflict"
-
-
-def test_continue_commits_and_restores_stash(repo, capsys):
-    assert conflict(repo) == 5
-    assert sync(repo, "--continue") == 2  # still unmerged
-    assert session.in_progress(host(repo))
-    (host(repo) / "app.py").write_text("one\nR\nthree\n")
-    git(host(repo), "add", "app.py")
-    assert sync(repo, "--continue") == 0
-    assert not session.in_progress(host(repo))
-    assert (host(repo) / "other.py").read_text() == "wip\n"
-    assert git(host(repo), "stash", "list") == ""
-    r = row(repo)
-    assert "sync" not in r and r["base_sha"] == git(repo, "rev-parse", "main").strip()
-
-
-def test_abort_restores_branch_and_stash(repo, capsys):
-    assert conflict(repo) == 5
-    before = git(host(repo), "rev-parse", "HEAD")
-    assert sync(repo, "--abort") == 0
-    assert not session.in_progress(host(repo))
-    assert git(host(repo), "rev-parse", "HEAD") == before
-    assert (host(repo) / "other.py").read_text() == "wip\n"
-    assert git(host(repo), "stash", "list") == ""
-    assert row(repo)["sync"] == "needs-sync"
-
-
-def test_refuses_when_merge_in_progress(repo, capsys):
-    assert conflict(repo) == 5
-    assert sync(repo) == 2
-    assert "already in progress" in capsys.readouterr().err
-    assert row(repo)["sync"] == "conflict"
-
-
 def test_later_records_offer_only(repo, capsys):
-    commit(repo, "m1.txt", "1", "m1")
+    commit_main(repo, "m1.txt", "1", "m1")
     head = git(host(repo), "rev-parse", "HEAD")
     assert sync(repo, "--later") == 0
     assert row(repo)["sync_offered"] == git(repo, "rev-parse", "main").strip()
@@ -142,7 +85,7 @@ def test_later_records_offer_only(repo, capsys):
 
 
 def test_untracked_gate_asks(repo, capsys):
-    commit(repo, "m1.txt", "1", "m1")
+    commit_main(repo, "m1.txt", "1", "m1")
     (host(repo) / "new.txt").write_text("u")
     assert sync(repo) == 4
     assert "ASK untracked=1 slug=b" in capsys.readouterr().out
@@ -170,7 +113,7 @@ def test_no_fetch_from_origin(repo, tmp_path, capsys):
 
 def test_registry_write_under_lock(repo, monkeypatch):
     held = []
-    orig = session.registry_lock
+    orig = session_registry.registry_lock
 
     class Spy:
         def __init__(self, root):
@@ -185,26 +128,14 @@ def test_registry_write_under_lock(repo, monkeypatch):
             return self.cm.__exit__(*e)
     monkeypatch.setattr(session, "registry_lock", Spy)
     seen = []
-    orig_w = session.write_reg
-    monkeypatch.setattr(session, "write_reg", lambda r, g: (seen.append(bool(held)), orig_w(r, g))[1])
+    orig_u = session_registry.update
+    monkeypatch.setattr(session_registry, "update", lambda r, fn: (seen.append(bool(held)), orig_u(r, fn))[1])
     assert sync(repo, "--later") == 0
     assert seen == [True]
 
 
-def test_continue_abort_without_merge_exit2(repo, capsys):
-    assert sync(repo, "--continue") == 2
-    assert sync(repo, "--abort") == 2
-    assert "no merge in progress" in capsys.readouterr().err
-
-
-def test_continue_refuses_rebase_in_progress(repo, monkeypatch, capsys):
-    monkeypatch.setattr(session_sync, "merging", lambda cwd: False)
-    assert sync(repo, "--continue") == 2
-
-
 def test_stash_reapply_conflict_keeps_stash_and_row(repo, capsys):
-    commit(host(repo), "mine.txt", "m", "mine")
-    commit(repo, "other.py", "y\n", "main other")
+    commit_main(repo, "other.py", "y\n", "main other")
     (host(repo) / "other.py").write_text("wip\n")
     assert sync(repo) == 2
     assert "kept in git stash" in capsys.readouterr().err
@@ -213,50 +144,13 @@ def test_stash_reapply_conflict_keeps_stash_and_row(repo, capsys):
     assert r["sync_stash"] and "sync" not in r
 
 
-def test_abort_stash_conflict_keeps_stash(repo, monkeypatch, capsys):
-    assert conflict(repo) == 5
-    monkeypatch.setattr(session, "restore_stash", lambda cwd, oid: False)
-    assert sync(repo, "--abort") == 2
-    assert row(repo)["sync_stash"]
-    assert row(repo)["sync"] == "needs-sync"
-
-
-def test_exception_during_merge_aborts_and_restores(repo, monkeypatch):
-    commit(host(repo), "app.py", "one\nB\nthree\n", "b edit")
-    commit(repo, "app.py", "one\nM\nthree\n", "main edit")
-    (host(repo) / "other.py").write_text("wip\n")
-    head = git(host(repo), "rev-parse", "HEAD")
-
-    def boom(cwd):
-        raise RuntimeError("boom")
-    monkeypatch.setattr(session, "unmerged", boom)
-    with pytest.raises(RuntimeError):
-        sync(repo)
-    assert not session.in_progress(host(repo))
-    assert git(host(repo), "rev-parse", "HEAD") == head
-    assert (host(repo) / "other.py").read_text() == "wip\n"
-    assert git(host(repo), "stash", "list") == ""
-
-
-def test_lock_released_after_conflict(repo):
-    assert conflict(repo) == 5
-    assert sync(repo, "--later") == 0  # would block forever if the lock leaked
-    assert row(repo)["sync"] == "conflict"
-
-
 def test_end_to_end_via_session_py(repo):
-    commit(repo, "m1.txt", "1", "m1")
+    commit_main(repo, "m1.txt", "1", "m1")
     cp = subprocess.run([sys.executable, str(SCRIPTS / "session.py"), "sync", "--slug", "b", "--root", str(repo)],
                         capture_output=True, text=True)
     assert cp.returncode == 0, cp.stderr
     assert (host(repo) / "m1.txt").exists()
     assert row(repo)["base_sha"] == git(repo, "rev-parse", "main").strip()
-
-
-def test_no_network_git_verbs():
-    import re
-    src = (SCRIPTS / "session_sync.py").read_text()
-    assert not re.search(r'"(fetch|push|pull|rebase)"|--force', src)
 
 
 def cli(script, *args, cwd):
@@ -282,34 +176,6 @@ def parked_p(tmp_path):
     assert cp.returncode == 0, cp.stdout + cp.stderr
     assert row(r, "p").get("worktree") in (None, "")
     return r
-
-
-@pytest.mark.parametrize("action", ["abort", "continue"])
-def test_recovery_ignores_another_sessions_merge(parked_p, tmp_path, action):
-    """sync --abort/--continue for session p does not act on session a's merge in the main checkout."""
-    repo = parked_p
-    commit(repo, "app.py", "one\nA-side\nthree\n", "a edit")
-    tmpw = tmp_path.resolve() / "mainwt"
-    git(repo, "worktree", "add", "-q", str(tmpw), "main")
-    commit(tmpw, "app.py", "one\nMAIN-side\nthree\n", "main edit")
-    git(repo, "worktree", "remove", "--force", str(tmpw))
-    merge = subprocess.run(["git", "merge", "--no-edit", "main"], cwd=repo, capture_output=True, text=True)
-    assert merge.returncode != 0
-    assert (repo / ".git" / "MERGE_HEAD").exists()
-    head = git(repo, "rev-parse", "HEAD").strip()
-    if action == "continue":
-        (repo / "app.py").write_text("one\nresolved\nthree\n")
-        git(repo, "add", "app.py")
-    cp = cli("session_sync.py", "--slug", "p", f"--{action}", cwd=repo)
-    assert cp.returncode == 2, cp.stdout + cp.stderr
-    assert (repo / ".git" / "MERGE_HEAD").exists(), "session p's recovery touched session a's merge"
-    assert git(repo, "rev-parse", "HEAD").strip() == head
-
-
-def test_recovery_for_row_without_worktree_exits2(parked_p):
-    """sync --abort for a parked row with no worktree exits 2 without crashing."""
-    cp = cli("session_sync.py", "--slug", "p", "--abort", cwd=parked_p)
-    assert cp.returncode == 2, cp.stdout + cp.stderr
 
 
 @pytest.fixture
@@ -344,3 +210,12 @@ def test_sync_merges_the_rows_own_base(two_bases):
     assert cp.returncode == 0, cp.stdout + cp.stderr
     assert (wt / "m.txt").is_file()
     assert not (wt / "feat.txt").exists(), "b was synced with the registry base, not its own"
+
+
+def test_sync_refuses_merge_commit(repo, capsys):
+    commit(host(repo), "mine.txt", "m", "mine")
+    commit_main(repo, "other.py", "y\n", "main other")
+    before = git(host(repo), "rev-parse", "HEAD")
+    assert sync(repo) == 2
+    assert "session: needs a merge commit; not synced" in capsys.readouterr().err
+    assert git(host(repo), "rev-parse", "HEAD") == before

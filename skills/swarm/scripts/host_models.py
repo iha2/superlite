@@ -10,239 +10,243 @@ Resolve picks the first candidate per job from config/hosts/<host>.json and writ
 Host is taken from --host, else plan `**Execution:** host=...`, else $SUPERLITE_HOST.
 """
 # Complexity: H = hosts file size, J = jobs
-import argparse  # O(1)
-import json  # O(1)
-import os  # O(1)
-import re  # O(1)
-import sys  # O(1)
-from pathlib import Path  # O(1)
+import argparse
+import json
+import os
+import re
+import sys
+from pathlib import Path
 
-HERE = Path(__file__).resolve().parent  # O(1)
-CFG = HERE.parent / "config" / "hosts"  # O(1)
-OUT_NAME = "host-models.json"  # O(1)
+HERE = Path(__file__).resolve().parent
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+import state  # noqa: E402
+
+CFG = HERE.parent / "config" / "hosts"
+OUT_NAME = "host-models.json"
 
 
-def superlite_dir(plan=None) -> Path:  # O(1)
-    if plan:  # O(1)
-        p = Path(plan).resolve().parent  # O(1)
-        for _ in range(8):  # O(1)
-            if (p / ".superlite").is_dir() or (p / ".git").exists():  # O(1)
-                d = p / ".superlite"  # O(1)
-                d.mkdir(parents=True, exist_ok=True)  # O(1)
-                return d  # O(1)
-            if p.parent == p:  # O(1)
-                break  # O(1)
-            p = p.parent  # O(1)
-    d = Path(".superlite")  # O(1)
-    d.mkdir(parents=True, exist_ok=True)  # O(1)
-    return d  # O(1)
+def superlite_dir(plan=None) -> Path:
+    if plan:
+        p = Path(plan).resolve().parent
+        for _ in range(8):
+            if (p / state.DIR_NAME).is_dir() or (p / ".git").exists():
+                d = p / state.DIR_NAME
+                d.mkdir(parents=True, exist_ok=True)
+                return d
+            if p.parent == p:
+                break
+            p = p.parent
+    d = Path(state.DIR_NAME)
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 
 def load_host_cfg(host: str, root=None) -> dict:  # O(H)
     """Shipped host profile. Overlay `hosts.<host>.<job>.candidates` replaces that job only."""
-    path = CFG / f"{host}.json"  # O(1)
-    if not path.is_file():  # O(1)
-        raise FileNotFoundError(f"host profile not found: {path}")  # O(1)
-    cfg = json.loads(path.read_text(encoding="utf-8"))  # O(H)
-    root = Path(root).resolve() if root is not None else Path(".").resolve()  # O(1)
-    scripts = str(Path(__file__).resolve().parent)  # O(1)
-    if scripts not in sys.path:  # O(1)
-        sys.path.insert(0, scripts)  # O(1)
-    import project_config  # O(1)
-    over = project_config.load(root).get("hosts")  # O(file)
-    host_over = over.get(host) if isinstance(over, dict) else None  # O(1)
-    if not isinstance(host_over, dict):  # O(1)
-        return cfg  # O(1)
-    jobs = cfg.setdefault("jobs", {})  # O(1)
-    for job, spec in host_over.items():  # O(J)
-        if not isinstance(spec, dict) or not isinstance(spec.get("candidates"), list):  # O(1)
-            continue  # O(1)
-        current = dict(jobs.get(job) or {})  # O(1)
-        current["candidates"] = [str(c) for c in spec["candidates"]]  # O(c)
-        jobs[job] = current  # O(1)
-    return cfg  # O(1)
+    path = CFG / f"{host}.json"
+    if not path.is_file():
+        raise FileNotFoundError(f"host profile not found: {path}")
+    cfg = json.loads(path.read_text(encoding="utf-8"))
+    root = Path(root).resolve() if root is not None else Path(".").resolve()
+    scripts = str(Path(__file__).resolve().parent)
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+    import project_config
+    over = project_config.load(root).get("hosts")
+    host_over = over.get(host) if isinstance(over, dict) else None
+    if not isinstance(host_over, dict):
+        return cfg
+    jobs = cfg.setdefault("jobs", {})
+    for job, spec in host_over.items():
+        if not isinstance(spec, dict) or not isinstance(spec.get("candidates"), list):
+            continue
+        current = dict(jobs.get(job) or {})
+        current["candidates"] = [str(c) for c in spec["candidates"]]
+        jobs[job] = current
+    return cfg
 
 
 def parse_execution(plan_text: str) -> dict:  # O(L)
     """Parse `**Execution:** host=cursor, parallel=multitask, swarm_by=tier` into a dict."""
-    out = {}  # O(1)
-    for ln in plan_text.splitlines():  # O(L)
-        if ln.strip().startswith("```"):  # O(1)
-            continue  # O(1)
-        m = re.match(r"^\*\*Execution:\*\*\s*(.*)$", ln)  # O(len)
-        if not m:  # O(1)
-            continue  # O(1)
-        for part in m.group(1).split(","):  # O(k)
-            part = part.strip()  # O(1)
-            if "=" not in part:  # O(1)
-                continue  # O(1)
-            k, v = part.split("=", 1)  # O(1)
-            out[k.strip().lower()] = v.strip().lower()  # O(1)
-        break  # O(1)
-    return out  # O(1)
+    out = {}
+    for ln in plan_text.splitlines():
+        if ln.strip().startswith("```"):
+            continue
+        m = re.match(r"^\*\*Execution:\*\*\s*(.*)$", ln)
+        if not m:
+            continue
+        for part in m.group(1).split(","):
+            part = part.strip()
+            if "=" not in part:
+                continue
+            k, v = part.split("=", 1)
+            out[k.strip().lower()] = v.strip().lower()
+        break
+    return out
 
 
 def detect_host(plan=None, explicit=None) -> str | None:  # O(L)
-    if explicit:  # O(1)
-        return explicit  # O(1)
-    env = (os.environ.get("SUPERLITE_HOST") or "").strip().lower()  # O(1)
-    if env:  # O(1)
-        return env  # O(1)
-    if plan and Path(plan).is_file():  # O(1)
-        ex = parse_execution(Path(plan).read_text(encoding="utf-8"))  # O(L)
-        if ex.get("host"):  # O(1)
-            return ex["host"]  # O(1)
-    return None  # O(1)
+    if explicit:
+        return explicit
+    env = (os.environ.get("SUPERLITE_HOST") or "").strip().lower()
+    if env:
+        return env
+    if plan and Path(plan).is_file():
+        ex = parse_execution(Path(plan).read_text(encoding="utf-8"))
+        if ex.get("host"):
+            return ex["host"]
+    return None
 
 
 def resolve(host: str, plan=None, force=False) -> dict:  # O(H + J)
-    sl = superlite_dir(plan)  # O(1)
-    out_path = sl / OUT_NAME  # O(1)
-    if out_path.is_file() and not force:  # O(1)
-        return json.loads(out_path.read_text(encoding="utf-8"))  # O(file)
-    cfg = load_host_cfg(host)  # O(H)
-    jobs = {}  # O(1)
-    for name, spec in (cfg.get("jobs") or {}).items():  # O(J)
-        cands = list(spec.get("candidates") or ["inherit"])  # O(c)
-        jobs[name] = cands[0] if cands else "inherit"  # O(1)
-    data = {  # O(J)
-        "host": host,  # O(1)
-        "price_unit": cfg.get("price_unit", "est"),  # O(1)
-        "dispatch": cfg.get("dispatch", "Task"),  # O(1)
-        "parallel": cfg.get("parallel", "multitask"),  # O(1)
-        "swarm_by": cfg.get("swarm_by", "tier"),  # O(1)
-        "tier_to_job": dict(cfg.get("tier_to_job") or {}),  # O(t)
-        "agent_to_job": dict(cfg.get("agent_to_job") or {}),  # O(a)
-        "jobs": jobs,  # O(J)
-    }  # O(1)
-    if plan and Path(plan).is_file():  # O(1)
-        ex = parse_execution(Path(plan).read_text(encoding="utf-8"))  # O(L)
-        if ex:  # O(1)
-            data["execution"] = ex  # O(1)
-    out_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")  # O(J)
-    return data  # O(1)
+    sl = superlite_dir(plan)
+    out_path = sl / OUT_NAME
+    if out_path.is_file() and not force:
+        return json.loads(out_path.read_text(encoding="utf-8"))
+    cfg = load_host_cfg(host)
+    jobs = {}
+    for name, spec in (cfg.get("jobs") or {}).items():
+        cands = list(spec.get("candidates") or ["inherit"])
+        jobs[name] = cands[0] if cands else "inherit"
+    data = {
+        "host": host,
+        "price_unit": cfg.get("price_unit", "est"),
+        "dispatch": cfg.get("dispatch", "Task"),
+        "parallel": cfg.get("parallel", "multitask"),
+        "swarm_by": cfg.get("swarm_by", "tier"),
+        "tier_to_job": dict(cfg.get("tier_to_job") or {}),
+        "agent_to_job": dict(cfg.get("agent_to_job") or {}),
+        "jobs": jobs,
+    }
+    if plan and Path(plan).is_file():
+        ex = parse_execution(Path(plan).read_text(encoding="utf-8"))
+        if ex:
+            data["execution"] = ex
+    out_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    return data
 
 
 def load_resolved(plan=None) -> dict | None:  # O(file)
-    p = superlite_dir(plan) / OUT_NAME  # O(1)
-    if not p.is_file():  # O(1)
-        return None  # O(1)
-    return json.loads(p.read_text(encoding="utf-8"))  # O(file)
+    p = superlite_dir(plan) / OUT_NAME
+    if not p.is_file():
+        return None
+    return json.loads(p.read_text(encoding="utf-8"))
 
 
-def job_for(resolved: dict, *, tier=None, agent=None) -> str | None:  # O(1)
-    if agent:  # O(1)
-        m = resolved.get("agent_to_job") or {}  # O(1)
-        if agent in m:  # O(1)
-            return m[agent]  # O(1)
-        short = agent.split(":")[-1] if ":" in agent else agent  # O(1)
-        if short in m:  # O(1)
-            return m[short]  # O(1)
-    if tier:  # O(1)
-        return (resolved.get("tier_to_job") or {}).get(tier)  # O(1)
-    return None  # O(1)
+def job_for(resolved: dict, *, tier=None, agent=None) -> str | None:
+    if agent:
+        m = resolved.get("agent_to_job") or {}
+        if agent in m:
+            return m[agent]
+        short = agent.split(":")[-1] if ":" in agent else agent
+        if short in m:
+            return m[short]
+    if tier:
+        return (resolved.get("tier_to_job") or {}).get(tier)
+    return None
 
 
-def slug_for(resolved: dict, job: str | None) -> str:  # O(1)
-    if not job:  # O(1)
-        return "inherit"  # O(1)
-    return (resolved.get("jobs") or {}).get(job, "inherit")  # O(1)
+def slug_for(resolved: dict, job: str | None) -> str:
+    if not job:
+        return "inherit"
+    return (resolved.get("jobs") or {}).get(job, "inherit")
 
 
 def parse_dispatch_line(line: str) -> dict | None:  # O(w)
-    """Parse one `sl dispatch` stdout line into tasks/decision/tier/agent."""
-    line = line.strip()  # O(1)
-    if not line or line.startswith("evict=") or line.startswith("budget:") or line.startswith("SWARM"):  # O(1)
-        return None  # O(1)
-    parts = line.split()  # O(w)
-    if len(parts) < 2:  # O(1)
-        return None  # O(1)
-    tasks = parts[0]  # O(1)
-    rest = parts[1:]  # O(w)
-    decision = "fresh"  # O(1)
-    if rest[0].startswith("agent="):  # O(1)
-        decision = "resume"  # O(1)
-    elif rest[0] == "fresh" or rest[0] == "wave0":  # O(1)
-        decision = "fresh"  # O(1)
-    elif rest[0] == "poll" or rest[0].startswith("poll"):  # O(1)
-        decision = "poll"  # O(1)
-    tier_m = re.search(r"\btier=(\S+)", line)  # O(w)
-    agent_ms = re.findall(r"\bagent=(\S+)", line)  # O(w)
-    tier = tier_m.group(1) if tier_m else "sonnet"  # O(1)
+    """Parse one `superlite-cli dispatch` stdout line into tasks/decision/tier/agent."""
+    line = line.strip()
+    if not line or line.startswith("evict=") or line.startswith("budget:") or line.startswith("SWARM"):
+        return None
+    parts = line.split()
+    if len(parts) < 2:
+        return None
+    tasks = parts[0]
+    rest = parts[1:]
+    decision = "fresh"
+    if rest[0].startswith("agent="):
+        decision = "resume"
+    elif rest[0] == "fresh" or rest[0] == "wave0":
+        decision = "fresh"
+    elif rest[0] == "poll" or rest[0].startswith("poll"):
+        decision = "poll"
+    tier_m = re.search(r"\btier=(\S+)", line)
+    agent_ms = re.findall(r"\bagent=(\S+)", line)
+    tier = tier_m.group(1) if tier_m else "sonnet"
     # resume: first agent= is the pool id; fresh: last agent= is the type
-    agent = (agent_ms[0] if decision == "resume" else (agent_ms[-1] if agent_ms else None))  # O(1)
-    return {"tasks": tasks, "decision": decision, "tier": tier, "agent": agent}  # O(1)
+    agent = (agent_ms[0] if decision == "resume" else (agent_ms[-1] if agent_ms else None))
+    return {"tasks": tasks, "decision": decision, "tier": tier, "agent": agent}
 
 
 def swarm_lines(dispatch_lines, resolved: dict) -> list[str]:  # O(R)
     """Group dispatch stdout lines into a SWARM block by tier. Multitask when agents>1."""
-    by_tier: dict[str, list[dict]] = {}  # O(1)
-    for raw in dispatch_lines:  # O(R)
-        parsed = parse_dispatch_line(raw)  # O(w)
-        if not parsed:  # O(1)
-            continue  # O(1)
-        job = job_for(resolved, tier=parsed["tier"], agent=parsed["agent"] if parsed["decision"] == "fresh" else None)  # O(1)
-        if parsed["decision"] == "fresh" and parsed["agent"]:  # O(1)
-            job = job_for(resolved, agent=parsed["agent"]) or job  # O(1)
-        job = job or "build"  # O(1)
-        parsed["job"] = job  # O(1)
-        parsed["slug"] = slug_for(resolved, job)  # O(1)
-        by_tier.setdefault(parsed["tier"], []).append(parsed)  # O(1)
-    if not by_tier:  # O(1)
-        return []  # O(1)
-    out = [  # O(1)
+    by_tier: dict[str, list[dict]] = {}
+    for raw in dispatch_lines:
+        parsed = parse_dispatch_line(raw)
+        if not parsed:
+            continue
+        job = job_for(resolved, tier=parsed["tier"], agent=parsed["agent"] if parsed["decision"] == "fresh" else None)
+        if parsed["decision"] == "fresh" and parsed["agent"]:
+            job = job_for(resolved, agent=parsed["agent"]) or job
+        job = job or "build"
+        parsed["job"] = job
+        parsed["slug"] = slug_for(resolved, job)
+        by_tier.setdefault(parsed["tier"], []).append(parsed)
+    if not by_tier:
+        return []
+    out = [
         "SWARM host=%s parallel=%s swarm_by=%s"
         % (resolved.get("host", "?"), resolved.get("parallel", "multitask"), resolved.get("swarm_by", "tier"))
-    ]  # O(1)
-    for tier, items in by_tier.items():  # O(T)
-        n = len(items)  # O(1)
-        mode = "multitask" if n > 1 else "task"  # O(1)
-        out.append(  # O(1)
+    ]
+    for tier, items in by_tier.items():
+        n = len(items)
+        mode = "multitask" if n > 1 else "task"
+        out.append(
             f"  tier={tier} job={items[0]['job']} slug={items[0]['slug']} mode={mode} agents={n}"
-        )  # O(1)
-        for i in items:  # O(items)
-            out.append(f"    {i['tasks']} {i['decision']} agent={i['agent'] or '-'}")  # O(1)
-    return out  # O(T + R)
+        )
+        for i in items:
+            out.append(f"    {i['tasks']} {i['decision']} agent={i['agent'] or '-'}")
+    return out
 
 
 def main(argv=None):  # O(H + J)
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])  # O(1)
-    sub = ap.add_subparsers(dest="cmd", required=True)  # O(1)
-    r = sub.add_parser("resolve")  # O(1)
-    r.add_argument("--host")  # O(1)
-    r.add_argument("--plan")  # O(1)
-    r.add_argument("--force", action="store_true")  # O(1)
-    sub.add_parser("show")  # O(1)
-    j = sub.add_parser("job-for")  # O(1)
-    j.add_argument("--tier")  # O(1)
-    j.add_argument("--agent")  # O(1)
-    j.add_argument("--plan")  # O(1)
-    a = ap.parse_args(argv)  # O(1)
-    if a.cmd == "resolve":  # O(1)
-        host = detect_host(a.plan, a.host)  # O(L)
-        if not host:  # O(1)
-            print("host_models: no host (pass --host, set SUPERLITE_HOST, or **Execution:** host=...)", file=sys.stderr)  # O(1)
-            return 2  # O(1)
-        data = resolve(host, a.plan, force=a.force)  # O(H + J)
-        print(f"host-models: {data['host']} jobs={','.join(f'{k}={v}' for k, v in data['jobs'].items())}")  # O(J)
-        return 0  # O(1)
-    if a.cmd == "show":  # O(1)
-        data = load_resolved()  # O(file)
-        if not data:  # O(1)
-            print("host-models: none")  # O(1)
-            return 0  # O(1)
-        print(json.dumps(data, indent=2))  # O(J)
-        return 0  # O(1)
-    if a.cmd == "job-for":  # O(1)
-        data = load_resolved(getattr(a, "plan", None))  # O(file)
-        if not data:  # O(1)
-            print("job: none")  # O(1)
-            return 0  # O(1)
-        job = job_for(data, tier=a.tier, agent=a.agent)  # O(1)
-        print(f"job={job or 'none'} slug={slug_for(data, job)}")  # O(1)
-        return 0  # O(1)
-    return 2  # O(1)
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    r = sub.add_parser("resolve")
+    r.add_argument("--host")
+    r.add_argument("--plan")
+    r.add_argument("--force", action="store_true")
+    sub.add_parser("show")
+    j = sub.add_parser("job-for")
+    j.add_argument("--tier")
+    j.add_argument("--agent")
+    j.add_argument("--plan")
+    a = ap.parse_args(argv)
+    if a.cmd == "resolve":
+        host = detect_host(a.plan, a.host)
+        if not host:
+            print("host_models: no host (pass --host, set SUPERLITE_HOST, or **Execution:** host=...)", file=sys.stderr)
+            return 2
+        data = resolve(host, a.plan, force=a.force)
+        print(f"host-models: {data['host']} jobs={','.join(f'{k}={v}' for k, v in data['jobs'].items())}")
+        return 0
+    if a.cmd == "show":
+        data = load_resolved()
+        if not data:
+            print("host-models: none")
+            return 0
+        print(json.dumps(data, indent=2))
+        return 0
+    if a.cmd == "job-for":
+        data = load_resolved(getattr(a, "plan", None))
+        if not data:
+            print("job: none")
+            return 0
+        job = job_for(data, tier=a.tier, agent=a.agent)
+        print(f"job={job or 'none'} slug={slug_for(data, job)}")
+        return 0
+    return 2
 
 
-if __name__ == "__main__":  # O(1)
-    sys.exit(main())  # O(1)
+if __name__ == "__main__":
+    sys.exit(main())

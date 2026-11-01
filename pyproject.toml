@@ -4,10 +4,14 @@ version = "0.0.0"
 requires-python = ">=3.12"
 
 [dependency-groups]
-dev = ["pytest"]
+dev = [
+    "hypothesis>=6.170.14",
+    "pytest",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/scripts"]
 markers = [
+    "slow: long-running (state machine, fault injection); deselect with -m 'not slow'",
     "live: one-turn agent instruction tests (not in testpaths; run: pytest tests/live -m live)",
 ]

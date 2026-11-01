@@ -1,4 +1,4 @@
-"""Build shape: `e.g.` examples, EXAMPLE and EDGE lint, prune, split NOTE, shape line."""
+"""Build shape: `e.g.` examples, EXAMPLE and EDGE lint, edges not waited on, split NOTE, shape line."""
 from __future__ import annotations
 
 import json
@@ -66,10 +66,10 @@ def test_example_lint_makes_the_consumer_a_fix_task(tmp_path):
     assert json.loads((tmp_path / ".superlite" / "stable.json").read_text(encoding="utf-8"))["stable"] == ["T1", "T2"]
 
 
-def test_edge_lint_names_a_removable_edge_with_the_new_critical_path(tmp_path):
+def test_edge_lint_names_an_edge_that_is_not_waited_on(tmp_path):
     out = issues(two(tmp_path, eg=[EG]))
-    assert "EDGE: T2 waits for T1 only for interfaces that have examples; drop the edge (critical path T" in out
-    assert "EDGE" not in issues(two(tmp_path, name="noeg.md"))  # no example: not removable
+    assert "EDGE: T2 does not wait for T1" in out
+    assert "EDGE" not in issues(two(tmp_path, name="noeg.md"))  # no example: still waited on
 
 
 def test_edge_is_not_removable_when_one_consumed_interface_lacks_an_example(tmp_path):
@@ -84,39 +84,23 @@ def test_edge_without_a_consumed_interface_is_never_removable(tmp_path):
     assert "EDGE:" not in issues(p)
 
 
-def test_prune_drops_removable_edges_and_recomputes_the_schedule(tmp_path):
+def test_only_edges_with_examples_are_left_out_of_the_schedule(tmp_path):
     p = plan(tmp_path, [task("T1", PARSE, eg=[EG]), task("T2", "lang.run(a: Ast) -> Out", PARSE),
                         task("T3", None, "lang.run(a: Ast) -> Out"), task("T4")],
              [("T1", "T2"), ("T2", "T3"), ("T3", "T4")])
-    before = run(SCRIPTS / "plan_tools.py", "schedule", "--plan", p).out
-    assert "critical path: T1" in before
-    cp = run(SCRIPTS / "plan_tools.py", "prune", "--plan", p, cwd=tmp_path)
-    assert cp.returncode == 0, cp.both
-    assert cp.out.strip() == "pruned: T1->T2"  # T3 lacks an example on T2's Produces; T4 consumes nothing
-    text = p.read_text(encoding="utf-8")
-    assert "T1 --> T2" not in text and "T2 --> T3" in text and "T3 --> T4" in text
-    assert "%% schedule" in text  # schedule --insert ran again
-    again = run(SCRIPTS / "plan_tools.py", "prune", "--plan", p, cwd=tmp_path)
-    assert again.out.strip() == "pruned: no removable edges"
+    before = p.read_text(encoding="utf-8")
+    rep = json.loads(run(SCRIPTS / "plan_tools.py", "schedule", "--plan", p, "--json").out)
+    assert rep["critical_path"] == ["T2", "T3", "T4"]  # T1 -> T2 not waited on; T3 lacks an example on T2's Produces
+    assert rep["tasks"]["T2"]["start"] == 0 and "edges not waited on 1" in rep["shape"]
+    assert p.read_text(encoding="utf-8") == before
 
 
-def test_prune_keeps_edges_of_dispatched_consumers(tmp_path):
-    p = two(tmp_path, eg=[EG])
-    sl = tmp_path / ".superlite"
-    sl.mkdir()
-    (sl / "pool.json").write_text(json.dumps({"agents": [{"id": "a", "tasks": ["T2"], "current": "T2"}]}), encoding="utf-8")
-    cp = run(SCRIPTS / "plan_tools.py", "prune", "--plan", p, cwd=tmp_path)
-    assert cp.out.strip() == "pruned: no removable edges" and "T1 --> T2" in p.read_text(encoding="utf-8")
-
-
-def test_prune_rewrites_chains_and_groups(tmp_path):
+def test_chains_and_groups_are_read_as_pair_edges(tmp_path):
     prod = "lang.parse(src: string) -> Ast"
     p = plan(tmp_path, [task("T1", prod, eg=[EG]), task("T2", None, prod), task("T3")], [])
     text = p.read_text(encoding="utf-8").replace("flowchart LR\n", "flowchart LR\n  T1 --> T2 --> T3\n  subgraph s\n  T3\n  end\n", 1)
     p.write_text(text, encoding="utf-8")
-    assert run(SCRIPTS / "plan_tools.py", "prune", "--plan", p, cwd=tmp_path).out.strip() == "pruned: T1->T2"
-    new = p.read_text(encoding="utf-8")
-    assert "T2 --> T3" in new and "T1 --> T2" not in new and "subgraph s" in new
+    assert "EDGE: T2 does not wait for T1" in issues(p)
     assert run(SCRIPTS / "plan_tools.py", "lint", "--plan", p).returncode == 0
 
 
@@ -135,9 +119,9 @@ def test_split_note_for_a_multi_component_task_with_independent_consumes(tmp_pat
 def test_schedule_prints_the_shape_line(tmp_path):
     out = run(SCRIPTS / "plan_tools.py", "schedule", "--plan", two(tmp_path, eg=[EG])).out
     line = [ln for ln in out.splitlines() if ln.startswith("shape:")][0]
-    assert "chain 2 tasks" in line and "removable edges 1" in line and "min without them)" in line
+    assert "chain 1 tasks" in line and "edges not waited on 1" in line
     plain = run(SCRIPTS / "plan_tools.py", "schedule", "--plan", two(tmp_path, name="p2.md")).out
-    assert "removable edges 0" in plain and "without them" not in plain
+    assert "chain 2 tasks" in plain and "edges not waited on 0" in plain
     assert "shape" in json.loads(run(SCRIPTS / "plan_tools.py", "schedule", "--plan", two(tmp_path, name="p3.md"), "--json").out)
 
 

@@ -22,7 +22,7 @@ SCRIPTS = ROOT / "skills" / "swarm" / "scripts"
 REVIEW_BASIC = ROOT / "tests" / "scripts" / "fixtures" / "review_basic"
 CONSUMER_TEST = ("import os\n\n\ndef test_runs_against_real_producer():\n"
                  "    assert os.environ.get('SUPERLITE_REAL') == '1'\n")
-SL = "bash skills/swarm/scripts/sl"       # how the skill invokes tools: no .py
+CLI = "bash skills/swarm/scripts/superlite-cli"       # how the skill invokes tools: no .py
 
 
 def script(name, *args, cwd):
@@ -81,7 +81,7 @@ def _prime(proj):
 def _prime_run(proj, prompts):
     out, _ = _prime(proj)
     log = Log()
-    log.bash(f"{SL} build_prime --plan plan.md --spec SPEC.md --sections 1,2", 1, result=out)
+    log.bash(f"{CLI} build_prime --plan plan.md --spec SPEC.md --sections 1,2", 1, result=out)
     for n, p in enumerate(prompts):
         log.agent(f"c{n}", f"a{n}", f"T{n + 1} implement", p, 5 + n, 9 + n, report="READY")
     return log
@@ -115,7 +115,7 @@ def test_prime_marker_is_the_real_preambles_first_line(proj):
 
 def test_seam_checks_from_real_pt_review_output_and_log(proj):
     plan = str(proj / "plan.md")
-    cmd = f"{SL} pt_review contract --plan {plan} --seam T1,T2"
+    cmd = f"{CLI} pt_review contract --plan {plan} --seam T1,T2"
     rc_ok, out_ok = script("pt_review", "contract", "--plan", plan, "--root", proj, "--seam", "T1,T2", cwd=proj)
     assert rc_ok == 0 and "PASS: verified: seam T1" in out_ok, out_ok
     wb = proj / "src" / "minisheet" / "workbook.py"
@@ -151,8 +151,8 @@ def test_incident_counts_from_real_incident_py_and_sl_command(proj):
         assert rc == 0
     s = harness.dispatch_stats(Log().ev, proj)
     assert s["incidents"] == {"count": 3, "by_kind": {"workaround": 2, "flaky": 1}}
-    log = Log()                                  # no run dir: the `sl incident add` commands are counted
-    log.bash(f"{SL} incident add --file a.py --line 1 --context c --kind workaround", 1)
+    log = Log()                                  # no run dir: the `superlite-cli incident add` commands are counted
+    log.bash(f"{CLI} incident add --file a.py --line 1 --context c --kind workaround", 1)
     log.bash("python .superlite/bin/incident.py add --file a.py --line 1 --context c --kind flaky", 2)
     assert harness.dispatch_stats(log.ev)["incidents"] == {"count": 2, "by_kind": {"workaround": 1, "flaky": 1}}
 
@@ -196,7 +196,7 @@ def test_predicted_vs_actual_on_real_schedule_output(proj, flags):
     assert t1 != 9 and t2 != 9                                       # the predictor won over the stated 9 min
     log = Log()
     log.write("docs/plans/2026-plan.md", PLAN, 1)
-    log.bash(f"{SL} plan_tools schedule --plan docs/plans/2026-plan.md {' '.join(flags)}", 2, result=out)
+    log.bash(f"{CLI} plan_tools schedule --plan docs/plans/2026-plan.md {' '.join(flags)}", 2, result=out)
     log.agent("c1", "a1", "T1 engine", "Build T1", 10, 10 + t1 * 60, subagent_type="superlite:implementer")
     log.agent("c2", "a2", "T2 server", "Build T2", 400, 400 + t2 * 60, subagent_type="superlite:implementer")
     s = harness.dispatch_stats(log.ev)

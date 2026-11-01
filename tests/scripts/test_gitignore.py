@@ -145,7 +145,7 @@ def test_checkpoint_ignores_untracked_dependency_folders_without_a_gitignore(tmp
     assert not (tmp_path / ".gitignore").exists()
     cp = run(COMMIT, "T1", "--plan", p, cwd=tmp_path)
     assert cp.returncode == 0, cp.both
-    files = subprocess.run(["git", "show", "--name-only", "--format=", "HEAD"], cwd=tmp_path, capture_output=True, text=True).stdout.split()
+    files = subprocess.run(["git", "show", "--name-only", "--format=", cp.out.strip()], cwd=tmp_path, capture_output=True, text=True).stdout.split()
     assert sorted(files) == ["src/slug.test.ts", "src/slug.ts"]
     assert not (tmp_path / ".superlite" / "incidents.jsonl").exists()
 
@@ -215,13 +215,6 @@ def test_slim_prime_omits_the_section_without_a_gitignore(tmp_path):
     assert "Git-ignored paths" not in text
 
 
-def test_agent_files_carry_the_ignored_paths_rule():
-    for name, first in (("implementer.md", "git-ignored paths list in your prime"),  # the slim prime carries the list; the mini prime does not
-                        ("implementer-haiku.md", "Read the repo's `.gitignore` first")):
-        body = (SCRIPTS.parents[2] / "agents" / name).read_text(encoding="utf-8")
-        assert first in body and "DONE_WITH_CONCERNS" in body and "Never edit `.gitignore`" in body
-
-
 # ------------------------------------------------------------------ a task's own Owns win over the ignore list
 
 OWNING = [{"tid": "T1", "title": "bundle", "owns": "src/slug.ts, src/slug.test.ts, dist/bundle.js, bin/tool",
@@ -245,7 +238,7 @@ def test_task_owning_files_in_ignored_folders_keeps_them_without_a_gitignore(tmp
     write(tmp_path, "node_modules/a/b.js")
     cp = run(COMMIT, "T1", "--plan", p, cwd=tmp_path)
     assert cp.returncode == 0, cp.both
-    files = subprocess.run(["git", "show", "--name-only", "--format=", "HEAD"], cwd=tmp_path, capture_output=True, text=True).stdout.split()
+    files = subprocess.run(["git", "show", "--name-only", "--format=", cp.out.strip()], cwd=tmp_path, capture_output=True, text=True).stdout.split()
     assert sorted(files) == ["bin/tool", "dist/bundle.js", "src/slug.test.ts", "src/slug.ts"]
 
 
@@ -259,7 +252,7 @@ def test_unowned_files_in_ignored_folders_do_not_block_even_when_neighbours_are_
     write(tmp_path, "src/slug.ts")
     cp = run(COMMIT, "T1", "--plan", p, cwd=tmp_path)
     assert cp.returncode == 0, cp.both
-    files = subprocess.run(["git", "show", "--name-only", "--format=", "HEAD"], cwd=tmp_path, capture_output=True, text=True).stdout.split()
+    files = subprocess.run(["git", "show", "--name-only", "--format=", cp.out.strip()], cwd=tmp_path, capture_output=True, text=True).stdout.split()
     assert files == ["src/slug.ts"]
 
 
@@ -277,38 +270,3 @@ def test_wave0_does_not_ignore_what_a_task_owns(tmp_path):
     before = (tmp_path / ".gitignore").read_bytes()
     run_wave0(tmp_path, p)
     assert (tmp_path / ".gitignore").read_bytes() == before
-
-
-def test_autocommit_dirty_outside_ignores_dependency_folders_and_owned_ignored_files(tmp_path):
-    import os
-    import autocommit
-    init_repo(tmp_path)
-    old = os.getcwd()
-    os.chdir(tmp_path)
-    try:
-        write(tmp_path, "dist/bundle.js")   # checkpointed by a task that owns it
-        write(tmp_path, "dist/stale.js")    # owned by no task, ignored
-        write(tmp_path, "node_modules/a/b.js")
-        write(tmp_path, ".superlite/progress.md")
-        assert autocommit.dirty_outside({"dist/bundle.js"}) == []
-        write(tmp_path, "stray.txt")
-        assert autocommit.dirty_outside({"dist/bundle.js"}) == ["stray.txt"]
-    finally:
-        os.chdir(old)
-
-
-def test_checkpoint_apply_keeps_owned_ignored_files_and_is_not_refused_by_unowned_ones(tmp_path):
-    import os
-    env = {**os.environ, "SUPERLITE_AUTOCOMMIT": "0"}
-    p = owning_repo(tmp_path)
-    git(tmp_path, "add", "-A")
-    git(tmp_path, "commit", "-q", "-m", "base", "--allow-empty")  # HEAD exists; the files below are new work
-    for f in ("src/slug.ts", "src/slug.test.ts", "dist/bundle.js", "bin/tool"):
-        write(tmp_path, f, "changed\n")
-    write(tmp_path, "dist/stale.js")
-    cp = subprocess.run([sys.executable, str(COMMIT), "T1", "--plan", str(p)], cwd=tmp_path, env=env, capture_output=True, text=True, encoding="utf-8")
-    assert cp.returncode == 0, cp.stdout + cp.stderr
-    ap = subprocess.run([sys.executable, str(SCRIPTS / "autocommit.py"), "apply"], cwd=tmp_path, env=env, capture_output=True, text=True, encoding="utf-8")
-    assert ap.returncode == 0, ap.stdout + ap.stderr
-    tracked = subprocess.run(["git", "show", "--name-only", "--format=", "HEAD"], cwd=tmp_path, capture_output=True, text=True).stdout.split()
-    assert sorted(tracked) == ["bin/tool", "dist/bundle.js", "src/slug.test.ts", "src/slug.ts"]

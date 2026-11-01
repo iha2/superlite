@@ -1,4 +1,4 @@
-"""`sl wave0`: the Wave 0 brief built from the plan alone, language-neutral; T0 in dispatch and checkpoint."""
+"""`superlite-cli wave0`: the Wave 0 brief built from the plan alone, language-neutral; T0 in dispatch and checkpoint."""
 from __future__ import annotations
 
 import json
@@ -106,7 +106,7 @@ def test_agent_line_names_haiku_task_and_brief(tmp_path):
     assert " ms" in cp.out.splitlines()[1]
 
 
-def test_dispatch_lists_t0_first_until_committed(tmp_path):
+def test_dispatch_lists_t0_first_until_checkpointed(tmp_path):
     p = plan(tmp_path, "**Tech stack:** Python", "x", PY)
     first = run(DISPATCH, "--plan", p, "--pool", tmp_path / "pool.json", "--ledger", tmp_path / "l.md", cwd=tmp_path)
     assert "T0" not in first.out  # no brief yet
@@ -118,7 +118,7 @@ def test_dispatch_lists_t0_first_until_committed(tmp_path):
     (tmp_path / "pool.json").write_text(json.dumps({"agents": [{"id": "h", "tasks": ["T0"], "current": "T0", "busy": True}]}), encoding="utf-8")
     assert "T0" not in run(DISPATCH, "--plan", p, "--pool", tmp_path / "pool.json", "--ledger", tmp_path / "l.md", cwd=tmp_path).out
     (tmp_path / "pool.json").unlink()
-    (tmp_path / "l.md").write_text("- commit T0 abcdef1234 skeleton\n", encoding="utf-8")
+    (tmp_path / "l.md").write_text("- checkpoint T0 abcdef1234 skeleton\n", encoding="utf-8")
     assert "T0" not in run(DISPATCH, "--plan", p, "--pool", tmp_path / "pool.json", "--ledger", tmp_path / "l.md", cwd=tmp_path).out
 
 
@@ -135,8 +135,8 @@ def test_checkpoint_t0_takes_its_files_not_other_tasks(tmp_path):
     (tmp_path / "src" / "slug.ts").write_text("// T1 in progress\n", encoding="utf-8")  # another task's file: left alone
     cp = run(COMMIT, "T0", "--plan", p, cwd=tmp_path)
     assert cp.returncode == 0, cp.both
-    files = subprocess.run(["git", "show", "--name-only", "--format=", "HEAD"], cwd=tmp_path, capture_output=True, text=True).stdout.split()
-    assert sorted(files) == [".gitignore", "package.json"]  # the .gitignore wave0 wrote is committed by the Wave 0 task
+    files = subprocess.run(["git", "show", "--name-only", "--format=", cp.out.strip()], cwd=tmp_path, capture_output=True, text=True).stdout.split()
+    assert sorted(files) == [".gitignore", "package.json"]  # the .gitignore wave0 wrote is checkpointed by the Wave 0 task
 
 
 def test_lint_stable_prints_t0_agent_line_and_send_before_edit(tmp_path):

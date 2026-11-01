@@ -11,7 +11,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = sorted(p for p in (ROOT / "hooks").iterdir() if p.is_file() and p.suffix != ".json")
-SCRIPTS.append(ROOT / "skills" / "swarm" / "scripts" / "sl")
+SCRIPTS.append(ROOT / "skills" / "swarm" / "scripts" / "superlite-cli")
 
 # (pattern, what to use instead)
 BANNED = [

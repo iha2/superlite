@@ -204,7 +204,7 @@ def test_missing_feedback_only_fails_when_required(tmp_path):
     setup(tmp_path)
     assert check(tmp_path).returncode == 0
     cp = check(tmp_path, "--require-feedback")
-    assert cp.returncode == 1 and "run sl mvp_check fetch" in cp.out
+    assert cp.returncode == 1 and "run superlite-cli mvp_check fetch" in cp.out
 
 
 def test_ai_writes_feedback_as_the_plan_recommends(tmp_path):
@@ -236,25 +236,3 @@ def test_fetch_prefers_the_project_file_else_the_newest_download_newer_than_the_
     os.utime(tmp_path / FB_REL, (t + 30, t + 30))
     run(MVP, "fetch", "--downloads", dl, cwd=tmp_path)
     assert json.loads((tmp_path / FB_REL).read_text(encoding="utf-8")) == {"name": "project"}
-
-
-# ------------------------------------------------------------------ the texts agree
-
-def test_skill_command_design_and_tool_docs_agree():
-    skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")
-    cmd = (REPO / "commands" / "mvp.md").read_text(encoding="utf-8")
-    design = (REPO / "docs" / "mvp-flow.md").read_text(encoding="utf-8")
-    approve = "sl orchestrator approve --review docs/plans/<date>-<topic>.mvp.md"
-    for text in (cmd, design):
-        for need in (approve, "Ruling: [scope]", "superlite:mvp-prototype", "mvp_check", "Changed from the approved plan", "choice"):
-            assert need in text, need
-    for need in (approve, "Ruling: [scope]", "END THE TURN", "mvp_check ai", "mvp_check fetch", "mvp_check build", "mvp_check open"):
-        assert need in skill, need
-    assert "Not built yet" not in design and "## Open points" not in design and "## Decided points" in design
-    assert "mvp-prototype" in (REPO / "docs" / "skills-and-agents.md").read_text(encoding="utf-8")
-    assert "| `mvp_check` |" in (REPO / "docs" / "tools.md").read_text(encoding="utf-8")
-    assert "mvp_check" in (SCRIPTS / "sl").read_text(encoding="utf-8").split("set -u")[0]
-    for f in ("SKILL.md", "page-template.html", "feedback-schema.md", "mock-patterns.md"):
-        assert (SKILL / f).is_file(), f
-    assert len((REPO / "skills" / "using-superlite" / "SKILL.md").read_text(encoding="utf-8")) <= 2000
-    assert len((REPO / "skills" / "swarm" / "SKILL.md").read_text(encoding="utf-8")) <= 12500

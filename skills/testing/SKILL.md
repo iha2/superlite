@@ -19,7 +19,7 @@ If you wrote code before the test, delete it and restart from the test. Do not k
 ## Scope of runs
 
 - Run only focused tests inside a task: the new test, then its file or module.
-- Do not run the full suite inside a task. The wave's `bash <skill-dir>/../swarm/scripts/sl run_tests --full` run covers it; inside a task use `--fast PATHS`. When working inline without waves, run `--full` once at the end and read its one-line summary.
+- Do not run the full suite inside a task. The wave's `bash <skill-dir>/../swarm/scripts/superlite-cli run_tests --full` run covers it; inside a task use `--fast PATHS`. When working inline without waves, run `--full` once at the end and read its one-line summary.
 
 ## Bugfixes
 

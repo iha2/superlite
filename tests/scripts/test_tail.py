@@ -1,4 +1,4 @@
-"""sl tail: the live feed of a run's metrics.jsonl and progress.md."""
+"""superlite-cli tail: the live feed of a run's metrics.jsonl and progress.md."""
 import json
 import subprocess
 import sys

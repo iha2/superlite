@@ -6,7 +6,7 @@ description: Use in MVP mode (/superlite:mvp), after the .mvp.md feature plan is
 # MVP prototype
 
 One self-contained page, `.superlite/mvp/prototype.html`: raw HTML and JS, no build step, no network, fake data. It is a spec
-for behavior, not product code. Design: `docs/mvp-flow.md`. Tools: `sl mvp_check` (see below).
+for behavior, not product code. Design: `docs/mvp-flow.md`. Tools: `superlite-cli mvp_check` (see below).
 
 ## 1. The plan the page is built from
 
@@ -31,14 +31,14 @@ Write only the main area as an HTML fragment, `.superlite/mvp/mock.html`, in the
 [mock-patterns.md](mock-patterns.md). Then:
 
 ```bash
-bash <skill-dir>/../swarm/scripts/sl mvp_check build --plan docs/plans/<date>-<topic>.mvp.md --mock .superlite/mvp/mock.html
+bash <skill-dir>/../swarm/scripts/superlite-cli mvp_check build --plan docs/plans/<date>-<topic>.mvp.md --mock .superlite/mvp/mock.html
 ```
 
 `build` fills [page-template.html](page-template.html) (side panel, footer, save logic) with the plan's features and your mock,
 stamps the page's sha, and checks it; it does not open it. Do not copy or rewrite the template by hand.
 
 **Show the page** to the user; how is your choice, by what your harness offers: an in-IDE view (in the Claude desktop
-app, send the page as a file with display render), a browser tool you can drive, or `sl mvp_check open` for the default
+app, send the page as a file with display render), a browser tool you can drive, or `superlite-cli mvp_check open` for the default
 browser. In a headless run, skip it. If the view cannot save files, Save feedback falls back to a download, and Copy
 feedback to the clipboard.
 
@@ -53,25 +53,28 @@ Mock rules:
 
 ## 3. Check
 
-`sl mvp_check check --plan <mvp.md>` must print `mvp_check: ok`. It checks: the page parses and its structural tags close,
+`superlite-cli mvp_check check --plan <mvp.md>` must print `mvp_check: ok`. It checks: the page parses and its structural tags close,
 the panel's data matches the plan, every feature id is in the mock, no external URLs or network calls, and (when the feedback
 file exists) the feedback schema, its features against the plan, and its `prototype_sha` against the page. Fix the mock or the
-plan, then `build` again. After any hand edit of the page run `sl mvp_check stamp`.
+plan, then `build` again. After any hand edit of the page run `superlite-cli mvp_check stamp`.
+
+In either orchestrator mode, when `open_in_harness` is on (`superlite-cli agent_specs status`), open the `.mvp.md` for the user
+(`superlite:drafting`, After writing); do not wait on it.
 
 ## 4. Human orchestrator
 
-When `open_in_harness` is on (`sl agent_specs status`), open the `.mvp.md` for the user first (`superlite:drafting`, After writing). Show the path, a five-line summary (goal, target, features in, features out, rough time and cost) and: open the page, cut or
+Show the path, a five-line summary (goal, target, features in, features out, rough time and cost) and: open the page, cut or
 reorder features, edit labels, leave notes, press Save feedback, then reply in chat. END THE TURN. The chat reply
-approves, never the file. If you understand that reply as approval, send approve: `sl orchestrator approve --review docs/plans/<date>-<topic>.mvp.md`, then
-`sl mvp_check fetch` (the project file, else the newest `mvp-feedback*.json` in Downloads, copied in; if none, ask the user to
+approves, never the file. If you understand that reply as approval, send approve: `superlite-cli orchestrator approve --review docs/plans/<date>-<topic>.mvp.md`, then
+`superlite-cli mvp_check fetch` (the project file, else the newest `mvp-feedback*.json` in Downloads, copied in; if none, ask the user to
 paste the Copy feedback block and save it yourself to `.superlite/mvp/mvp-feedback.json`), then
-`sl mvp_check check --plan <mvp.md> --require-feedback`. A sha mismatch means the file came from an older page: ask once for a
-fresh save. From here on the human is not asked again: a scope change is a `Ruling: [scope] ...` line, listed by `sl finish` under
+`superlite-cli mvp_check check --plan <mvp.md> --require-feedback`. A sha mismatch means the file came from an older page: ask once for a
+fresh save. From here on the human is not asked again: a scope change is a `Ruling: [scope] ...` line, listed by `superlite-cli finish` under
 "Changed from the approved plan".
 
 ## 5. AI orchestrator (self-check, no stop)
 
-`sl mvp_check check --plan <mvp.md>` until ok, then `sl mvp_check ai --plan <mvp.md>` writes the feedback with `source: "ai"`,
+`superlite-cli mvp_check check --plan <mvp.md>` until ok, then `superlite-cli mvp_check ai --plan <mvp.md>` writes the feedback with `source: "ai"`,
 every feature as the plan recommends, and no edits. Log `Ruling: MVP scope taken as the plan recommends - AI orchestrator -
 cost if wrong: a feature rebuilt later`. No `approve`.
 

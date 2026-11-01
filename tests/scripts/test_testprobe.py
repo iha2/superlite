@@ -296,6 +296,27 @@ def test_spinning_run_is_reported_and_hard_timeout_kills_the_whole_tree(tmp_path
     assert not alive(int((proj / "child.pid").read_text()))                # the grandchild died with the tree
 
 
+def _watch_py(code, **cfg):
+    seen = []
+    r = tp.run_watched([sys.executable, "-c", code], cfg={**FAST, **cfg}, on_suspect=seen.append)
+    return r, seen
+
+
+def test_sleeping_test_is_blocked():
+    r, seen = _watch_py("import time; time.sleep(1000)", hard_timeout_s=3.0)
+    assert r.killed == "timeout" and seen and seen[0]["verdict"] == "blocked"
+
+
+def test_spinning_test_is_spinning():
+    r, seen = _watch_py("while True: pass", hard_timeout_s=3.0)
+    assert r.killed == "timeout" and seen and seen[0]["verdict"] == "spinning"
+
+
+def test_not_killed_by_default():
+    r, seen = _watch_py("import time; time.sleep(2.5)")   # auto_kill_blocked and hard_timeout_s are off
+    assert r.killed is None and r.returncode == 0 and seen and seen[0]["verdict"] == "blocked"
+
+
 def test_blocked_run_wait_returns_early_and_auto_kill_is_by_pid(tmp_path):
     proj, env = hang_project(tmp_path, "sleep", auto_kill_blocked=True, auto_kill_after_s=1.5)
     assert rt(proj, env, "--background").returncode == 0

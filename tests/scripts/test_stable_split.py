@@ -171,7 +171,7 @@ def test_frozen_applies_to_ledger_dispatched_tasks(tmp_path):
     data = json.loads(f.read_text(encoding="utf-8"))
     data["stable"] = ["T2"]  # T1 no longer listed, but the ledger says it was dispatched
     f.write_text(json.dumps(data), encoding="utf-8")
-    (tmp_path / ".superlite" / "progress.md").write_text("# Progress ledger\n\n- commit T1 abc1234567 task t1\n", encoding="utf-8")
+    (tmp_path / ".superlite" / "progress.md").write_text("# Progress ledger\n\n- checkpoint T1 abc1234567 task t1\n", encoding="utf-8")
     cp = pt("lint", "--stable", "--plan", _two(tmp_path, "f(x: str) -> int"))
     assert "FROZEN: T1 interface changed after dispatch" in cp.out
 

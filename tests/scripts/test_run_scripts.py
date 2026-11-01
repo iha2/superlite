@@ -1,6 +1,6 @@
 """Tests for the D17 run scripts. plan_tools, incident and probe_run are replaced
-by the small fakes in fixtures/run_plan, reached through a fake `sl` launcher
-(SUPERLITE_SL), as the real tools are reached through `bash sl <tool>` (D18),
+by the small fakes in fixtures/run_plan, reached through a fake `superlite-cli` launcher
+(SUPERLITE_CLI), as the real tools are reached through `bash superlite-cli <tool>` (D18),
 so these tests do not depend on the scripts other tasks build."""
 import hashlib
 import json
@@ -21,9 +21,8 @@ sys.path.insert(0, str(SCRIPTS))
 
 ENV = {
     **os.environ,
-    "SUPERLITE_SL": str(PLAN_FIX / "fake_sl"),     # D18: tools call each other via sl
+    "SUPERLITE_CLI": str(PLAN_FIX / "fake_cli"),     # D18: tools call each other via superlite-cli
     "SL_TEST_PYTHON": sys.executable,
-    "SUPERLITE_AUTOCOMMIT": "1",                   # these tests assert real commits
     "SUPERLITE_PROBE_RUN": str(PLAN_FIX / "no_such_probe.py"),
 }
 
@@ -114,9 +113,9 @@ def test_next_tasks_longest_first_and_cap():
     assert ready("--cap", "2") == ["T2", "T5"]
     assert ready("--cap", "2", "--running", "T2") == ["T5"]
     assert ready("--cap", "1", "--running", "T2") == []
-    assert ready("--committed", "T1,T2") == ["T5", "T3", "T4"]  # T3/T4 tie: plan order
-    assert ready("--committed", "T1,T2,T3,T4,T5", "--running", "T6") == []
-    assert ready("--committed", "T1,T2,T3,T4,T5") == ["T6"]
+    assert ready("--checkpointed", "T1,T2") == ["T5", "T3", "T4"]  # T3/T4 tie: plan order
+    assert ready("--checkpointed", "T1,T2,T3,T4,T5", "--running", "T6") == []
+    assert ready("--checkpointed", "T1,T2,T3,T4,T5") == ["T6"]
 
 
 def test_parse_owns_expands_braces_and_ignores_notes():
@@ -138,7 +137,7 @@ def pool(tmp_path, agents):
 
 
 def assign(tmp_path, task, agents):
-    r = run("assign", "--task", task, "--pool", pool(tmp_path, agents))
+    r = run("dispatch", "assign", "--task", task, "--pool", pool(tmp_path, agents))
     assert r.returncode == 0, r.stderr
     return r.stdout.strip(), r.stderr
 
@@ -169,7 +168,7 @@ def test_assign_file_and_package_scores(tmp_path):
 
 def test_assign_eligibility_and_busy(tmp_path):
     full = {"id": "full", "tasks": ["T1"], "context_k": 70}            # 70 + 15 > 80
-    many = {"id": "many", "tasks": ["T1", "T2", "T4"], "context_k": 10}  # 3 tasks
+    many = {"id": "many", "tasks": [f"t{i}" for i in range(20)], "context_k": 10}  # the tier's max_tasks
     old = {"id": "old", "tasks": ["T1"], "context_k": 10, "idle_min": 51}
     busy = {"id": "busy", "tasks": ["T3"], "context_k": 10, "busy": True}
     out, err = assign(tmp_path, "T6", [full, many, old, busy])
@@ -215,7 +214,12 @@ def commit(repo, task="T1", *extra, env=None):
 
 
 def commits(repo):
-    return int(git(repo, "rev-list", "--count", "HEAD"))
+    """Hidden checkpoint refs; the branch itself never gains a commit."""
+    return len(git(repo, "for-each-ref", "refs/superlite").splitlines())
+
+
+def head_state(repo):
+    return git(repo, "rev-parse", "HEAD"), git(repo, "rev-parse", "--abbrev-ref", "HEAD"), git(repo, "status", "--porcelain", "--untracked-files=no")
 
 
 def test_commit_stages_only_owns_and_records_ledger(tmp_path):
@@ -225,13 +229,24 @@ def test_commit_stages_only_owns_and_records_ledger(tmp_path):
     r = commit(repo)
     assert r.returncode == 0, r.stdout + r.stderr
     sha = r.stdout.strip()
-    assert sha == git(repo, "rev-parse", "HEAD") and len(sha) == 40
-    assert git(repo, "log", "-1", "--format=%s") == "T1: parser"
-    assert sorted(git(repo, "show", "--name-only", "--format=", "HEAD").split()) == [
+    assert len(sha) == 40 and sha != git(repo, "rev-parse", "HEAD")
+    assert git(repo, "log", "-1", "--format=%s", sha) == "T1: parser"
+    assert sorted(git(repo, "show", "--name-only", "--format=", sha).split()) == [
         "src/a.py", "tests/test_a.py"]
+    assert git(repo, "for-each-ref", "--format=%(objectname)", "refs/superlite") == sha
     ledger = (repo / ".superlite" / "progress.md").read_text(encoding="utf-8")
     assert f"- checkpoint T1 {sha[:10]} parser" in ledger
-    assert git(repo, "status", "--porcelain", "--untracked-files=no") == ""
+
+
+def test_checkpoint_never_moves_head(tmp_path):
+    repo = make_repo(tmp_path)
+    write(repo, "src/a.py", "X = 1\n")
+    git(repo, "add", "src/a.py")                           # staged by the user: must stay staged
+    write(repo, "src/b.py", "Y = 2\n")
+    before = (head_state(repo), git(repo, "diff", "--cached", "--name-only"))
+    assert commit(repo, "T1").returncode == 0
+    assert (head_state(repo), git(repo, "diff", "--cached", "--name-only")) == before
+    assert (repo / "src" / "a.py").read_text() == "X = 1\n"
 
 
 def test_commit_blocks_out_of_scope(tmp_path):
@@ -257,26 +272,25 @@ def test_commit_two_tasks_mid_build_leaves_other_tasks_files(tmp_path):
     write(repo, "src/b.py", "Y = 2\n")                    # T2, still mid-build
     r = commit(repo, "T1")
     assert r.returncode == 0, r.stdout + r.stderr
-    assert git(repo, "show", "--name-only", "--format=", "HEAD") == "src/a.py"
-    assert "src/b.py" in git(repo, "status", "--porcelain")
+    assert git(repo, "show", "--name-only", "--format=", r.stdout.strip()) == "src/a.py"
+    assert "src/b.py" in git(repo, "status", "--porcelain", "--untracked-files=all")
     assert not (repo / ".superlite" / "incidents.jsonl").exists()
     r = commit(repo, "T2")
     assert r.returncode == 0, r.stdout + r.stderr
-    assert git(repo, "show", "--name-only", "--format=", "HEAD") == "src/b.py"
-    assert git(repo, "status", "--porcelain", "--untracked-files=no") == ""
+    assert git(repo, "show", "--name-only", "--format=", r.stdout.strip()) == "src/b.py"
 
 
-def test_commit_allow_other_tasks_skips_their_files(tmp_path):
+def test_checkpoint_skips_other_tasks_files_but_blocks_strays(tmp_path):
     repo = make_repo(tmp_path)
     write(repo, "src/a.py", "X = 1\n")
     write(repo, "src/b.py", "Y = 2\n")
-    r = commit(repo, "T1", "--allow-other-tasks")
+    r = commit(repo, "T1")
     assert r.returncode == 0, r.stdout
-    assert git(repo, "show", "--name-only", "--format=", "HEAD") == "src/a.py"
-    assert "src/b.py" in git(repo, "status", "--porcelain")
+    assert git(repo, "show", "--name-only", "--format=", r.stdout.strip()) == "src/a.py"
+    assert "src/b.py" in git(repo, "status", "--porcelain", "--untracked-files=all")
     write(repo, "stray.txt", "x")                          # owned by nobody still blocks
     write(repo, "src/c.py", "Z = 3\n")
-    assert commit(repo, "T3", "--allow-other-tasks").returncode == 1
+    assert commit(repo, "T3").returncode == 1
 
 
 def test_pytest_cmd_falls_back_to_uv_when_pytest_missing(monkeypatch):
@@ -345,7 +359,7 @@ def test_commit_rejects_failing_import_and_accepts_package_import(tmp_path):
     r = commit(repo)
     assert r.returncode == 1 and "import src/a.py:1" in r.stdout
     assert "ModuleNotFoundError" in r.stdout
-    assert commits(repo) == 1
+    assert commits(repo) == 0
     write(repo, "src/a.py", "from src import b_helper\nVALUE = b_helper.V\n")
     write(repo, "src/b_helper.py", "V = 1\n")
     # b_helper is not in T1's Owns -> out of scope; the import itself would pass
@@ -439,9 +453,9 @@ def test_finish_collects_rulings(tmp_path):
     ledger = tmp_path / "progress.md"
     ledger.write_text(
         "# Progress ledger\n\n"
-        "- commit T1 abcdef1234 parser\n"
+        "- checkpoint T1 abcdef1234 parser\n"
         "Ruling: keep Workbook.set returning a list\n"
-        "- commit T2 1234567890 lexer\n"
+        "- checkpoint T2 1234567890 lexer\n"
         "- **Ruling:** accept the sequential T5 -> T6 chain\n"
         "- tests fast passed=4 failed=1 skipped=0 seconds=0.5\n"
         "- tests full passed=9 failed=0 skipped=2 seconds=3.2\n"
@@ -462,7 +476,7 @@ def test_finish_collects_rulings(tmp_path):
     assert rulings == ["- keep Workbook.set returning a list",
                        "- accept the sequential T5 -> T6 chain",
                        "- third and last"]
-    assert "rulings: 3" in out and "commits: 2" in out  # ENV has auto-commit on
+    assert "rulings: 3" in out and "checkpoints: 2" in out
     assert "- T1 abcdef1234 parser" in out and "- T2 1234567890 lexer" in out
     assert "tests (full): 9 passed, 0 failed, 2 skipped in 3.2s" in out
     assert "open incidents: 2" in out
@@ -494,10 +508,22 @@ def test_finish_without_scope_rulings_prints_no_change_block(tmp_path):
     assert "Changed from the approved plan" not in out
 
 
+def test_finish_text_has_no_commit_word(tmp_path):
+    import re
+    ledger = tmp_path / "progress.md"
+    ledger.write_text("- checkpoint T1 abcdef1234 parser\n", encoding="utf-8")
+    (tmp_path / "checkpoints.json").write_text(json.dumps(
+        {"run": "r", "entries": [{"task": "T1", "files": ["a.py"]}]}), encoding="utf-8")
+    out = run("finish", "--ledger", ledger, "--log", tmp_path / "none.jsonl").stdout
+    assert "checkpoints: 1" in out and "uncommitted in the folder" in out
+    assert not re.search(r"\bcommits?\b", out, re.I)
+    assert not (tmp_path / "checkpoints.json").exists()      # finish cleaned the state
+
+
 def test_finish_with_nothing_recorded(tmp_path):
     r = run("finish", "--ledger", tmp_path / "none.md", "--log", tmp_path / "none.jsonl")
     assert r.returncode == 0
-    assert "commits: 0" in r.stdout and "rulings: 0" in r.stdout
+    assert "checkpoints: 0" in r.stdout and "rulings: 0" in r.stdout
     assert "tests: none recorded" in r.stdout and "open incidents: 0" in r.stdout
 
 
@@ -511,7 +537,7 @@ def wait_lines(path, n, timeout=90):
     return sorted(path.read_text(encoding="utf-8").splitlines()) if path.exists() else []
 
 
-def test_commit_launches_seam_checks_when_both_sides_committed(tmp_path):
+def test_commit_launches_seam_checks_when_both_sides_checkpointed(tmp_path):
     repo = make_repo(tmp_path)
     marker = repo / ".superlite" / "pt_marker.txt"
     write(repo, "src/a.py", "X = 1\n")
@@ -519,7 +545,7 @@ def test_commit_launches_seam_checks_when_both_sides_committed(tmp_path):
     write(repo, "src/b.py", "Y = 1\n")
     assert commit(repo, "T2").returncode == 0
     time.sleep(0.7)
-    assert not marker.exists()                      # T3 not committed: no seam is complete
+    assert not marker.exists()                      # T3 not checkpointed: no seam is complete
     write(repo, "src/c.py", "Z = 1\n")
     assert commit(repo, "T3").returncode == 0
     log = ".superlite/incidents.jsonl"
@@ -549,17 +575,17 @@ def test_commit_accepts_generated_regression_tests_and_never_stages_superlite(tm
     write(repo, ".superlite/incidents.jsonl", "")
     r = commit(repo, "T1")
     assert r.returncode == 0, r.stdout + r.stderr
-    assert sorted(git(repo, "show", "--name-only", "--format=", "HEAD").split()) == [
+    assert sorted(git(repo, "show", "--name-only", "--format=", r.stdout.strip()).split()) == [
         "src/a.py", "tests/regression/test_probe_deep_1.py"]
     exclude = (repo / ".git" / "info" / "exclude").read_text(encoding="utf-8")
     assert ".superlite/" in exclude.splitlines()
-    assert git(repo, "status", "--porcelain").replace("?? plan.md", "").strip() == ""
     # another task's review fix: regression tests belong to whoever commits them
     write(repo, "src/b.py", "Y = 1\n")
     write(repo, "tests/regression/test_probe_state_2.py", "def test_s():\n    assert True\n")
-    assert commit(repo, "T2").returncode == 0
+    r2 = commit(repo, "T2")
+    assert r2.returncode == 0
     assert "tests/regression/test_probe_state_2.py" in git(
-        repo, "show", "--name-only", "--format=", "HEAD").split()
+        repo, "show", "--name-only", "--format=", r2.stdout.strip()).split()
     # the exclude entry is added once
     exclude = (repo / ".git" / "info" / "exclude").read_text(encoding="utf-8")
     assert exclude.splitlines().count(".superlite/") == 1

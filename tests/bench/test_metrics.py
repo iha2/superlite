@@ -186,8 +186,8 @@ def test_seam_checks_and_mismatches():
     # Real pt_review output shapes ("PASS: verified: seam ..." / "FAIL: seam ...: N mismatch(es)");
     # tests/bench/test_real_formats.py runs the real script for them.
     log = Log()
-    log.bash("bash sl pt_review contract --plan P --seam T3,T5", 1, result="PASS: verified: seam T3↔T5")
-    log.bash("bash sl pt_review contract --plan P --seam T5,T7", 5,
+    log.bash("bash superlite-cli pt_review contract --plan P --seam T3,T5", 1, result="PASS: verified: seam T3↔T5")
+    log.bash("bash superlite-cli pt_review contract --plan P --seam T5,T7", 5,
              result="x.py:3  part1 T5: missing parameter 'a'\nFAIL: seam T5↔T7: 1 mismatch(es)")
     s = harness.dispatch_stats(log.ev)
     assert (s["seam_checks"], s["seam_mismatches"]) == (2, 1)

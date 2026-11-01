@@ -1,4 +1,4 @@
-"""sl agent_specs on|off|status|open|prefer: opt-in pre-impl specs."""
+"""superlite-cli agent_specs on|off|status|open|prefer: opt-in pre-impl specs."""
 import json
 import os
 import subprocess
@@ -114,6 +114,15 @@ def test_open_alias_env(tmp_path):
     st = run("status", cwd=tmp_path, env={
         **base, "SUPERLITE_OPEN_IN_HARNESS": "1",
         "SUPERLITE_AGENT_SPECS_OPEN": "0"})
+    assert "open_in_harness: off" in st.stdout
+
+
+def test_open_invalid_primary_env_falls_to_alias(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    st = run("status", cwd=tmp_path, env={
+        "SUPERLITE_HOME": str(home), "SUPERLITE_AGENT_SPECS_OPEN": "maybe",
+        "SUPERLITE_OPEN_IN_HARNESS": "0"})
     assert "open_in_harness: off" in st.stdout
 
 

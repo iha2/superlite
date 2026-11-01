@@ -236,22 +236,50 @@ def test_schedule_waits_for_dependencies(tmp_path):
     assert rep["critical_path"] == ["T2", "T3"]
 
 
-def test_schedule_insert_replaces_previous(tmp_path):
+def test_schedule_never_rewrites_the_plan(tmp_path):
     p = make_plan(tmp_path, [{"id": "T1", "time": 3}, {"id": "T2", "time": 2}], [("T1", "T2")])
-    for _ in range(2):
-        cp = pt("schedule", "--plan", p, "--insert", "--target-min", 30)
-        assert cp.returncode == 0, cp.both
-    text = p.read_text(encoding="utf-8")
-    assert text.count("%% schedule") == 1
-    assert text.count("critical path:") == 1
-    assert "gantt" in text and "(target ✓)" in text
-    # the plan still parses and the graph is unchanged
-    assert json.loads(pt("taskgraph", "--plan", p).out) == {"T1": [], "T2": ["T1"]}
-    # a changed plan replaces the old numbers
-    p.write_text(text.replace("**Est. time:** 2 min", "**Est. time:** 1 min"), encoding="utf-8")
-    pt("schedule", "--plan", p, "--insert")
-    again = p.read_text(encoding="utf-8")
-    assert again.count("%% schedule") == 1 and "predicted build 4.0 min" in again
+    before = p.read_bytes()
+    assert pt("schedule", "--plan", p, "--target-min", 30).returncode == 0
+    assert pt("lint", "--plan", p).returncode in (0, 1)
+    assert p.read_bytes() == before
+    assert pt("schedule", "--plan", p, "--insert").returncode == 2
+
+
+def test_no_prune_command(tmp_path):
+    p = make_plan(tmp_path, [{"id": "T1", "time": 3}])
+    cp = pt("prune", "--plan", p)
+    assert cp.returncode == 2 and "prune" in cp.err
+
+
+EXAMPLE_PLAN = [
+    {"id": "T1", "time": 3, "produces": "parse(src: str) -> Tree"},
+    {"id": "T2", "time": 3, "consumes": "parse(src: str) -> Tree (T1)"},
+]
+
+
+def example_plan(tmp_path, with_example):
+    p = make_plan(tmp_path, EXAMPLE_PLAN, [("T1", "T2")])
+    if with_example:
+        text = p.read_text(encoding="utf-8").replace(
+            "**Produces:** parse(src: str) -> Tree\n", '**Produces:** parse(src: str) -> Tree\ne.g. parse("1") -> Tree(1)\n')
+        p.write_text(text, encoding="utf-8")
+    return p
+
+
+def test_example_edge_not_waited(tmp_path):
+    waits = sched(example_plan(tmp_path, False))
+    assert waits["tasks"]["T2"]["start"] == waits["tasks"]["T1"]["end"]
+    free = sched(example_plan(tmp_path, True))
+    assert free["tasks"]["T2"]["start"] == 0 and free["peak_width"] == 2
+    assert "edges not waited on 1" in free["shape"]
+    assert json.loads(pt("taskgraph", "--plan", example_plan(tmp_path, True)).out) == {"T1": [], "T2": ["T1"]}
+
+
+def test_lint_edge_note_says_not_waited(tmp_path):
+    out = pt("lint", "--plan", example_plan(tmp_path, True)).out
+    edge = [ln for ln in out.splitlines() if ln.startswith("EDGE:")]
+    assert len(edge) == 1 and "T2 does not wait for T1" in edge[0]
+    assert "prune" not in out and "drop the edge" not in out
 
 
 def test_schedule_target_from_header_and_flag_override(tmp_path):
@@ -315,6 +343,35 @@ def test_lint_size_band_errors_above_high_and_notes_below_low(tmp_path):
     assert "SIZE: T1 predicted 6.5 min > 6 max; split it along its components" in cp.out
     assert "NOTE: T2 predicted 0.5 min < 1.5; consider merging with a related task" in cp.out
     assert "mergeable" not in cp.out and "-min cap" not in cp.out
+
+
+def lint_out(tmp_path, tasks, edges=()):
+    return pt("lint", "--plan", make_plan(tmp_path, tasks, edges, header="**Ignore:** .env")).out
+
+
+def test_lint_mutations(tmp_path):
+    clean = [{"id": "T1", "time": 3, "produces": "f(a: int) -> int"},
+             {"id": "T2", "time": 3, "consumes": "f(a: int) -> int (T1)"}]
+    assert "lint: ok" in lint_out(tmp_path, clean, [("T1", "T2")])
+    stable = pt("lint", "--stable", "--plan", make_plan(tmp_path, clean, [("T1", "T2")], header="**Ignore:** .env"), cwd=tmp_path)
+    assert "STABLE: T1 T2" in stable.out and "DISPATCH NOW: T1" in stable.out
+    mutations = {
+        "T1: no **Owns:** line": lambda t: t[0].update(owns=""),
+        "T1 and T2 can run in parallel but both own src/x.py": lambda t: [x.update(owns="src/x.py") for x in t],
+        "taskgraph: cycle in taskgraph": None,
+        "T2 consumes f(a: int, b: int) but T1 produces f(a: int)": lambda t: t[1].update(consumes="f(a: int, b: int) -> int (T1)"),
+        "SIZE: T1 predicted": lambda t: t[0].update(time=9),
+    }
+    for expected, mutate in mutations.items():
+        tasks = [dict(t) for t in clean]
+        edges = [("T1", "T2")]
+        if mutate is None:
+            edges = [("T1", "T2"), ("T2", "T1")]
+        else:
+            mutate(tasks)
+            edges = [] if "parallel" in expected else edges
+        out = lint_out(tmp_path, tasks, edges)
+        assert f"ISSUE: {expected}" in out, (expected, out)
 
 
 def test_lint_flags_consumes_mismatch(tmp_path):

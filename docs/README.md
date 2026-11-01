@@ -8,7 +8,7 @@ The README covers what superlite is, the results, and how to install and use it.
 | [Sessions](sessions.md) | Host worktree + session branches, switch rules (stash/park/REDIRECT), parallel worktrees, session HUD (mermaid) |
 | [Skills and agents](skills-and-agents.md) | The skills, and the seven agents with their model and effort |
 | [Hooks](hooks.md) | What each hook blocks, rewrites or records, and when it is active |
-| [Tools](tools.md) | Every `sl` tool, one honest line each |
+| [Tools](tools.md) | Every `superlite-cli` tool, one honest line each |
 | [Config](config.md) | `models.json`, `predictor.json`, `routing.json`, `gitignore.json`, `testprobe.json` |
 | [Language](language.md) | Any project language; what is Python-only |
 | [How the rules are enforced](gates.md) | The gates that hold the rules in place with code |
