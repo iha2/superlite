@@ -283,3 +283,20 @@ def test_failed_switch_restores_everything(started, monkeypatch, capsys, fail_at
     assert (started / ".superlite" / "orchestrator.json").read_text() == '{"mode":"ai"}\n'
     assert (started / ".superlite" / "checkpoints.json").is_file()
     assert not wt_of(started, "a").exists() and not wt_of(started, "b").exists()
+
+
+def test_ask_move_prints_both_outcomes_and_no_changes_nothing(started):
+    before = snapshot(started)
+    cp = run("ensure", "--slug", "b", cwd=started)
+    lines = cp.out.splitlines()
+    assert cp.returncode == 4 and "on yes: rerun with --move yes" in lines
+    assert any(ln.startswith("on no: stop") and "nothing changed" in ln for ln in lines)
+    assert snapshot(started) == before and not wt_of(started, "b").exists()
+
+
+def test_ask_untracked_prints_each_choice_with_its_flag(started):
+    (started / "notes.txt").write_text("x\n")
+    cp = run("ensure", "--slug", "b", "--move", "yes", cwd=started)
+    lines = cp.out.splitlines()
+    assert cp.returncode == 4 and "on stash: rerun with --untracked stash" in lines
+    assert "on keep: rerun with --untracked keep" in lines

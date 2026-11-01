@@ -111,6 +111,30 @@ def test_hub_root_is_main_checkout(tmp_path):
     assert ident.same_path(state.hub_root(wt), main)
 
 
+def _commit(cwd):
+    base.git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "x", cwd=cwd)
+
+
+def test_hub_root_of_a_submodule_is_its_own_checkout(tmp_path):
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    base.git("init", "-q", cwd=lib)
+    _commit(lib)
+    sup = tmp_path / "sup"
+    sup.mkdir()
+    base.git("init", "-q", cwd=sup)
+    base.git("-c", "protocol.file.allow=always", "submodule", "add", "-q", str(lib), "mod", cwd=sup)
+    assert ident.same_path(state.hub_root(sup / "mod"), sup / "mod")
+
+
+def test_hub_root_of_a_separate_git_dir_is_its_own_checkout(tmp_path):
+    work = tmp_path / "work"
+    work.mkdir()
+    base.git("init", "-q", "--separate-git-dir", str(tmp_path / "gitdir"), cwd=work)
+    _commit(work)
+    assert ident.same_path(state.hub_root(work), work)
+
+
 def test_within_whole_components():
     assert ident.within(Path("/r/host-extra"), Path("/r/host")) is False
     assert ident.within(Path("/r/host/sub"), Path("/r/host")) is True
@@ -188,14 +212,25 @@ def test_subfolder_resolves_to_toplevel(tmp_path):
     assert ident.same_path(state.run_dir(sub), main / ".superlite")
 
 
-def test_journal_lets_keyboard_interrupt_through():
+def test_journal_interrupt_runs_every_undo_and_propagates():
     undone = []
     with pytest.raises(KeyboardInterrupt):
         with journal.Journal() as j:
-            j.step("s")
+            j.step("one")
             j.undo(lambda: undone.append(1))
+            j.step("two")
+            j.undo(lambda: undone.append(2))
             raise KeyboardInterrupt()
-    assert undone == []
+    assert undone == [2, 1]
+
+
+def test_journal_system_exit_runs_undos_and_propagates():
+    undone = []
+    with pytest.raises(SystemExit):
+        with journal.Journal() as j:
+            j.undo(lambda: undone.append(1))
+            raise SystemExit(3)
+    assert undone == [1]
 
 
 def test_journal_keeps_original_error_as_cause():

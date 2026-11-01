@@ -130,13 +130,14 @@ amp_placeholders() {
 }
 
 # jdecode VAR MODE: decode the JSON escapes in VAR (a string value still JSON-escaped), pair-aware (\\ first).
-# MODE kill: \n \r \t become a space, other escapes stay. edits: \" is ", \n a newline, \r nothing, \t a space,
-# \\ one backslash, \/ stays. rewrite: as edits, but \t is a tab and \/ is /.
+# MODE kill: \n a newline (so the caller can join line continuations), \r \t a space, \\ one backslash, other escapes
+# stay. edits: \" is ", \n a newline, \r nothing, \t a space, \\ one backslash, \/ stays. rewrite: as edits, but \t
+# is a tab and \/ is /.
 jdecode() {
   local s="${!1}" en er et eq es eb out
   case "$s" in *\\*) ;; *) return 0 ;; esac
   case "$2" in
-    kill)  en=" "; er=" "; et=" "; eq='\"'; es='\/'; eb='\\' ;;
+    kill)  en=$nl; er=" "; et=" "; eq='\"'; es='\/'; eb='\' ;;
     edits) en=$nl; er=""; et=" "; eq='"'; es='\/'; eb='\' ;;
     *)     en=$nl; er=""; et=$'\t'; eq='"'; es='/'; eb='\' ;;
   esac

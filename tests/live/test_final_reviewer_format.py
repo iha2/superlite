@@ -29,3 +29,4 @@ def test_final_reviewer_uses_the_verdict_and_findings_format(require_claude):
     assert out.seconds <= 30
     assert "Verdict:" in out.detail
     assert FINDING.search(out.detail), out.detail[:300]
+    out.mark_pass()

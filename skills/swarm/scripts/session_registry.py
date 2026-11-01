@@ -497,6 +497,8 @@ def untracked_gate(host: Path, slug: str, mode: str | None, target: str) -> tupl
         print(f"ASK untracked={len(files)} slug={slug}: {paths_text(files)}")
         print(f"ask: {len(files)} untracked file(s) would be parked with session {slug}: stash them with the "
               f"session, or keep them in place? Options: stash | keep")
+        print("on stash: rerun with --untracked stash")
+        print("on keep: rerun with --untracked keep")
         print("session: rerun with --untracked stash|keep, or set it with superlite-cli session untracked stash|keep")
         return 4, None, False
     if mode == "stash":

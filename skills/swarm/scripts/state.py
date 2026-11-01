@@ -25,6 +25,11 @@ def path(start: Path, name: str) -> Path:
 
 
 def hub_root(start: Path) -> Path:
-    """The main checkout of the repo containing `start` (parent of git's common dir)."""
-    out = base.git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=Path(start)).stdout.strip()
-    return Path(out).parent
+    """The main checkout of the repo containing `start`: itself unless it is a linked worktree, then the first entry
+    of `git worktree list` (git lists a --separate-git-dir checkout by its git dir, so that case is not asked)."""
+    git_dir, common, top = base.git("rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir",
+                                    "--show-toplevel", cwd=Path(start)).stdout.splitlines()[:3]
+    if git_dir == common:
+        return Path(top)
+    first = base.git("worktree", "list", "--porcelain", cwd=Path(start)).stdout.splitlines()[0]
+    return Path(first[len("worktree "):])

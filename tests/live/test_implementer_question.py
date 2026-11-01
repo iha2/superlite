@@ -27,3 +27,4 @@ def test_question_at_once_lists_done_and_unstarted(require_claude):
     # done + unstarted named (T1 finished; T2/T3 not started)
     assert "T1" in text
     assert "T2" in text or "T3" in text
+    out.mark_pass()

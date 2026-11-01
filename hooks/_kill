@@ -6,17 +6,20 @@ guard_kill() {
   local re_tool='"tool_name"[[:space:]]*:[[:space:]]*"(Bash|PowerShell|Shell)"' cmd
   [[ $input =~ $re_tool ]] || return 0
 
-  # The command string, still JSON-escaped; the patterns below survive the escaping.
+  # The command string, still JSON-escaped.
   jstr command; cmd="$REPLY"
   [ -n "$cmd" ] || return 0
 
   # Every pattern below needs one of these words; most commands have none, so skip the decoding and the regexes.
+  # An escaped backslash-newline (a line continuation, \\\n in JSON) can join a word that is split across lines
+  # (pk\<newline>ill), so it passes too.
   shopt -s nocasematch
-  case "$cmd" in *kill*|*stop-process*|*get-process*) ;; *) shopt -u nocasematch; return 0 ;; esac
+  case "$cmd" in *kill*|*stop-process*|*get-process*|*'\\\n'*) ;; *) shopt -u nocasematch; return 0 ;; esac
   shopt -u nocasematch
 
-  # Literal \n \r \t escapes (still JSON-escaped) become spaces, so multi-line commands match.
+  # Decode the JSON escapes (\n stays a newline) and join the line continuations before matching.
   jdecode cmd kill
+  join_continuations cmd
   shopt -s nocasematch
   local w='[^[:alnum:]_]' gp_pipe=0
   # Get-Process ... | Stop-Process (no -Id after Stop-Process) kills by name.

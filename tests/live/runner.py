@@ -26,6 +26,13 @@ class Outcome:
     cost_usd: float
     tokens: int
     detail: str = ""
+    agent_path: Path | None = None
+    rule: str = ""
+
+    def mark_pass(self) -> None:
+        """Cache the pass; call as the last line of a test, after every assertion."""
+        if self.kind == "Followed" and self.agent_path and self.detail != "skipped unchanged":
+            mark_pass(self.agent_path, self.rule)
 
 
 def instruction_hash(path: Path) -> str:
@@ -182,6 +189,4 @@ def run_instruction(
     if cost > budget or secs > timeout:
         kind = "Wrong"
         detail = f"over cap cost={cost} secs={secs}"
-    if kind == "Followed":
-        mark_pass(agent_path, rule)
-    return Outcome(kind, secs, cost, tokens, detail)
+    return Outcome(kind, secs, cost, tokens, detail, agent_path, rule)

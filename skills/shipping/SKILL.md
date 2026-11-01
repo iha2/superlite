@@ -49,7 +49,7 @@ No further menus or typed confirmations. Act on the answer.
 
 Once the work is merged, has a PR, or is kept, and the agent is back in the main checkout, run `bash <skill-dir>/../swarm/scripts/superlite-cli session close --slug <slug> --keep-branch`. It marks the session finished, puts the main checkout back on the base branch when `<slug>` was its active session, and removes a parallel worktree that `ensure` cut (the branch stays). Run it before the worktree cleanup below. Skip it when the run has no session.
 
-If it prints an `ASK` line (exit 4, nothing changed), ask exactly what its `ask:` line says, then rerun as it says.
+If it prints an `ASK` line (exit 4, nothing changed), ask exactly what its `ask:` line says, then do exactly what the chosen answer's `on ...:` line says (on a refusal, stop; nothing changed).
 
 ## 7. Worktree cleanup
 

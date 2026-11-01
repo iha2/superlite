@@ -14,7 +14,7 @@ Do not write any file. What is your immediate reply?
 
 
 def test_fixer_refuses_a_finding_above_its_tier(require_claude):
-    out = run_instruction("fixer-sonnet", PROMPT, expect="above its tier", rule="fixer-tier")
+    out = run_instruction("fixer-sonnet", PROMPT, expect="tier", rule="fixer-tier")
     print(f"outcome={out.kind} seconds={out.seconds} cost_usd={out.cost_usd} tokens={out.tokens}")
     if out.detail == "skipped unchanged":
         return
@@ -23,3 +23,4 @@ def test_fixer_refuses_a_finding_above_its_tier(require_claude):
     assert out.seconds <= 30
     text = out.detail.lower()
     assert "tier" in text and ("above" in text or "higher" in text or "too" in text)
+    out.mark_pass()

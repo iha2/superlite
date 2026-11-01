@@ -13,7 +13,7 @@ Start a superlite session. Arguments: $ARGUMENTS
    - Orchestrator, always unless the user already said: Human (you approve a plain-language review plan before anything is built) or AI (hands off).
    - Once the mode and request are known, and BEFORE `superlite-cli orchestrator set`, run `superlite-cli session ensure --slug <topic>` (`<topic>`: a short slug of the request, a-z, 0-9, `-`; reuse it for plan file names). For Review, first resolve the review target the way `commands/review.md` says (before anything changes the checkout) and run `superlite-cli session ensure --slug <topic> --branch <target>` instead.
    - On a `SESSION worktree=<path>` line, move the agent root to `<path>` when it differs from the current checkout. On `REDIRECT worktree=…`, open that worktree instead.
-   - If ensure prints an `ASK` line (`ASK untracked=...` or `ASK move ...`, exit 4, nothing changed), ask exactly what the `ask:` line after it says, then rerun as it says. If the hook printed `superlite sync:`, ask the same way; sync is fast-forward only.
+   - If ensure prints an `ASK` line (`ASK untracked=...` or `ASK move ...`, exit 4, nothing changed), ask exactly what the `ask:` line after it says, then do exactly what the chosen answer's `on ...:` line says (on a refusal, stop; nothing changed). If the hook printed `superlite sync:`, ask the same way; sync is fast-forward only.
    - Then run `superlite-cli orchestrator set human|ai`.
 5. Load the skill for the mode and follow it:
    - Regular: print `assets/flows/regular.txt` the same way (one ```text block, verbatim, never redrawn), then `superlite:using-superlite` sizing and `superlite:inventing`.

@@ -161,6 +161,8 @@ def deny_cases():
                 yield "ai_run", f"write:{c}:{form}", text
     yield "ai_run", "kill:quoted_name", '"' + "pk" + 'ill" node'
     yield "ai_run", "kill:backslash_newline", "pk" + "ill \\\n-f node"
+    yield "ai_run", "kill:continuation_inside_word", "pk\\\n" + "ill -f node"
+    yield "ai_run", "kill:continuation_inside_word_multi", "echo hi\nkil\\\nlall node"
     yield "human_unapproved", "gated:quoted_launcher", '"$CLI" dispatch implementer t1'
     yield "human_unapproved", "gated:backslash_newline", f"{CLI} \\\n dispatch implementer t1"
 

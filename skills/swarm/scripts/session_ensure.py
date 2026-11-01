@@ -258,7 +258,8 @@ def _move_gate(root: Path, reg: dict, host: Path, old_slug: str, wt_old: Path, b
               f"its chat must be idle")
         print(f"ask: Move session {old_slug} out of the main checkout into {wt_old.as_posix()}? Its chat must "
               f"be idle. Options: yes | no")
-        print("session: rerun with --move yes")
+        print("on yes: rerun with --move yes")
+        print("on no: stop; nothing changed, the session stays in the main checkout")
         return 4, None, False
     rc, note, keep = untracked_gate(host, old_slug, getattr(a, "untracked", None) or reg.get("untracked"), base)
     if rc is not None:
