@@ -32,7 +32,7 @@ Its own dependencies (`markdown-it-py`, `pygments`) are not vendored.
 | of which everything else (sitegen, minisheet, tests, `SPEC.md`, config) | 33 | 4,221 |
 
 Both thresholds are crossed (50 files, 10k LOC), so the gate decides on `graphify` availability and install consent.
-`sl graphify_gate --root <seeded run repo>`: `{"use": true, "reason": "graphify installed", ...}` with graphify on PATH;
+`superlite-cli graphify_gate --root <seeded run repo>`: `{"use": true, "reason": "graphify installed", ...}` with graphify on PATH;
 with graphify off PATH and no `SUPERLITE_ALLOW_INSTALL`: `use` false, `needs_install` true.
 
 ## Validation

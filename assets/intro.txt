@@ -22,7 +22,8 @@
    (time, cost,                 (one fresh        (never block the
     projected vs actual)         reviewer)         coordinator)
 
-   Nothing is committed unless you ask: work is kept as hidden checkpoints.
+   Nothing is committed during a run: work is kept as hidden checkpoints.
+   The session end asks "Commit to <session branch>" or "Leave uncommitted".
  ------------------------------------------------------------------------------
   START                                     WHO DECIDES
    /superlite:start [mode] [what]  menu       /superlite:human   you approve the
@@ -34,10 +35,10 @@
   DURING A BUILD                            AFTER
    /superlite:status   where it stands        /superlite:review [branch]
    /superlite:stop     stop dispatching       /superlite:report [plan] [full]
-   /superlite:resume   pick up again          /superlite:commit  checkpoints
-   /superlite:agents   the agent map                             -> commits
-   /superlite:tail     live feed (no mod)     /superlite:finish  merge or PR,
-  SETUP                                                          never pushes
+   /superlite:resume   pick up again          /superlite:finish  merge or PR,
+   /superlite:agents   the agent map                             never pushes
+   /superlite:tail     live feed (no mod)
+  SETUP
    /superlite:setup    first-run check
  ------------------------------------------------------------------------------
   Or just say it: "build X", "I will approve the plan", "fix this bug".

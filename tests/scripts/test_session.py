@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -17,6 +18,7 @@ HUD = SCRIPTS / "session_hud.py"
 sys.path.insert(0, str(SCRIPTS))
 
 import session  # noqa: E402
+import session_registry  # noqa: E402
 
 
 def run(script: Path, *args, cwd=None):
@@ -49,11 +51,10 @@ def repo(tmp_path):
     return r
 
 
-def test_create_makes_host_worktree_and_branch(repo):
+def test_create_switches_main_checkout_to_session_branch(repo):
     cp = run(SESSION, "create", "--slug", "auth", cwd=repo)
     assert cp.returncode == 0, cp.both
-    host = repo / ".superlite" / "worktrees" / "sessions" / "host"
-    assert host.is_dir()
+    host = repo
     assert git(host, "branch", "--show-current").strip() == "superlite/sessions/auth"
     reg = json.loads((repo / ".superlite" / "sessions.json").read_text(encoding="utf-8"))
     assert reg["active"] == "auth" and reg["v"] == 2
@@ -62,7 +63,7 @@ def test_create_makes_host_worktree_and_branch(repo):
 
 def test_use_parks_and_restores_dirty_work(repo):
     assert run(SESSION, "create", "--slug", "export", cwd=repo).returncode == 0
-    host = repo / ".superlite" / "worktrees" / "sessions" / "host"
+    host = repo
     (host / ".superlite" / "orchestrator.json").write_text(json.dumps({"mode": "ai"}) + "\n")
     (host / ".superlite" / "progress.md").write_text("- start export\n")
     (host / "app.py").write_text("print('export-wip')\n")
@@ -91,7 +92,7 @@ def test_restore_run_state_can_retry_after_partial_copy(tmp_path, monkeypatch):
     store.mkdir()
     (store / "first.txt").write_text("first\n", encoding="utf-8")
     (store / "second.txt").write_text("second\n", encoding="utf-8")
-    copy2 = session.shutil.copy2
+    copy2 = shutil.copy2
     calls = 0
 
     def fail_second_copy(*args, **kwargs):
@@ -101,13 +102,13 @@ def test_restore_run_state_can_retry_after_partial_copy(tmp_path, monkeypatch):
             raise OSError("simulated copy failure")
         return copy2(*args, **kwargs)
 
-    monkeypatch.setattr(session.shutil, "copy2", fail_second_copy)
+    monkeypatch.setattr(shutil, "copy2", fail_second_copy)
     with pytest.raises(OSError, match="simulated copy failure"):
-        session.restore_run_state(store, live_sl)
+        session_registry.restore_run_state(store, live_sl)
 
     assert sorted(p.name for p in store.iterdir()) == ["first.txt", "second.txt"]
-    monkeypatch.setattr(session.shutil, "copy2", copy2)
-    session.restore_run_state(store, live_sl)
+    monkeypatch.setattr(shutil, "copy2", copy2)
+    session_registry.restore_run_state(store, live_sl)
     assert (live_sl / "first.txt").read_text(encoding="utf-8") == "first\n"
     assert (live_sl / "second.txt").read_text(encoding="utf-8") == "second\n"
     assert not store.exists()
@@ -148,10 +149,6 @@ def test_session_hud_line(repo):
     assert silent.stdout.strip() == ""
 
 
-HOST_REL = Path(".superlite") / "worktrees" / "sessions" / "host"
-HOOK = ROOT / "hooks" / "cost-report"
-
-
 def reg_of(repo):
     return json.loads((repo / ".superlite" / "sessions.json").read_text(encoding="utf-8"))
 
@@ -160,13 +157,12 @@ def row_of(repo, slug):
     return next(s for s in reg_of(repo)["sessions"] if s["slug"] == slug)
 
 
-def test_commands_find_hub_registry_from_inside_the_host(repo):
+def test_commands_find_hub_registry_from_a_session_worktree(repo):
     assert run(SESSION, "create", "--slug", "auth", cwd=repo).returncode == 0
-    host = repo / HOST_REL
+    host = repo
     cp = run(SESSION, "status", cwd=host)
     assert cp.returncode == 0 and "auth" in cp.out, cp.both
     assert run(SESSION, "create", "--slug", "export", cwd=host).returncode == 0
-    assert not (host / HOST_REL).exists()
     assert run(SESSION, "use", "--slug", "auth", cwd=host).returncode == 0
     assert reg_of(repo)["active"] == "auth"
 
@@ -178,7 +174,7 @@ def test_host_slug_is_reserved(repo):
 
 def test_stash_restore_keeps_staged_changes(repo):
     assert run(SESSION, "create", "--slug", "export", cwd=repo).returncode == 0
-    host = repo / HOST_REL
+    host = repo
     (host / "app.py").write_text("print('staged')\n")
     git(host, "add", "app.py")
     (host / "app.py").write_text("print('worktree')\n")
@@ -188,8 +184,8 @@ def test_stash_restore_keeps_staged_changes(repo):
     assert (host / "app.py").read_text(encoding="utf-8") == "print('worktree')\n"
 
 
-def test_stash_matching_is_exact_per_session(repo):
-    host = repo / HOST_REL
+def test_auth_never_takes_auth_api_stash(repo):
+    host = repo
     assert run(SESSION, "create", "--slug", "auth", cwd=repo).returncode == 0
     (host / "app.py").write_text("print('auth')\n")
     assert run(SESSION, "create", "--slug", "auth-api", cwd=repo).returncode == 0
@@ -204,7 +200,7 @@ def test_stash_matching_is_exact_per_session(repo):
 
 
 def test_use_after_discard_restores_parked_wip(repo):
-    host = repo / HOST_REL
+    host = repo
     assert run(SESSION, "create", "--slug", "a", cwd=repo).returncode == 0
     (host / ".superlite" / "progress.md").write_text("- a\n")
     (host / "app.py").write_text("print('a-wip')\n")
@@ -220,7 +216,7 @@ def test_use_after_discard_restores_parked_wip(repo):
 
 
 def test_discard_active_serial_cleans_wip_and_branch(repo):
-    host = repo / HOST_REL
+    host = repo
     assert run(SESSION, "create", "--slug", "a", cwd=repo).returncode == 0
     (host / "app.py").write_text("print('junk')\n")
     (host / "new.txt").write_text("junk\n")
@@ -234,7 +230,7 @@ def test_discard_active_serial_cleans_wip_and_branch(repo):
 
 
 def test_park_keeps_sandboxes_in_place(repo):
-    host = repo / HOST_REL
+    host = repo
     assert run(SESSION, "create", "--slug", "a", cwd=repo).returncode == 0
     box = host / ".superlite" / "sandboxes" / "x-proto"
     box.mkdir(parents=True)
@@ -247,7 +243,7 @@ def test_park_keeps_sandboxes_in_place(repo):
 
 
 def test_continue_drops_stash_without_reapplying(repo):
-    host = repo / HOST_REL
+    host = repo
     assert run(SESSION, "create", "--slug", "a", cwd=repo).returncode == 0
     (host / "app.py").write_text("print('a-wip')\n")
     assert run(SESSION, "create", "--slug", "b", cwd=repo).returncode == 0
@@ -283,25 +279,52 @@ def test_hud_uses_path_components_and_works_from_worktree(repo):
     wt = repo / ".superlite" / "worktrees" / "sessions" / "host-extra"
     cp = run(HUD, str(wt), cwd=wt)
     assert cp.out.startswith("superlite session: host-extra |"), cp.both
-    cp = run(HUD, str(repo / HOST_REL), cwd=repo)
+    cp = run(HUD, str(repo), cwd=repo)
     assert cp.out.startswith("superlite session: auth |"), cp.both
 
 
-def test_cost_report_emits_hud_without_cost_or_run_dir(repo):
+def test_prompt_hook_emits_hud_without_cost_or_run_dir(repo):
     assert run(SESSION, "create", "--slug", "solo", "--worktree", cwd=repo).returncode == 0
     wt = repo / ".superlite" / "worktrees" / "sessions" / "solo"
-    import shutil
     shutil.rmtree(wt / ".superlite")
     env = dict(os.environ, SUPERLITE_NO_COST_REPORT="1", SUPERLITE_PYTHON=sys.executable,
                CLAUDE_PLUGIN_ROOT=str(ROOT))
     for k in ("CURSOR_AGENT", "CURSOR_TRACE_ID", "CURSOR_PLUGIN_ROOT", "CLAUDE_PROJECT_DIR", "CURSOR_PROJECT_DIR"):
         env.pop(k, None)
     raw = json.dumps({"hook_event_name": "UserPromptSubmit", "prompt": "hi", "cwd": str(wt)})
-    out = subprocess.run(["bash", str(HOOK)], input=raw, capture_output=True, text=True, env=env).stdout
+    out = subprocess.run(["bash", str(ROOT / "hooks" / "prompt")], input=raw, capture_output=True, text=True, env=env).stdout
     ctx = json.loads(out)["hookSpecificOutput"]["additionalContext"]
     assert ctx.startswith("superlite session: solo |")
 
 
-def test_session_start_hook_includes_hud():
-    text = (ROOT / "hooks" / "session-start").read_text(encoding="utf-8")
-    assert "session_hud.py" in text
+
+def test_stash_is_found_by_object_id_not_message(repo):
+    assert run(SESSION, "create", "--slug", "a", cwd=repo).returncode == 0
+    (repo / "app.py").write_text("print('a-wip')\n")
+    assert run(SESSION, "create", "--slug", "b", cwd=repo).returncode == 0
+    row = row_of(repo, "a")
+    assert row["stash_oid"] and git(repo, "rev-parse", "refs/stash").strip() == row["stash_oid"]
+    # a stash with the same message but another object id is never taken
+    (repo / "app.py").write_text("print('impostor')\n")
+    git(repo, "stash", "push", "-q", "-m", session_registry.stash_msg("a"))
+    cp = run(SESSION, "use", "--slug", "a", cwd=repo)
+    assert cp.returncode == 0, cp.both
+    assert (repo / "app.py").read_text(encoding="utf-8") == "print('a-wip')\n"
+    assert "impostor" in git(repo, "stash", "show", "-p", "stash@{0}")
+
+
+def test_use_rolls_back_when_entering_fails(repo, monkeypatch):
+    assert run(SESSION, "create", "--slug", "a", cwd=repo).returncode == 0
+    (repo / "app.py").write_text("print('a-wip')\n")
+    assert run(SESSION, "create", "--slug", "b", cwd=repo).returncode == 0
+    assert run(SESSION, "use", "--slug", "a", cwd=repo).returncode == 0
+    (repo / "app.py").write_text("print('a-wip2')\n")
+    import session_switch
+    def boom(*a, **k):
+        raise session_registry.GitError(("switch",), "simulated failure")
+    monkeypatch.setattr(session_switch, "enter_session", boom)
+    rc = session.main(["use", "--slug", "b", "--root", str(repo)])
+    assert rc == 1
+    assert git(repo, "branch", "--show-current").strip() == "superlite/sessions/a"
+    assert (repo / "app.py").read_text(encoding="utf-8") == "print('a-wip2')\n"
+    assert reg_of(repo)["active"] == "a"

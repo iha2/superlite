@@ -1,0 +1,37 @@
+# Sourced by hooks/pre-tool: block commands that kill processes by name or pattern (taskkill /IM or /FI, pkill,
+# killall, Stop-Process -Name, Get-Process | Stop-Process, kill -9 -1). Killing by PID is allowed.
+# Exit 2 blocks the command (message on stderr); returning means allow.
+
+guard_kill() {
+  local re_tool='"tool_name"[[:space:]]*:[[:space:]]*"(Bash|PowerShell|Shell)"' cmd
+  [[ $input =~ $re_tool ]] || return 0
+
+  # The command string, still JSON-escaped.
+  jstr command; cmd="$REPLY"
+  [ -n "$cmd" ] || return 0
+
+  # Every pattern below needs one of these words; most commands have none, so skip the decoding and the regexes.
+  # An escaped backslash-newline (a line continuation, \\\n in JSON) can join a word that is split across lines
+  # (pk\<newline>ill), so it passes too.
+  shopt -s nocasematch
+  case "$cmd" in *kill*|*stop-process*|*get-process*|*'\\\n'*) ;; *) shopt -u nocasematch; return 0 ;; esac
+  shopt -u nocasematch
+
+  # Decode the JSON escapes (\n stays a newline) and join the line continuations before matching.
+  jdecode cmd kill
+  join_continuations cmd
+  shopt -s nocasematch
+  local w='[^[:alnum:]_]' gp_pipe=0
+  # Get-Process ... | Stop-Process (no -Id after Stop-Process) kills by name.
+  local re_gp="(^|$w)get-process($w.*)?\|[[:space:]]*stop-process"
+  local re_gp_id="stop-process[^|;]*[[:space:]]-id($w|\$)"
+  if [[ $cmd =~ $re_gp ]] && ! [[ $cmd =~ $re_gp_id ]]; then
+    gp_pipe=1
+  fi
+  local re_kill="(^|$w)taskkill($w.*)?[[:space:]]//?fi($w|\$)|(^|$w)kill[[:space:]]+(-s[[:space:]]+(kill|9)|-(kill|sigkill|9))[[:space:]]+-1([^0-9]|\$)|(^|$w)taskkill($w.*)?[[:space:]]//?im($w|\$)|(^|$w)(pkill|killall)($w|\$)|(^|$w)stop-process($w.*)?[[:space:]]-name($w|\$)|(^|$w)kill[[:space:]]+-9[[:space:]]+-1([^0-9]|\$)"
+  if [ "$gp_pipe" = 1 ] || [[ $cmd =~ $re_kill ]]; then
+    echo "Blocked: this command kills processes by name or pattern, which can stop other sessions' processes. Kill only the PIDs you started (kill <PID>, taskkill /PID <PID>, Stop-Process -Id <PID>)." >&2
+    exit 2
+  fi
+  shopt -u nocasematch
+}

@@ -103,3 +103,17 @@ def test_main_no_swarm_without_host(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "T1 fresh" in out
     assert "SWARM" not in out
+
+
+def test_ready_and_assign_subcommands(tmp_path, capsys):
+    import json
+
+    plan = ROOT / "tests" / "scripts" / "fixtures" / "run_plan" / "plan.md"
+    assert dispatch.main(["ready", "--plan", str(plan)]) == 0
+    assert capsys.readouterr().out.split() == ["T2", "T5", "T4", "T1"]
+    pool = tmp_path / "pool.json"
+    pool.write_text(json.dumps({"agents": [
+        {"id": "a1", "tasks": ["T1"], "context_k": 30, "idle_min": 5},
+        {"id": "a2", "tasks": ["T4"], "context_k": 30, "idle_min": 5}]}), encoding="utf-8")
+    assert dispatch.main(["assign", "--task", "T3", "--plan", str(plan), "--pool", str(pool)]) == 0
+    assert capsys.readouterr().out.strip() == "agent=a1"  # a1 built T3's dependency

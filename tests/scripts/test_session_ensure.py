@@ -178,42 +178,6 @@ def test_close_unknown_slug_fails(repo):
     assert run("close", "--slug", "nope", cwd=repo).returncode == 2
 
 
-def test_legacy_run_is_adopted_then_moved_out_for_new_slug(repo):
-    (repo / ".superlite").mkdir()
-    (repo / ".superlite" / "orchestrator.json").write_text('{"mode":"ai"}\n')
-    (repo / ".superlite" / "feature.json").write_text('{"topic":"old-thing"}\n')
-    cp = run("ensure", "--slug", "new", "--move", "yes", cwd=repo)
-    assert cp.returncode == 0, cp.both
-    reg = reg_of(repo)
-    assert reg["active"] is None and reg["host_worktree"] == repo.as_posix()
-    assert row_of(repo, "old-thing")["run"] == "open"
-    old = repo / ".superlite" / "worktrees" / "sessions" / "old-thing"
-    assert branch(old) == "superlite/sessions/old-thing" and branch(repo) == "main"
-    assert (old / ".superlite" / "orchestrator.json").read_text() == '{"mode":"ai"}\n'
-    wt = repo / ".superlite" / "worktrees" / "sessions" / "new"
-    assert wt.is_dir() and last(cp).startswith(f"SESSION worktree={wt} slug=new")
-
-
-def test_legacy_run_on_feature_branch_keeps_its_branch(repo):
-    git(repo, "switch", "-q", "-c", "feat/x")
-    (repo / ".superlite").mkdir()
-    (repo / ".superlite" / "orchestrator.json").write_text("{}\n")
-    run("ensure", "--slug", "new", cwd=repo)
-    assert branch(repo) == "feat/x"
-    assert row_of(repo, "feat-x")["branch"] == "feat/x"
-
-
-def test_legacy_run_on_session_branch_reuses_its_slug(repo):
-    git(repo, "switch", "-q", "-c", "superlite/sessions/foo")
-    (repo / ".superlite").mkdir()
-    (repo / ".superlite" / "orchestrator.json").write_text("{}\n")
-    run("ensure", "--slug", "new", cwd=repo)
-    assert branch(repo) == "superlite/sessions/foo"
-    assert row_of(repo, "foo")["branch"] == "superlite/sessions/foo"
-    assert reg_of(repo)["active"] == "foo"
-    assert not any(s["slug"] == "foo-2" for s in reg_of(repo)["sessions"])
-
-
 def test_unregistered_linked_worktree_is_registered_in_place(repo, tmp_path):
     other = tmp_path.resolve() / "linked"
     git(repo, "worktree", "add", "-q", "-b", "feat/y", str(other))
@@ -240,17 +204,6 @@ def test_opt_out_changes_nothing(repo):
     cp = run("ensure", "--slug", "demo", cwd=repo, env={"SUPERLITE_NO_AUTO_SESSION": "1"})
     assert cp.returncode == 0 and cp.out.strip() == "session: auto-start off"
     assert branch(repo) == "main" and not (repo / ".superlite" / "sessions.json").exists()
-
-
-def test_separate_host_stays_host_and_redirects(repo):
-    assert run("create", "--slug", "old", cwd=repo).returncode == 0
-    host = repo / ".superlite" / "worktrees" / "sessions" / "host"
-    session.mark_run(host, "finished")
-    cp = run("ensure", "--slug", "fresh", cwd=repo)
-    assert cp.returncode == 3, cp.both
-    assert f"REDIRECT worktree={host} slug=fresh branch=superlite/sessions/fresh" in cp.out
-    assert last(cp).startswith("SESSION ") and reg_of(repo)["host_worktree"] == host.as_posix()
-    assert branch(repo) == "main" and branch(host) == "superlite/sessions/fresh"
 
 
 def test_status_shows_run_for_create_rows(repo):
@@ -368,7 +321,7 @@ def test_ask_is_default_and_changes_nothing(repo):
     cp = run("ensure", "--slug", "after", cwd=repo)
     assert cp.returncode == 4, cp.both
     assert "ASK untracked=1 slug=demo: docs/plans/other.md" in cp.out
-    assert "rerun with --untracked stash|keep, or set it with sl session untracked stash|keep" in cp.out
+    assert "rerun with --untracked stash|keep, or set it with superlite-cli session untracked stash|keep" in cp.out
     assert snapshot(repo) == before
     assert run("close", "--slug", "demo", cwd=repo).returncode == 4
     assert snapshot(repo) == before
@@ -440,21 +393,21 @@ def test_no_untracked_means_no_ask(repo):
 
 def test_create_gates_untracked_when_parking(repo):
     run("create", "--slug", "demo", cwd=repo)
-    host = repo / ".superlite" / "worktrees" / "sessions" / "host"
-    (host / "docs" / "plans" / "other.md").write_text("x\n")
-    before = (reg_of(repo), branch(host))
+    (repo / "docs" / "plans" / "other.md").write_text("x\n")
+    before = (reg_of(repo), branch(repo))
     cp = run("create", "--slug", "two", cwd=repo)
     assert cp.returncode == 4 and "ASK untracked=1 slug=demo: docs/plans/other.md" in cp.out
-    assert (reg_of(repo), branch(host)) == before
+    assert cp.out.splitlines()[1].startswith("ask: ")
+    assert (reg_of(repo), branch(repo)) == before
     assert run("create", "--slug", "wt", "--worktree", cwd=repo).returncode == 0
     cp = run("create", "--slug", "two", "--untracked", "stash", cwd=repo)
     assert cp.returncode == 0 and "session: stashed 1 untracked file(s) with demo: docs/plans/other.md" in cp.out
-    assert not (host / "docs" / "plans" / "other.md").exists()
-    (host / "docs" / "plans" / "o3.md").write_text("y\n")
+    assert not (repo / "docs" / "plans" / "other.md").exists()
+    (repo / "docs" / "plans" / "o3.md").write_text("y\n")
     run("untracked", "keep", cwd=repo)
     cp = run("create", "--slug", "three", cwd=repo)
     assert cp.returncode == 0 and "session: kept 1 untracked file(s) in place: docs/plans/o3.md" in cp.out
-    assert (host / "docs" / "plans" / "o3.md").is_file()
+    assert (repo / "docs" / "plans" / "o3.md").is_file()
 
 
 def test_ensure_leaves_committed_gitignore_and_status_clean(repo):

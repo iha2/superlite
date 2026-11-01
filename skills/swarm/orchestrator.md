@@ -3,12 +3,12 @@
 When someone asks superlite to create something, it first settles who orchestrates (D40).
 
 - **Human orchestrator:** the human validates the plan before it is linted and sent off, in two phases. Phase 1: the review plan
-  (`docs/plans/<date>-<topic>.review.md`, plain words with diagrams; template in `../drafting/review-plan.md`) is opened for the user first when `open_in_harness` is on (`sl agent_specs status`; `superlite:drafting`, After writing), then shown with its
+  (`docs/plans/<date>-<topic>.review.md`, plain words with diagrams; template in `../drafting/review-plan.md`) is opened for the user first when `open_in_harness` is on (`superlite-cli agent_specs status`; `superlite:drafting`, After writing), then shown with its
   path and a five-line summary. The same message offers the read-only agent map, so approval stays the one stop: "Reply
   approve. Add `map` to watch the run in the agent map pane (`/superlite:agents`: agents, tasks and the ledger)." Phase 2,
-  after the yes: `sl orchestrator approve --review <path>`, open the map if the reply asked for it (no terminal tail: the map
+  after the yes: `superlite-cli orchestrator approve --review <path>`, open the map if the reply asked for it (no terminal tail: the map
   shows the ledger; `/superlite:tail` only where the mod is not installed), then the coordinator writes the machine plan from
-  it (header `**Review plan:** <path>`), `schedule --insert`, `lint --stable`, dispatch.
+  it (header `**Review plan:** <path>`), `lint --stable`, dispatch.
 - **AI orchestrator:** does everything itself (plan, lint, dispatch, rulings) and never stops to ask, except for the
   destructive, outward-facing or security-sensitive actions in the SDD "Stop conditions". It asks nothing about views: at the
   first dispatch it prints one line naming `/superlite:agents`.
@@ -21,9 +21,9 @@ One single-choice question, in the same `AskUserQuestion` call as inventing's ot
 
 Do NOT ask when the request already settles it: "decide yourself", "I am away", pre-approved design and plan, or any other
 unattended signal (all mean AI). When no human can answer (a headless `claude -p` run), default to AI and record it:
-`sl orchestrator set ai --by coordinator --ruling "orchestrator defaulted to AI - headless run, no human can answer - cost if wrong: none"`.
+`superlite-cli orchestrator set ai --by coordinator --ruling "orchestrator defaulted to AI - headless run, no human can answer - cost if wrong: none"`.
 
-## The tool (`sl orchestrator`)
+## The tool (`superlite-cli orchestrator`)
 - `set human|ai [--by NAME] [--ruling TEXT]` writes `.superlite/orchestrator.json` `{mode, approved, by, time}`
   (`approved` is true for AI, false for human until `approve`).
 - `approve --review PATH [--by NAME]` records the approval. Human mode only (exit 2 otherwise); `--review` is required (exit 2: write the
@@ -33,12 +33,12 @@ unattended signal (all mean AI). When no human can answer (a headless `claude -p
   reply approve, end your turn`. The coordinator sends `approve` when it understands that reply as approval; the hook's phrase flag does not decide.
   The path and sha256 go to `orchestrator.json` (`review_path`, `review_sha256`). AI mode never needs `approve`.
   `status [--review PATH]` and `finish` print the review plan path and whether an approving reply exists.
-- Where the state lives: without `--plan`, `sl orchestrator` and the hooks use the nearest `.superlite` at or above the working directory that holds an
+- Where the state lives: without `--plan`, `superlite-cli orchestrator` and the hooks use the nearest `.superlite` at or above the working directory that holds an
   `orchestrator.json`, so a shell or session in a subfolder still reads and writes the run the hook records replies for.
 - `status` prints one line: `orchestrator: human, awaiting approval` / `human, approved <time> by <name>` / `AI` / `not set (ungated)`.
 - Gate: in human mode without an approval `plan_tools lint --stable`, `dispatch`, `wave0` and `build_prime` exit 4 with
-  `BLOCKED: human orchestrator selected, show the plan, ask for approval, then run sl orchestrator approve`.
-  `schedule --insert`, `prune` and plain `lint` are never gated. With no `orchestrator.json` nothing is gated, so existing
+  `BLOCKED: human orchestrator selected, show the plan, ask for approval, then run superlite-cli orchestrator approve`.
+  `schedule` and plain `lint` are never gated. With no `orchestrator.json` nothing is gated, so existing
   runs behave as before. `finish` prints the mode line (with the approval time in human mode).
 - The gate stops the tools, not the model: the coordinator could still call `approve` itself. Only a human answer to the
   approval question may precede `approve`.
@@ -48,7 +48,7 @@ No orchestrated build starts until the human approves the plan: nothing is linte
 approving reply. The approval is asked in PLAIN TEXT, never with AskUserQuestion, because the typed reply is what the hook verifies: show
 open the review plan first when `open_in_harness` is on (`superlite:drafting`, After writing), then the review plan path, a five-line summary and "Reply approve to start, or tell me what to change", then end the turn. Read the answer.
 If you understand it as approval, send `approve --review`. Do not pass their words through and do not ask them to retype approve.
-If you understand it as changes with no approval, revise and ask again. `set human` writes `approved: false`. The hook (`block-coordinator-edits`) denies superlite agent dispatch and the
+If you understand it as changes with no approval, revise and ask again. `set human` writes `approved: false`. The hook (`pre-tool`) denies superlite agent dispatch and the
 build tools while the mode is human and unapproved, and always denies the model writing `orchestrator.json` or `human-replies.jsonl`.
 
 In MVP mode the MVP plan (`docs/plans/<date>-<topic>.mvp.md`) and its prototype are the review plan: `approve --review` takes the
@@ -56,7 +56,7 @@ In MVP mode the MVP plan (`docs/plans/<date>-<topic>.mvp.md`) and its prototype 
 
 In feature mode the feature plan (`docs/plans/<date>-<topic>.feature.md`) is the review plan. The try-out of the prototype is the one
 exception to "not asked again after approval": a second planned gate, feature mode only, because trying the prototype is the point of the
-flow. Ask it in plain text ("reply it works, or list the changes"), end the turn, then if you understand the answer as approval run `sl proto tryout --approve`, which needs a
+flow. Ask it in plain text ("reply it works, or list the changes"), end the turn, then if you understand the answer as approval run `superlite-cli proto tryout --approve`, which needs a
 human reply in `human-replies.jsonl` newer than the prototype's last checkpoint (exit 3 otherwise). A note that never says the try-out is acceptable means another fix round. While `.superlite/feature.json`
 says `tryout`, the hook denies integration dispatch and `lint --stable`, `dispatch`, `wave0`, `build_prime` exit 4, as before plan
 approval. AI mode: the acceptance checks decide, as a `Ruling: [tryout]`.
@@ -64,25 +64,25 @@ approval. AI mode: the acceptance checks decide, as a `Ruling: [tryout]`.
 Small inline work (trivial or bounded, no plan) is not orchestrated: it needs only the human's yes in chat, and no review plan.
 
 After the approval the run decides on its own, like the AI orchestrator. The human is not asked about scope or interface changes: each
-one is recorded as `Ruling: [scope] <decision> - <why> - <cost if wrong>`, and `sl finish` lists them under "Changed from the approved
+one is recorded as `Ruling: [scope] <decision> - <why> - <cost if wrong>`, and `superlite-cli finish` lists them under "Changed from the approved
 plan". Destructive, outward and security-sensitive actions still follow the SDD "Stop conditions".
 
 ## Benchmarks
 Every prompt file under `bench/` (`prompt*.md`, `tasks/*/prompt*.md`) ends with `Orchestrator: AI, do not ask me to choose or to approve.`
 (a test checks this), so the decider is never asked. To test the human gate, run the session in human mode:
-`sl orchestrator set human` before the run (or ask for it in the prompt), expect `BLOCKED` from `lint --stable` until
-`sl orchestrator approve`, and expect a headless run to end on the approval question.
+`superlite-cli orchestrator set human` before the run (or ask for it in the prompt), expect `BLOCKED` from `lint --stable` until
+`superlite-cli orchestrator approve`, and expect a headless run to end on the approval question.
 
 ## Proposed, not built: a hook (owned by the hooks session)
 A PreToolUse hook on `AskUserQuestion` that, when `.superlite/orchestrator.json` says `ai`, denies the call with
 `AI orchestrator: decide yourself, record a Ruling` unless the question's text names a destructive, outward-facing
 (push, merge, publish) or security-sensitive action. It should allow the call when the file is absent or says `human`,
-log each denial as an incident `kind: rule-block`, and also deny a Bash call of `sl orchestrator approve` unless an
+log each denial as an incident `kind: rule-block`, and also deny a Bash call of `superlite-cli orchestrator approve` unless an
 `AskUserQuestion` answer was received earlier in the session.
 
 ## Waiting on tests
 Never wait on tests through a loop or a command that hides output (`until npx vitest run x.test.ts >/dev/null 2>&1; do sleep 20; done`,
-`pytest >/dev/null`): a hang then looks like a slow run, and the `rewrite-test-runs` hook denies it. Start `sl run_tests --full --background`
-and wait with `sl run_tests --wait`. It exits 3 with `SUSPECT HANG` (verdict blocked or spinning, process tree) once the run stops producing
+`pytest >/dev/null`): a hang then looks like a slow run, and the `pre-tool` hook denies it. Start `superlite-cli run_tests --full --background`
+and wait with `superlite-cli run_tests --wait`. It exits 3 with `SUSPECT HANG` (verdict blocked or spinning, process tree) once the run stops producing
 output, and a wait that runs out says `TIMEOUT`. After a SUSPECT HANG do not wait again: the loop is in the code under test, so hand the file to
 a fixer; `--wait --patient` only when the tests are known to be slow.

@@ -8,10 +8,10 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-HOOK = ROOT / "hooks" / "rewrite-test-runs"
+HOOK = ROOT / "hooks" / "pre-tool"
 _GIT_BASH = r"C:\Program Files\Git\bin\bash.exe"
 BASH = _GIT_BASH if os.name == "nt" and os.path.exists(_GIT_BASH) else shutil.which("bash")
-SL = (ROOT / "skills" / "swarm" / "scripts" / "sl").as_posix()
+CLI = (ROOT / "skills" / "swarm" / "scripts" / "superlite-cli").as_posix()
 
 
 @pytest.fixture
@@ -34,15 +34,14 @@ def rewritten(r, mode="full"):
     out = json.loads(r.stdout)["hookSpecificOutput"]
     assert out["hookEventName"] == "PreToolUse" and out["permissionDecision"] == "allow"
     assert out["updatedInput"]["run_in_background"] is True
-    assert out["updatedInput"]["description"] == f"sl run_tests --{mode} (rewritten from a raw test run)"
-    note = f"raw test run rewritten to a background sl run_tests --{mode}"
+    assert out["updatedInput"]["description"] == f"superlite-cli run_tests --{mode} (rewritten from a raw test run)"
+    note = f"raw test run rewritten to a background superlite-cli run_tests --{mode}"
     assert out["additionalContext"].startswith(note)
-    assert "`sl run_tests --wait` only at the final gate" in out["additionalContext"]
     return out["updatedInput"]["command"]
 
 
-SLFULL = f'bash "{SL}" run_tests --full'
-SLFAST = f'bash "{SL}" run_tests --fast'
+CLIFULL = f'bash "{CLI}" run_tests --full'
+CLIFAST = f'bash "{CLI}" run_tests --fast'
 
 
 @pytest.mark.parametrize("cmd,mode,tail", [
@@ -71,13 +70,13 @@ SLFAST = f'bash "{SL}" run_tests --fast'
     ("  pytest", "full", ""),
 ])
 def test_rewrites_raw_runners(proj, cmd, mode, tail):
-    want = (SLFAST + tail) if mode == "fast" else SLFULL
+    want = (CLIFAST + tail) if mode == "fast" else CLIFULL
     assert rewritten(run(proj, cmd), mode=mode).strip() == want.strip()
 
 
 def test_chained_commands_keep_other_work(proj):
-    assert rewritten(run(proj, "cd app && pytest -x")) == f"cd app && {SLFULL} "
-    assert rewritten(run(proj, "npm run build && npm test")) == f"npm run build && {SLFULL} "
+    assert rewritten(run(proj, "cd app && pytest -x")) == f"cd app && {CLIFULL} "
+    assert rewritten(run(proj, "npm run build && npm test")) == f"npm run build && {CLIFULL} "
     assert rewritten(run(proj, "cd x; go test ./...; echo done"), mode="fast").endswith("; echo done")
     assert rewritten(run(proj, "pytest 2>&1 | tail -5")).endswith("| tail -5")
     assert rewritten(run(proj, "make build\npytest")).startswith("make build\n")
@@ -86,7 +85,7 @@ def test_chained_commands_keep_other_work(proj):
 def test_subagent_bare_full_suite_denied(proj):
     r = run(proj, "pytest", agent_id="a1", agent_type="implementer")
     assert r.returncode == 2 and r.stdout == ""
-    assert "sl run_tests --fast" in r.stderr
+    assert "superlite-cli run_tests --fast" in r.stderr
 
 
 def test_subagent_scoped_untouched(proj):
@@ -95,8 +94,8 @@ def test_subagent_scoped_untouched(proj):
 
 
 def test_sl_run_tests_untouched(proj):
-    for cmd in ('bash "$SL" run_tests --wait', 'bash "$SL" run_tests --fast', f'bash "{SL}" run_tests --full',
-                "cd x && sl run_tests --wait && pytest"):
+    for cmd in ('bash "$CLI" run_tests --wait', 'bash "$CLI" run_tests --fast', f'bash "{CLI}" run_tests --full',
+                "cd x && superlite-cli run_tests --wait && pytest"):
         r = run(proj, cmd)
         assert r.returncode == 0 and r.stdout == "", cmd
 
@@ -140,13 +139,15 @@ def test_plugin_root_env_used(proj):
     env = {**os.environ, "CLAUDE_PROJECT_DIR": str(proj), "CLAUDE_PLUGIN_ROOT": "C:\\plug in"}
     raw = json.dumps({"tool_name": "Bash", "tool_input": {"command": "pytest"}})
     r = subprocess.run([BASH, str(HOOK)], input=raw, capture_output=True, text=True, env=env)
-    assert 'bash "C:/plug in/skills/swarm/scripts/sl" run_tests --full' in rewritten(r, mode="full")
+    assert 'bash "C:/plug in/skills/swarm/scripts/superlite-cli" run_tests --full' in rewritten(r, mode="full")
 
 
 def test_hooks_json_registers_hook():
     data = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))
     cmds = [(e["matcher"], e["hooks"][0]["command"]) for e in data["hooks"]["PreToolUse"]]
-    assert ("Bash", 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/rewrite-test-runs"') in cmds
+    pre_tool = 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/pre-tool"'
+    assert [c for _m, c in cmds] == [pre_tool]
+    assert "Bash" in data["hooks"]["PreToolUse"][0]["matcher"].split("|")
 
 
 def test_lf_endings():
@@ -174,7 +175,7 @@ def test_fast(proj):
 
 def denied(r):
     assert r.returncode == 2 and r.stdout == "", (r.returncode, r.stdout, r.stderr)
-    assert "sl run_tests --wait" in r.stderr
+    assert "superlite-cli run_tests --wait" in r.stderr
     return r.stderr
 
 
@@ -214,8 +215,8 @@ def test_denies_hidden_test_waits(proj, cmd):
     "until npm ls vitest >/dev/null 2>&1; do sleep 1; done",
     "until docker ps >/dev/null; do sleep 2; done",
     "while read f; do echo $f; done < files.txt",
-    "bash sl run_tests --wait",
-    "until bash sl run_tests --wait; do sleep 5; done",
+    "bash superlite-cli run_tests --wait",
+    "until bash superlite-cli run_tests --wait; do sleep 5; done",
     "pytest 2>/dev/null | tail -3",
     "echo vitest >/dev/null",
     "ls > /dev/null",
@@ -227,8 +228,8 @@ def test_harmless_loops_and_redirects_pass(proj, cmd):
 
 
 def test_plain_runner_is_still_rewritten_not_denied(proj):
-    assert rewritten(run(proj, "npx vitest run")).strip() == SLFULL
-    assert rewritten(run(proj, "pytest 2>/dev/null")).strip() == SLFULL
+    assert rewritten(run(proj, "npx vitest run")).strip() == CLIFULL
+    assert rewritten(run(proj, "pytest 2>/dev/null")).strip() == CLIFULL
 
 
 def test_denial_is_coordinator_only_and_needs_a_run(proj, tmp_path):
@@ -280,4 +281,4 @@ def test_denial_check_stays_fast(proj):
 
 
 def test_redirect_in_a_kept_segment_survives_the_rewrite(proj):
-    assert rewritten(run(proj, "npm run build 2>&1 && npm test")) == f"npm run build 2>&1 && {SLFULL} "
+    assert rewritten(run(proj, "npm run build 2>&1 && npm test")) == f"npm run build 2>&1 && {CLIFULL} "

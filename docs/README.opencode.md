@@ -40,7 +40,7 @@ use skill tool to load inventing
 
 ## Agents
 
-OpenCode has no plugin agents. To run superlite's `implementer`, `implementer-haiku`, `package-reviewer`, `final-reviewer` or a fixer (`fixer-sonnet`, `fixer-sonnet-high`, `fixer-opus`) (tests run through `sl run_tests`, not an agent), dispatch the generic subagent (`task` on V1, `subagent` on V2) with the full text of `agents/<name>.md` (minus frontmatter) followed by the brief as its prompt, on the model tier named in that file.
+OpenCode has no plugin agents. To run superlite's `implementer`, `implementer-haiku`, `package-reviewer`, `final-reviewer` or a fixer (`fixer-sonnet`, `fixer-sonnet-high`, `fixer-opus`) (tests run through `superlite-cli run_tests`, not an agent), dispatch the generic subagent (`task` on V1, `subagent` on V2) with the full text of `agents/<name>.md` (minus frontmatter) followed by the brief as its prompt, on the model tier named in that file.
 
 ## Updating
 

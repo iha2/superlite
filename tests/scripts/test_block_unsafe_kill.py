@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-HOOK = ROOT / "hooks" / "block-unsafe-kill"
+HOOK = ROOT / "hooks" / "pre-tool"
 # Git Bash on Windows (WSL's bash.exe in System32 would not see Windows paths), bash elsewhere.
 _GIT_BASH = r"C:\Program Files\Git\bin\bash.exe"
 BASH = _GIT_BASH if os.name == "nt" and os.path.exists(_GIT_BASH) else shutil.which("bash")
@@ -68,9 +68,9 @@ def test_malformed_input_fails_open():
 def test_hooks_json_has_both_entries():
     data = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))
     assert "SessionStart" in data["hooks"]
-    pre = data["hooks"]["PreToolUse"]
-    assert pre[0]["matcher"] == "Bash|PowerShell"
-    assert pre[0]["hooks"][0]["command"] == 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/block-unsafe-kill"'
+    (pre,) = data["hooks"]["PreToolUse"]
+    assert {"Bash", "PowerShell"} <= set(pre["matcher"].split("|"))
+    assert pre["hooks"][0]["command"] == 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/pre-tool"'
 
 
 def test_blocks_multiline_and_escaped_newlines():

@@ -1,4 +1,4 @@
-"""The global superlite home: explicit override, then a legacy ~/.superlite, then the XDG data dir.
+"""The global superlite home: explicit override, then the XDG data dir.
 Python (history.home) and bash (hooks/session-start) must agree, or history and the intro marker split across dirs."""
 import os
 import subprocess
@@ -53,16 +53,7 @@ def test_relative_xdg_data_home_is_ignored(user, monkeypatch):
     assert hook_home(user, XDG_DATA_HOME="rel/path") == history.home()
 
 
-def test_existing_legacy_dir_keeps_winning(user, monkeypatch, tmp_path):
-    # upgrading must not orphan existing history.jsonl and preferences.json
-    (user / ".superlite").mkdir()
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
-    assert history.home() == user / ".superlite"
-    assert hook_home(user, XDG_DATA_HOME=str(tmp_path / "xdg")) == user / ".superlite"
-
-
 def test_superlite_home_beats_everything(user, monkeypatch, tmp_path):
-    (user / ".superlite").mkdir()
     explicit = tmp_path / "explicit"
     monkeypatch.setenv("SUPERLITE_HOME", str(explicit))
     assert history.home() == explicit

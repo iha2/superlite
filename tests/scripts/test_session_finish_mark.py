@@ -1,4 +1,4 @@
-"""sl finish marks the checkout's session finished; orchestrator set warns when there is none (fails open)."""
+"""superlite-cli finish marks the checkout's session finished; orchestrator set warns when there is none (fails open)."""
 from __future__ import annotations
 
 import json
@@ -11,7 +11,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "skills" / "swarm" / "scripts"
-WARN = "session: none for this checkout; run sl session ensure --slug <topic> first"
+WARN = "session: none for this checkout; run superlite-cli session ensure --slug <topic> first"
 
 
 def run(script, *args, cwd, env=None):

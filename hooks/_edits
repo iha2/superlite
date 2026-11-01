@@ -1,0 +1,354 @@
+# Sourced by hooks/pre-tool: the coordinator guard. Guards the COORDINATOR, i.e. the main session, whose
+# calls carry no agent_id. Subagent calls always pass. Four rules, in order:
+#  1. Protected files, in every state: .superlite/orchestrator.json (changed only by `superlite-cli orchestrator`),
+#     .superlite/feature.json (changed only by `superlite-cli proto`) and .superlite/human-replies.jsonl (written
+#     only by hooks/prompt) are never written by the model.
+#  2. HUMAN-UNAPPROVED (.superlite/orchestrator.json has mode human and approved false): nothing is
+#     orchestrated until the human approves the review plan. Agent calls of superlite:* and
+#     general-purpose and superlite-cli dispatch/assign/wave0/checkpoint/finish/build_prime
+#     are denied. File writes are not: small inline work needs only the human's yes in chat, not a
+#     review plan.
+#     TRYOUT-PENDING (feature flow: mode human and .superlite/feature.json has status tryout) is the
+#     same denial, for the integration build, until `superlite-cli proto tryout --approve` records the try-out.
+#  3. Active run (.superlite/stable.json, prime.md or pool.json exists): project code is not written
+#     by the coordinator; allowed targets are docs/plans/**, SPEC*.md, docs/**/*.md and .superlite/**
+#     except .superlite/sandboxes/** (the feature prototype's worktree is project code too).
+#  4. BATCH (active run + Agent/Task for an implementer): the prompt's assigned task ids must be
+#     exactly one batch from .superlite/dispatch.json (last `superlite-cli dispatch` print). Denial lists the
+#     printed batches. A shared-prime spawn that only asks for READY (task comes later) is not an
+#     assignment. An empty prompt (no task ids) is denied. T0 is a batch when dispatch printed it.
+# Bash/PowerShell write detection is best-effort; when unsure, allow. Sessions without a .superlite
+# directory are never touched. Exit 2 blocks (message on stderr; Cursor also gets
+# {"permission":"deny",...} on stdout); returning means allow.
+# Cursor (preToolUse) names tools Shell, Write, Delete and Task, marks subagent calls with
+# parent_tool_call_id, sends an empty cwd and the project as workspace_roots (/c:/path).
+
+# norm PATH: forward slashes, no duplicate or trailing slashes, C:/x -> /c/x, into NORM.
+norm() {
+  local p="${1//\\//}" re='^([A-Za-z]):/(.*)$'
+  while [[ $p == *//* ]]; do p="${p//\/\//\/}"; done
+  [[ $p =~ $re ]] && { lower "${BASH_REMATCH[1]}"; p="/$LOWER/${BASH_REMATCH[2]}"; }
+  while [[ $p == */ && $p != / ]]; do p="${p%/}"; done
+  NORM="$p"
+}
+
+guard_edits() {
+re_agent='"(agent_id|parent_tool_call_id)"[[:space:]]*:[[:space:]]*"[^"]'
+[[ $input =~ $re_agent ]] && return 0   # subagent call
+re_tool='"tool_name"[[:space:]]*:[[:space:]]*"([A-Za-z]+)"'
+[[ $input =~ $re_tool ]] || return 0
+tool="${BASH_REMATCH[1]}"
+case "$tool" in Edit|Write|NotebookEdit|MultiEdit|Delete|Bash|PowerShell|Shell|Agent|Task) ;; *) return 0 ;; esac
+[ "$tool" = Shell ] && tool=Bash
+re_cursor='"hook_event_name"[[:space:]]*:[[:space:]]*"preToolUse"'
+cursor=0; [[ $input =~ $re_cursor ]] && cursor=1
+
+[ -d "$sd" ] || return 0
+
+human=0; tryout=0
+if [ -f "$sd/orchestrator.json" ]; then
+  IFS= read -r -d '' oj < "$sd/orchestrator.json"
+  re_human='"mode"[[:space:]]*:[[:space:]]*"human"'
+  re_unappr='"approved"[[:space:]]*:[[:space:]]*false'
+  [[ $oj =~ $re_human && $oj =~ $re_unappr ]] && human=1
+  if [ "$human" = 0 ] && [[ $oj =~ $re_human ]] && [ -f "$sd/feature.json" ]; then
+    IFS= read -r -d '' fj < "$sd/feature.json"
+    re_tryout='"status"[[:space:]]*:[[:space:]]*"tryout"'
+    [[ $fj =~ $re_tryout ]] && tryout=1
+  fi
+fi
+gated=0; gatehit=0
+{ [ "$human" = 1 ] || [ "$tryout" = 1 ]; } && gated=1
+enforce=0
+[ "$active" = 1 ] && enforce=1   # human-unapproved alone blocks orchestration, not file writes
+
+batchhit=0
+if [ "$tool" = Agent ] || [ "$tool" = Task ]; then
+  jstr subagent_type
+  st="$REPLY"
+  case "$st" in Explore|explore|Plan|claude-code-guide|cursor-guide) ;;
+  *)
+    if [ "$gated" = 1 ]; then
+      hit="Agent ${st:-general-purpose}"; gatehit=1
+    elif [ "$active" = 1 ]; then
+      jstr prompt; pr="$REPLY"
+      [ -n "$pr" ] || { jstr description; pr="$REPLY"; }
+      if [ -f "$sd/dispatch.json" ]; then
+        case "$st" in *implementer*|Implementer*|generalPurpose|general-purpose|"")
+          # Shared prime: list every stable task, then wait for READY. Not a batch assignment.
+          prime_only=0
+          case "$pr" in
+            *"Reply READY after reading this prime"*)
+              case "$pr" in
+                *[Yy]our\ batch*|*"your task text:"*|*"Build T"[0-9]*) ;;
+                *) prime_only=1 ;;
+              esac
+              ;;
+          esac
+          if [ "$prime_only" != 1 ]; then
+            ids=""
+            re_tid='T[0-9]+'
+            rest="$pr"
+            while [[ $rest =~ $re_tid ]]; do
+              tid="${BASH_REMATCH[0]}"
+              case " $ids " in *" $tid "*) ;; *) ids="$ids $tid" ;; esac
+              rest="${rest#*"$tid"}"
+            done
+            ids="${ids# }"
+            IFS= read -r -d '' dj < "$sd/dispatch.json" || true
+            ok=0
+            re_batch='\[[[:space:]]*"T[0-9]+"([[:space:]]*,[[:space:]]*"T[0-9]+")*[[:space:]]*\]'
+            rest="$dj"
+            printed=""
+            while [[ $rest =~ $re_batch ]]; do
+              b="${BASH_REMATCH[0]}"; rest="${rest#*"$b"}"
+              b_ids=""; b_rest="$b"
+              while [[ $b_rest =~ $re_tid ]]; do
+                t="${BASH_REMATCH[0]}"
+                case " $b_ids " in *" $t "*) ;; *) b_ids="$b_ids $t" ;; esac
+                b_rest="${b_rest#*"$t"}"
+              done
+              b_ids="${b_ids# }"
+              printed="${printed:+$printed; }$b_ids"
+              if [ -n "$ids" ]; then
+                same=1
+                for t in $ids; do case " $b_ids " in *" $t "*) ;; *) same=0; break ;; esac; done
+                if [ "$same" = 1 ]; then
+                  for t in $b_ids; do case " $ids " in *" $t "*) ;; *) same=0; break ;; esac; done
+                fi
+                if [ "$same" = 1 ]; then
+                  set -f; set -- $ids; n1=$#; set -- $b_ids; n2=$#; set +f
+                  [ "$n1" = "$n2" ] && ok=1
+                fi
+              fi
+            done
+            if [ "$ok" != 1 ]; then
+              hit="batch ${ids:-(empty)}"; batchhit=1
+              BATCH_PRINTED="${printed:-none}"
+            fi
+          fi
+          ;;
+        esac
+      fi
+      # Question guard: while a task waits for an answer, deny a fixer/new implementer for it.
+      if [ -z "$hit" ] && [ -f "$sd/questions.json" ]; then
+        IFS= read -r -d '' qj < "$sd/questions.json" || true
+        re_tid='T[0-9]+'
+        rest="$pr"
+        while [[ $rest =~ $re_tid ]]; do
+          tid="${BASH_REMATCH[0]}"; rest="${rest#*"$tid"}"
+          case "$qj" in *"\"$tid\""*)
+            case "$st" in *fixer*|*Fixer*|*implementer*|Implementer*|generalPurpose|general-purpose)
+              hit="question $tid"; qhit=1
+              break
+              ;;
+            esac
+            ;;
+          esac
+        done
+      fi
+      # Tier guard: BLOCKED task must go to a fixer at least the required tier.
+      if [ -z "$hit" ] && [ -f "$sd/blocked.json" ]; then
+        case "$st" in *fixer*|*Fixer*)
+          IFS= read -r -d '' bj < "$sd/blocked.json" || true
+          re_tid='T[0-9]+'
+          rest="$pr"
+          while [[ $rest =~ $re_tid ]]; do
+            tid="${BASH_REMATCH[0]}"; rest="${rest#*"$tid"}"
+            re_t="\"$tid\"[[:space:]]*:[[:space:]]*\\{[^}]*\"tier\"[[:space:]]*:[[:space:]]*\"([a-z]+)\""
+            if [[ $bj =~ $re_t ]]; then
+              need="${BASH_REMATCH[1]}"
+              rank() { case "$1" in haiku) echo 1;; sonnet) echo 2;; opus) echo 3;; *) echo 0;; esac; }
+              got=haiku
+              case "$st" in *opus*|*Opus*) got=opus;; *high*|*High*|*-sonnet-high*) got=sonnet;; *sonnet*|*Sonnet*) got=sonnet;; esac
+              if [ "$(rank "$got")" -lt "$(rank "$need")" ]; then
+                hit="tier $tid need=$need got=$got"; thit=1
+                NEED_TIER="$need"
+                break
+              fi
+            fi
+          done
+          ;;
+        esac
+      fi
+    fi
+    ;;
+  esac
+  qhit=${qhit:-0}; thit=${thit:-0}
+  [ -n "$hit" ] || [ "$gated" = 1 ] || [ "$batchhit" = 1 ] || [ "$qhit" = 1 ] || [ "$thit" = 1 ] || return 0
+  [ -n "$hit" ] || return 0
+fi
+
+norm "$proj"; projn="$NORM"; lower "$projn"; projl="$LOWER"
+
+prot=0
+# project_code PATH: succeeds when writing PATH is denied (sets prot=1 for protected files).
+project_code() {
+  local p rel pl
+  norm "$1"; p="$NORM"; p="${p%\"}"; p="${p#\"}"; p="${p%\'}"; p="${p#\'}"
+  case "$p" in ''|*'$'*|'~'*|/dev/*|-*) return 1 ;; esac
+  case "$p" in
+    /*) lower "$p"; pl="$LOWER"
+        case "$pl" in "$projl"/*) rel="${p:$((${#projn}+1))}" ;; *) return 1 ;; esac ;;
+    *) rel="${p#./}" ;;
+  esac
+  case "$rel" in ''|.|..|../*) return 1 ;; esac
+  lower "$rel"; pl="$LOWER"
+  case "$pl" in .superlite/human-replies.jsonl|.superlite/orchestrator.json|.superlite/feature.json) prot=1; return 0 ;; esac
+  [ "$active" = 1 ] || return 1
+  case "$rel" in
+    .superlite/sandboxes/*) return 0 ;;
+    docs/plans/*|docs/*.md|SPEC*.md|*/SPEC*.md|.superlite/*) return 1 ;;
+  esac
+  return 0
+}
+
+if [ -z "$hit" ] && [ "$tool" != Bash ] && [ "$tool" != PowerShell ]; then
+  jstr file_path; f="$REPLY"
+  if [ -z "$f" ]; then jstr notebook_path; f="$REPLY"; fi
+  [ -n "$f" ] || return 0
+  project_code "$f" && hit="$f"
+elif [ -z "$hit" ]; then
+  jstr command; cmd="$REPLY"
+  [ -n "$cmd" ] || return 0
+  # Every check below needs one of these words (or a redirect); most commands have none, so skip the decoding.
+  shopt -s nocasematch
+  case "$cmd" in
+    *'>'*|*patch*|*git*|*sed*|*perl*|*tee*|*rm*|*mv*|*cp*|*cli*|*python*|*node*|*ruby*|*php*|*orchestrator.json*|*human-replies.jsonl*|*feature.json*) shopt -u nocasematch ;;
+    *) shopt -u nocasematch; return 0 ;;
+  esac
+  jdecode cmd edits   # pair-aware: JSON \\ first, so \\" and \\n keep their shell meaning
+  join_continuations cmd   # a backslash-newline continues the line
+  lower "$cmd"; lc="$LOWER"
+  mentions=0
+  [[ $lc == *human-replies.jsonl* || $lc == *orchestrator.json* || $lc == *.superlite/feature.json* ]] && mentions=1
+  # superlite-cli tools that start a build are denied until the plan is approved.
+  re_cli='(superlite-cli|\$CLI|\$\{CLI\}|scripts/superlite-cli)"?[[:space:]]+(dispatch|assign|wave0|checkpoint|finish|build_prime)([^[:alnum:]_-]|$)'
+  if [ "$gated" = 1 ] && [[ $cmd == *CLI* || $cmd == *superlite-cli* ]] && [[ $cmd =~ $re_cli ]]; then hit="superlite-cli ${BASH_REMATCH[2]}"; gatehit=1; fi
+  # Inline interpreter writers (checked on the full text, heredoc bodies included).
+  re_interp='(^|[^[:alnum:]_])(python[0-9.]*|node|ruby|php)([[:space:]]|$)'
+  re_writer="open\([^)]*,[[:space:]]*['\"][wax]b?\+?['\"]|\.(write_text|write_bytes)\(|writeFileSync|writeFile\(|appendFile(Sync)?\(|fs\.write"
+  if [ -z "$hit" ] && { [ "$enforce" = 1 ] || [ "$mentions" = 1 ]; } \
+     && [[ $lc == *python* || $lc == *node* || $lc == *ruby* || $lc == *php* ]] \
+     && [[ $cmd == *'open('* || $cmd == *write* || $cmd == *append* ]] \
+     && [[ $lc =~ $re_interp && $cmd =~ $re_writer ]]; then
+    hit="${cmd:0:120}"; hit="${hit//$'\n'/ }"
+    [ "$mentions" = 1 ] && prot=1
+  fi
+  # The write checks below look for a redirect or one of these commands; most commands have neither.
+  if [ -z "$hit" ] && [[ $lc == *'>'* || $lc == *patch* || $lc == *git* || $lc == *sed* || $lc == *perl* || $lc == *tee* \
+       || $lc == *rm* || $lc == *mv* || $lc == *cp* ]]; then
+    # Drop heredoc bodies and quoted strings, then split into simple commands.
+    sq="'"; dq='"'
+    re_here="<<-?[[:space:]]*[$sq$dq]?([A-Za-z_][A-Za-z_0-9]*)"
+    # Quoted strings become Q in one pass: the line is split at each " and each ' (split_at), and a small state
+    # machine (qmode 0 outside, 1 in "...", 2 in '...') walks the pieces. The state carries over a newline, so a
+    # string that spans lines is one string. (A regex per string is quadratic on long lines; so is appending to
+    # one string or indexing an array, in bash 3.2: each line is printed from inside $( ) instead.)
+    stripped=$(
+      skip=0; tag=""; qmode=0; qprev=""; acc=""
+      while IFS= read -r line; do
+        if [ "$skip" = 1 ]; then
+          t="${line#"${line%%[![:space:]]*}"}"; t="${t%"${t##*[![:space:]]}"}"
+          [ "$t" = "$tag" ] && skip=0
+          continue
+        fi
+        if [ "$qmode" = 0 ] && [[ $line =~ $re_here ]]; then tag="${BASH_REMATCH[1]}"; skip=1; fi
+        if [ "$qmode" = 0 ] && [[ $line != *[$dq$sq]* ]]; then
+          acc="$line"
+        else
+          split_at "$dq" "$line"; nd=${#SPLIT[@]}; di=0
+          for part in "${SPLIT[@]}"; do
+            di=$((di + 1))
+            if [ "$di" -gt 1 ]; then   # a " came before this piece
+              case "$qmode" in   # (the leading parentheses keep bash 3.2 parsing a case inside $( ) )
+                (0) qmode=1; qprev="" ;;
+                (1) bs="${qprev##*[!\\]}"; qprev=""   # an odd run of backslashes escapes the quote
+                    [ $(( ${#bs} % 2 )) = 1 ] || { acc="${acc}Q"; qmode=0; } ;;
+              esac
+            fi
+            [ "$di" = "$nd" ] && part="${part%x}"   # the sentinel x of split_at
+            if [ "$qmode" = 1 ]; then qprev="$part"; continue; fi   # inside "..." an ' is just text
+            if [[ $part != *$sq* ]]; then
+              [ "$qmode" = 0 ] && acc="$acc$part"
+              continue
+            fi
+            split_at "$sq" "$part"; ns=${#SPLIT[@]}; si=0
+            for tok in "${SPLIT[@]}"; do
+              si=$((si + 1))
+              if [ "$si" -gt 1 ]; then
+                case "$qmode" in (0) qmode=2 ;; (2) acc="${acc}Q"; qmode=0 ;; esac
+              fi
+              [ "$si" = "$ns" ] && tok="${tok%x}"
+              [ "$qmode" = 0 ] && acc="$acc$tok"
+            done
+          done
+          [ "$qmode" = 0 ] || continue   # a quote is still open: the line goes on with the next one
+        fi
+        line="$acc"; acc=""
+        pair_to_nl line '&'; pair_to_nl line '|'
+        gsub_char line ';' "$nl"; gsub_char line '|' "$nl"
+        printf '%s\n' "$line"
+      done <<< "$cmd"
+    )
+    re_redir='[0-9]?>>?[[:space:]]*([^[:space:]<>&|;()]+)(.*)$'
+    while IFS= read -r seg; do
+      case "$seg" in *'$CLI'*|*'${CLI}'*|*swarm/scripts*) continue ;; esac
+      rest="$seg"
+      while [[ $rest =~ $re_redir ]]; do
+        t="${BASH_REMATCH[1]}"; rest="${BASH_REMATCH[2]}"
+        project_code "$t" && { hit="> $t"; break; }
+      done
+      [ -n "$hit" ] && break
+      set -f; set -- $seg; set +f
+      while [ $# -gt 0 ]; do case "$1" in *=*|sudo|command|env|time) shift ;; *) break ;; esac; done
+      [ $# -gt 0 ] || continue
+      c="${1##*/}"; c="${c%.exe}"; shift
+      args=(); for a in "$@"; do case "$a" in -*|*'>'*|*'<'*) ;; *) args+=("$a") ;; esac; done   # redirects are not operands
+      n=${#args[@]}; last=""; [ "$n" -gt 0 ] && last="${args[n-1]}"
+      case "$c" in
+        patch) [ "$enforce" = 1 ] && hit="patch" ;;
+        git) [ "$1" = apply ] && [ "$enforce" = 1 ] && hit="git apply" ;;
+        sed) case " $* " in *' -i'*|*' --in-place'*) [ -n "$last" ] && project_code "$last" && hit="sed -i $last" ;; esac ;;
+        perl) case " $* " in *' -pi'*|*' -i'*|*' -ni'*) [ -n "$last" ] && project_code "$last" && hit="perl -i $last" ;; esac ;;
+        tee) for a in "${args[@]}"; do project_code "$a" && { hit="tee $a"; break; }; done ;;
+        rm|mv) for a in "${args[@]}"; do project_code "$a" && { hit="$c $a"; break; }; done ;;
+        cp) [ "$n" -gt 1 ] && project_code "$last" && hit="cp $last" ;;
+      esac
+      [ -n "$hit" ] && break
+    done <<< "$stripped"
+  fi
+fi
+
+[ -n "$hit" ] || return 0
+
+hit="${hit:0:120}"; hit="${hit//[\"\\$'\n\r\t']/}"
+printf '{"kind":"rule-block","agent":"coordinator","tool":"%s","target":"%s"}\n' "$tool" "$hit" \
+  >> "$sd/incidents.jsonl" 2>/dev/null
+
+nl=$'\n'
+if [ "$prot" = 1 ]; then
+  msg='Blocked: .superlite/orchestrator.json, .superlite/feature.json and .superlite/human-replies.jsonl are never written directly. Change the orchestrator state only with `superlite-cli orchestrator ...` (for example `superlite-cli orchestrator approve --review <path>`) and the prototype state only with `superlite-cli proto ...`; human-replies.jsonl is written only by the hook that records the human'"'"'s replies.'
+elif [ "$human" = 1 ]; then
+  msg='Human orchestrator: no build is orchestrated until the human approves the plan. Write the review plan docs/plans/<date>-<topic>.review.md (see skills/drafting/review-plan.md), show its path with a five-line summary, ask the human to reply approve, end your turn, then run superlite-cli orchestrator approve --review <path>. Small inline work without a plan needs only the human'"'"'s yes in chat.'
+elif [ "$tryout" = 1 ] && [ "$gatehit" = 1 ]; then
+  msg='Feature flow: the integration build waits for the human'"'"'s try-out of the prototype. Show how to try it (`superlite-cli proto tryout`), ask the human to reply "it works" or list changes, end your turn, then run `superlite-cli proto tryout --approve`. Changes go back to the prototype: `superlite-cli proto start --topic <topic>` reopens it for a fix round.'
+elif [ "$batchhit" = 1 ]; then
+  msg="Blocked: implementer tasks must match one batch from the last superlite-cli dispatch. Printed batches: ${BATCH_PRINTED}. Launch exactly one of those batches, not ${hit#batch }."
+elif [ "${qhit:-0}" = 1 ]; then
+  msg="Blocked: answer the implementer that asked (task ${hit#question }). Do not launch a fixer or a new implementer while the question waits."
+elif [ "${thit:-0}" = 1 ]; then
+  msg="Blocked: BLOCKED task needs fixer tier ${NEED_TIER}. Launch the fixer one tier up, not ${hit}."
+else
+  msg='Blocked: the superlite coordinator must not write project code. Dispatch it instead:'"$nl"
+  msg+='- Fix: give a fixer a finding id F-<Tn>-<n> and the note path .superlite/fixes/<id>.md, tiered per skills/swarm/fixing.md: known cause, one module -> fixer-sonnet; cross-module -> fixer-sonnet-high; unknown cause -> fixer-opus.'"$nl"
+  msg+='- Wave 0 skeleton/stub/config files belong to an implementer-haiku task.'"$nl"
+  msg+='- New code belongs to an implementer task. You may write only docs/plans/**, SPEC*.md, docs/**/*.md and .superlite/**.'
+fi
+printf '%s\n' "$msg" >&2
+if [ "$cursor" = 1 ]; then
+  m="${msg//\\/\\\\}"; m="${m//\"/\\\"}"; m="${m//$nl/\\n}"
+  printf '{"permission":"deny","user_message":"%s","agent_message":"%s"}\n' "$m" "$m"   # Cursor shows the agent user_message
+fi
+exit 2
+}

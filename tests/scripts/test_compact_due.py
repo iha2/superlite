@@ -5,9 +5,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "skills" / "swarm" / "scripts"
-HOOK = ROOT / "hooks" / "compact-nudge"
+HOOK = ROOT / "hooks" / "prompt"
 _GIT_BASH = r"C:\Program Files\Git\bin\bash.exe"
 BASH = _GIT_BASH if os.name == "nt" and os.path.exists(_GIT_BASH) else shutil.which("bash")
 
@@ -49,3 +51,27 @@ def test_opt_out_env(tmp_path):
 
 def test_nudge_line_mentions_compact():
     assert "compact" in compact_due.nudge_line().lower()
+
+
+def _prompt(tmp_path, line, sid="s1"):
+    fake = tmp_path / "fakepy"
+    fake.write_text('#!/bin/sh\nprintf \'%s\\n\' "$FAKE_LINE"\n', encoding="utf-8")
+    fake.chmod(0o755)
+    env = {**os.environ, "CLAUDE_PROJECT_DIR": str(tmp_path), "SUPERLITE_PYTHON": str(fake), "FAKE_LINE": line,
+           "SUPERLITE_NO_AUTOCOMPACT": "1", "SUPERLITE_NO_SESSION_HUD": "1", "CLAUDE_CODE": "1"}
+    raw = json.dumps({"hook_event_name": "UserPromptSubmit", "prompt": "hi", "session_id": sid})
+    r = subprocess.run([BASH, str(HOOK)], input=raw, capture_output=True, text=True, env=env)
+    assert r.returncode == 0 and r.stderr == "", r.stderr
+    return r.stdout
+
+
+@pytest.mark.skipif(os.name == "nt", reason="the fake interpreter is a shell script")
+def test_prompt_lines_only_on_change(tmp_path):
+    (tmp_path / ".superlite").mkdir()
+    first = json.loads(_prompt(tmp_path, "cost $1.00"))
+    assert first["hookSpecificOutput"]["additionalContext"] == "cost $1.00"
+    assert _prompt(tmp_path, "cost $1.00") == ""                      # same text: silent
+    again = json.loads(_prompt(tmp_path, "cost $2.00"))              # changed: back
+    assert again["hookSpecificOutput"]["additionalContext"] == "cost $2.00"
+    new_session = json.loads(_prompt(tmp_path, "cost $2.00", sid="s2"))   # first prompt of a session
+    assert new_session["hookSpecificOutput"]["additionalContext"] == "cost $2.00"

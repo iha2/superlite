@@ -1,61 +1,62 @@
 """protocol: unknown methods, a bad Content-Length, oversize and malformed bodies, unknown CLI commands."""
-# Complexity notation:
-#   n = probe size step (up to 3 million bytes for bodies and headers), e = entries in a table, h = length of a request head (constant)
-from pack._common import P  # O(1)
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from pack._common import P
 
-CATEGORY = "protocol"  # O(1)
+CATEGORY = "protocol"
 
-REJECT = {"status": [400, 404, 405, 501]}  # O(1)
-ACCEPT = {"status": [200, 201, 202, 204, 400, 404, 405, 411, 413, 414, 415, 422, 431]}  # O(1)
-SIZES = (1_000, 100_000, 3_000_000)  # O(1)
+REJECT = {"status": [400, 404, 405, 501]}
+ACCEPT = {"status": [200, 201, 202, 204, 400, 404, 405, 411, 413, 414, 415, 422, 431]}
+SIZES = (1_000, 100_000, 3_000_000)
 
-PROBES = []  # O(1)
-for m in ("TRACE", "BREW", "PROPFIND", "FOO", "get"):  # O(e) iterations (5)
-    PROBES.append(P(f"request_unknown_method_{m}", "request",  # O(1)
-                    lambda n, ctx, m=m: (m, ctx.good_path, None), expect=REJECT))  # O(1)
-for k, v in {"truncated_object": "{", "truncated_array": "[1,2", "missing_value": '{"a":}',  # O(e) iterations (10)
-             "bare_word": "nope", "nul_byte": "\x00", "json_null": "null", "json_array": "[]",  # O(1)
-             "json_string": '"text"', "trailing_comma": "[1,]", "empty_body": ""}.items():  # O(1)
-    PROBES.append(P(f"body_{k}", "request", lambda n, ctx, v=v: ("POST", ctx.good_path, v),  # O(1)
-                    expect=ACCEPT))  # O(1)
-PROBES.append(P("body_oversize_text", "request",  # O(1)
-                lambda n, ctx: ("POST", ctx.good_path, "x" * n), SIZES, expect=ACCEPT))  # O(n) per call (lambda)
-PROBES.append(P("body_oversize_json", "request",  # O(1)
-                lambda n, ctx: ("POST", ctx.good_path, '{"a":"' + "x" * n + '"}'), SIZES,  # O(n) per call (lambda)
-                expect=ACCEPT))  # O(1)
-PROBES.append(P("path_dot_segments", "request",  # O(1)
-                lambda n, ctx: ("GET", "/./../a//b/", None), expect=ACCEPT))  # O(1)
-
-
-def _raw(head, body=b""):  # O(1) to build; lambda O(h + body) per call
-    return lambda n, ctx: (head.replace("{p}", ctx.good_path) + "\r\n\r\n").encode("latin-1") + body  # O(h + body) per call (lambda)
+PROBES = []
+for m in ("TRACE", "BREW", "PROPFIND", "FOO", "get"):
+    PROBES.append(P(f"request_unknown_method_{m}", "request",
+                    lambda n, ctx, m=m: (m, ctx.good_path, None), expect=REJECT))
+for k, v in {"truncated_object": "{", "truncated_array": "[1,2", "missing_value": '{"a":}',
+             "bare_word": "nope", "nul_byte": "\x00", "json_null": "null", "json_array": "[]",
+             "json_string": '"text"', "trailing_comma": "[1,]", "empty_body": ""}.items():
+    PROBES.append(P(f"body_{k}", "request", lambda n, ctx, v=v: ("POST", ctx.good_path, v),
+                    expect=ACCEPT))
+PROBES.append(P("body_oversize_text", "request",
+                lambda n, ctx: ("POST", ctx.good_path, "x" * n), SIZES, expect=ACCEPT))
+PROBES.append(P("body_oversize_json", "request",
+                lambda n, ctx: ("POST", ctx.good_path, '{"a":"' + "x" * n + '"}'), SIZES,
+                expect=ACCEPT))
+PROBES.append(P("path_dot_segments", "request",
+                lambda n, ctx: ("GET", "/./../a//b/", None), expect=ACCEPT))
 
 
-_H = "Host: x\r\nConnection: close"  # O(1)
-for k, (head, body) in {  # O(e) iterations (12)
-    "cl_huge": (f"POST {{p}} HTTP/1.1\r\n{_H}\r\nContent-Length: 99999999999999999999", b"abc"),  # O(1)
-    "cl_negative": (f"POST {{p}} HTTP/1.1\r\n{_H}\r\nContent-Length: -5", b"abc"),  # O(1)
-    "cl_non_numeric": (f"POST {{p}} HTTP/1.1\r\n{_H}\r\nContent-Length: abc", b"abc"),  # O(1)
-    "cl_duplicate_conflict": (  # O(1)
-        f"POST {{p}} HTTP/1.1\r\n{_H}\r\nContent-Length: 3\r\nContent-Length: 40", b"abc"),  # O(1)
-    "cl_longer_than_body": (f"POST {{p}} HTTP/1.1\r\n{_H}\r\nContent-Length: 100", b"abc"),  # O(1)
-    "cl_zero_with_body": (f"POST {{p}} HTTP/1.1\r\n{_H}\r\nContent-Length: 0", b"abcdef"),  # O(1)
-    "garbage_request_line": ("GARBAGE", b""),  # O(1)
-    "no_http_version": ("GET /", b""),  # O(1)
-    "unknown_http_version": (f"GET {{p}} HTTP/9.9\r\n{_H}", b""),  # O(1)
-    "header_without_colon": (f"GET {{p}} HTTP/1.1\r\n{_H}\r\nbroken header line", b""),  # O(1)
-    "nul_in_header": (f"GET {{p}} HTTP/1.1\r\n{_H}\r\nX-A: a\x00b", b""),  # O(1)
-    "bare_lf_lines": ("GET {p} HTTP/1.1\nHost: x\nConnection: close\n", b""),  # O(1)
-}.items():  # O(1)
-    PROBES.append(P(f"raw_{k}", "raw", _raw(head, body)))  # O(1)
-PROBES.append(P("raw_huge_header", "raw",  # O(1)
-                lambda n, ctx: (f"GET {ctx.good_path} HTTP/1.1\r\n{_H}\r\nX-Big: " + "a" * n  # O(n) per call (lambda)
-                                + "\r\n\r\n").encode("latin-1"), SIZES))  # O(n) per call (lambda)
+def _raw(head, body=b""):
+    return lambda n, ctx: (head.replace("{p}", ctx.good_path) + "\r\n\r\n").encode("latin-1") + body
 
-for k, args in {"unknown_command": ["zz-no-such-command"], "unknown_flag": ["--no-such-flag-zz"],  # O(e) iterations (7)
-                "empty_arg": [""], "single_dash": ["-"], "double_dash": ["--"],  # O(1)
-                "flag_without_value": ["--output"], "many_dashes": ["-" * 200]}.items():  # O(1)
-    PROBES.append(P(f"run_{k}", "run", lambda n, ctx, a=args: (a, "")))  # O(1)
-PROBES.append(P("run_no_args_empty_stdin", "run", lambda n, ctx: ([], "")))  # O(1)
-PROBES.append(P("run_long_arg", "run", lambda n, ctx: (["a" * n], ""), (100, 1000, 3000)))  # O(n) per call (lambda)
-PROBES.append(P("run_many_args", "run", lambda n, ctx: (["a"] * n, ""), (10, 200, 1000)))  # O(n) per call (lambda)
+
+_H = "Host: x\r\nConnection: close"
+for k, (head, body) in {
+    "cl_huge": (f"POST {{p}} HTTP/1.1\r\n{_H}\r\nContent-Length: 99999999999999999999", b"abc"),
+    "cl_negative": (f"POST {{p}} HTTP/1.1\r\n{_H}\r\nContent-Length: -5", b"abc"),
+    "cl_non_numeric": (f"POST {{p}} HTTP/1.1\r\n{_H}\r\nContent-Length: abc", b"abc"),
+    "cl_duplicate_conflict": (
+        f"POST {{p}} HTTP/1.1\r\n{_H}\r\nContent-Length: 3\r\nContent-Length: 40", b"abc"),
+    "cl_longer_than_body": (f"POST {{p}} HTTP/1.1\r\n{_H}\r\nContent-Length: 100", b"abc"),
+    "cl_zero_with_body": (f"POST {{p}} HTTP/1.1\r\n{_H}\r\nContent-Length: 0", b"abcdef"),
+    "garbage_request_line": ("GARBAGE", b""),
+    "no_http_version": ("GET /", b""),
+    "unknown_http_version": (f"GET {{p}} HTTP/9.9\r\n{_H}", b""),
+    "header_without_colon": (f"GET {{p}} HTTP/1.1\r\n{_H}\r\nbroken header line", b""),
+    "nul_in_header": (f"GET {{p}} HTTP/1.1\r\n{_H}\r\nX-A: a\x00b", b""),
+    "bare_lf_lines": ("GET {p} HTTP/1.1\nHost: x\nConnection: close\n", b""),
+}.items():
+    PROBES.append(P(f"raw_{k}", "raw", _raw(head, body)))
+PROBES.append(P("raw_huge_header", "raw",
+                lambda n, ctx: (f"GET {ctx.good_path} HTTP/1.1\r\n{_H}\r\nX-Big: " + "a" * n
+                                + "\r\n\r\n").encode("latin-1"), SIZES))
+
+for k, args in {"unknown_command": ["zz-no-such-command"], "unknown_flag": ["--no-such-flag-zz"],
+                "empty_arg": [""], "single_dash": ["-"], "double_dash": ["--"],
+                "flag_without_value": ["--output"], "many_dashes": ["-" * 200]}.items():
+    PROBES.append(P(f"run_{k}", "run", lambda n, ctx, a=args: (a, "")))
+PROBES.append(P("run_no_args_empty_stdin", "run", lambda n, ctx: ([], "")))
+PROBES.append(P("run_long_arg", "run", lambda n, ctx: (["a" * n], ""), (100, 1000, 3000)))
+PROBES.append(P("run_many_args", "run", lambda n, ctx: (["a"] * n, ""), (10, 200, 1000)))

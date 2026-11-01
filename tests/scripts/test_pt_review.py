@@ -386,3 +386,60 @@ def test_contract_seam_logs_incident_by_default_and_verified_on_pass(proj: Path,
 def test_contract_without_seam_does_not_write_a_log(proj: Path):
     assert contract(proj) == 0
     assert not (proj / ".superlite" / "incidents.jsonl").exists()
+
+
+# ----------------------------------------------------------------------------- Review Focus: caps and seams
+
+
+def _git(root: Path, *args: str) -> str:
+    return subprocess.run(["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@t", *args],
+                          capture_output=True, text=True, check=True).stdout.strip()
+
+
+def test_packet_caps(proj: Path):
+    """120 diff lines per file, 600 overall, and the whole packet under the token cap on a large diff."""
+    pkg = proj / "src" / "minisheet"
+    names = [f"big{i}.py" for i in range(8)]
+    for n in names:
+        (pkg / n).write_text("x = 0\n", encoding="utf-8")
+    _git(proj, "init", "-q")
+    _git(proj, "add", "-A")
+    _git(proj, "commit", "-q", "-m", "base")
+    base = _git(proj, "rev-parse", "HEAD")
+    for n in names:
+        (pkg / n).write_text("x = 0\n" + "".join(f"y{j} = {j}\n" for j in range(300)), encoding="utf-8")
+    write_log(proj / "log.jsonl", [
+        {"file": f"src/minisheet/{n}", "line": 2, "context": "assumed", "kind": "assumption"} for n in names])
+    _rc, text = packet(proj, proj / "log.jsonl", base=base, max_tokens="500000")
+    sec = text.split("## 8. Source excerpts", 1)[1]
+    assert "(truncated: 120 of " in sec and "per-file cap" in sec
+    assert "total cap" in sec and "more file(s) omitted" in sec
+    shown = [ln for ln in sec.splitlines() if ln.startswith(("+y", "@@", "+++", "---", "diff ", "index "))]
+    assert len(shown) <= 600
+    _rc, small = packet(proj, proj / "log.jsonl", base=base, max_tokens="6000")
+    assert len(small) <= int(6000 * 1.9)
+
+
+def test_seam_mismatch_is_incident(proj: Path):
+    """A seam signature mismatch is written to the incident log as an open, high-confidence exception."""
+    (proj / "tests").mkdir()
+    (proj / "tests" / "test_ui.py").write_text(CONSUMER_TEST, encoding="utf-8")
+    edit(proj / "src/minisheet/workbook.py", "def set(self, ref: str, raw: str)", "def set(self, ref: str)")
+    log = proj / "seam.jsonl"
+    assert run("contract", "--plan", str(proj / "plan.md"), "--root", str(proj),
+               "--seam", "T1,T2", "--log", str(log)) == 1
+    entries = [json.loads(ln) for ln in log.read_text(encoding="utf-8").splitlines()]
+    assert entries and {e["kind"] for e in entries} == {"exception"}
+    assert all(e["resolution"] == "open" and e["confidence"] == "high" for e in entries)
+    sig = [e for e in entries if "missing parameter 'raw'" in e["context"]]
+    assert len(sig) == 1 and sig[0]["file"] == "src/minisheet/workbook.py"
+
+
+def test_packet_default_paths_follow_root_not_cwd(proj: Path, tmp_path: Path, monkeypatch):
+    _git(proj, "init", "-q")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    assert run("packet", "--plan", str(proj / "plan.md"), "--root", str(proj)) == 0
+    assert (proj / ".superlite" / "review-packet.md").is_file()
+    assert not (elsewhere / ".superlite").exists()

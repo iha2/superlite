@@ -15,31 +15,11 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|PowerShell",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/block-unsafe-kill\"",
-            "shell": "bash"
-          }
-        ]
-      },
-      {
         "matcher": "Edit|Write|NotebookEdit|Bash|PowerShell|Agent",
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/block-coordinator-edits\"",
-            "shell": "bash"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/rewrite-test-runs\"",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/pre-tool\"",
             "shell": "bash"
           }
         ]
@@ -84,17 +64,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/record-human-reply\"",
-            "shell": "bash"
-          },
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/compact-nudge\"",
-            "shell": "bash"
-          },
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/cost-report\"",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/prompt\"",
             "shell": "bash"
           }
         ]

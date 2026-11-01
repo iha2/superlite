@@ -32,7 +32,7 @@
   3  PLAN     The design and the task plan. Human mode adds a review plan.
   4  APPROVE  Human mode: you approve before anything runs. AI mode: skipped.
   5  GATE     Lint checks the plan. Only stable tasks go out.
-  6  BUILD    Agents run side by side, up to 3 tasks each. Haiku: mechanical.
+  6  BUILD    Agents run side by side, sized to the load. Haiku: mechanical.
               Sonnet: the rest.
   7  REVIEW   Reviewers fix their own findings. Tests run in the background.
   8  FINAL    One fresh reviewer reads the packet and tiers the findings.

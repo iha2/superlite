@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# superlite tool launcher: bash on every platform (Git Bash on Windows), no .cmd wrappers.
+#   bash <skill-dir>/scripts/superlite-cli <tool> [args...]
+# <tool> is a script name without extension: incident, plan_tools, predict, pt_review,
+# next_tasks, dispatch, task, wave0, routing, metrics, history, report, budget, run_tests, checkpoint, build_prime, finish, graphify_gate,
+# orchestrator, exclusive, agent_specs, testcmd, testprobe, gitignore, tail, suggest_flow, proto, session, session_hud, mvp_check, host_models,
+# or probe_run (in ../probes). A tool with a .sh file runs under bash; a .py tool runs
+# under one Python start:
+#   1. $SUPERLITE_PYTHON, with no version check: an existing file (the path may contain
+#      spaces) runs quoted, anything else is word-split (a command such as `py -3`). If it
+#      is not runnable, sl warns and goes on to 2.
+#   2. Else the interpreter cached by an earlier call under the same PATH, working
+#      directory and VIRTUAL_ENV, if it is still executable.
+#   3. Else the first candidate of python3, python, `py -3`, `uv run --no-project python`
+#      that is Python 3.10+. Its real path (sys.executable) is cached in
+#      ${SUPERLITE_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/superlite}/python and run
+#      directly, so later calls skip the probe and the py/uv wrappers.
+# Windows Store "python" stubs fail the version check and are never cached. If no Python
+# works, sl says so once and exits 3, and the caller logs the gap and continues without
+# that tool.
+set -u
+# UTF-8 pipes on every platform (Windows defaults Python 3.12 stdout to cp1252).
+export PYTHONUTF8=1 PYTHONIOENCODING=utf-8
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+tool="${1:-}"
+if [ -z "$tool" ]; then
+  echo "usage: superlite-cli <tool> [args...]" >&2
+  exit 2
+fi
+shift
+
+for dir in "$here" "$here/../probes"; do
+  if [ -f "$dir/$tool.sh" ]; then exec bash "$dir/$tool.sh" "$@"; fi
+  if [ -f "$dir/$tool.py" ]; then script="$dir/$tool.py"; break; fi
+done
+if [ -z "${script:-}" ]; then
+  echo "sl: unknown tool '$tool'" >&2
+  exit 2
+fi
+
+if [ -n "${SUPERLITE_PYTHON:-}" ]; then
+  if [ -f "$SUPERLITE_PYTHON" ]; then sp=("$SUPERLITE_PYTHON"); else read -r -a sp <<<"$SUPERLITE_PYTHON"; fi
+  if [ -x "${sp[0]}" ] || command -v "${sp[0]}" >/dev/null 2>&1; then
+    exec "${sp[@]}" "$script" "$@"
+  fi
+  echo "sl: SUPERLITE_PYTHON '$SUPERLITE_PYTHON' is not runnable; searching" >&2
+fi
+
+cache_dir="${SUPERLITE_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/superlite}"
+cache="$cache_dir/python"
+key="${PATH}|${PWD}|${VIRTUAL_ENV:-}"
+if [ -f "$cache" ]; then
+  { IFS= read -r cached; IFS= read -r cached_key; } < "$cache" 2>/dev/null || true
+  if [ -n "${cached:-}" ] && [ "${cached_key:-}" = "$key" ] && [ -x "$cached" ]; then
+    exec "$cached" "$script" "$@"
+  fi
+fi
+
+# Prints the interpreter's own path when it is Python 3.10+; prints nothing otherwise.
+resolve() { "$@" -c 'import sys; sys.exit(1) if sys.version_info < (3, 10) else print(sys.executable.replace("\\", "/"))' 2>/dev/null; }
+
+run_with() {
+  local exe
+  exe="$(resolve "$@")" || return 1
+  [ -n "$exe" ] || return 1
+  if [ -x "$exe" ]; then
+    if mkdir -p "$cache_dir" 2>/dev/null; then
+      printf '%s\n%s\n' "$exe" "$key" > "$cache.$$" 2>/dev/null && mv -f "$cache.$$" "$cache" 2>/dev/null
+    fi
+    exec "$exe" "$script" ${args[@]+"${args[@]}"}
+  fi
+  exec "$@" "$script" ${args[@]+"${args[@]}"}
+}
+
+args=("$@")
+for py in python3 python; do
+  if command -v "$py" >/dev/null 2>&1; then run_with "$py"; fi
+done
+if command -v py >/dev/null 2>&1; then run_with py -3; fi
+if command -v uv >/dev/null 2>&1; then run_with uv run --no-project python; fi
+
+echo "sl: no working Python 3.10+ found (tried \$SUPERLITE_PYTHON, python3, python, py -3, uv); '$tool' skipped" >&2
+exit 3

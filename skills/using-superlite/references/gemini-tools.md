@@ -40,7 +40,7 @@ Gemini CLI has no plugin agents, so the `superlite:*` agents (`implementer`, `im
 | `Explore` | `invoke_agent` with `agent_name: "codebase_investigator"` |
 | `general-purpose` | `invoke_agent` with `agent_name: "generalist"` |
 
-Tier from the `model` and `effort` named in `agents/<name>.md` (implementer, package-reviewer, fixer-sonnet: sonnet-class, medium; implementer-haiku: haiku-class, high; fixer-sonnet-high: sonnet-class, high; final-reviewer and fixer-opus: opus-class, high). If Gemini lets you pick a model for the subagent, use the matching tier; otherwise it inherits the session model. The final-reviewer reads only its review packet and uses no tools: say so in the prompt. Run tests with `bash <skill-dir>/scripts/sl run_tests`.
+Tier from the `model` and `effort` named in `agents/<name>.md` (implementer, package-reviewer, fixer-sonnet: sonnet-class, medium; implementer-haiku: haiku-class, high; fixer-sonnet-high: sonnet-class, high; final-reviewer and fixer-opus: opus-class, high). If Gemini lets you pick a model for the subagent, use the matching tier; otherwise it inherits the session model. The final-reviewer reads only its review packet and uses no tools: say so in the prompt. Run tests with `bash <skill-dir>/scripts/superlite-cli run_tests`.
 
 ### Parallel dispatch
 

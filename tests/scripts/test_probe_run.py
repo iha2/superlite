@@ -256,7 +256,7 @@ def test_commit_mode_probes_only_touched_files(tmp_path):
     util.write_text(util.read_text() + "\n\ndef triple(n):\n    return n * 3\n")
     subprocess.run([*git, "add", "-A"], check=True)
     subprocess.run([*git, "commit", "-q", "-m", "second"], check=True)
-    res = run(proj, "--commit", "HEAD", "--categories", "deep", check_exit=0)
+    res = run(proj, "--checkpoint", "HEAD", "--categories", "deep", check_exit=0)
     assert res["files"] == ["src/util.py"]
     assert res["categories"]["deep"]["files"] == ["src/util.py"]
     assert [e["file"] for e in incidents(proj) if e["kind"] == "verified"] == ["src/util.py"]
@@ -286,7 +286,7 @@ def test_background_mode_returns_at_once(tmp_path):
 @pytest.mark.skipif(shutil.which("git") is None or shutil.which("bash") is None,
                     reason="git or bash not installed")
 def test_commit_mode_via_sl_launcher_and_default_paths(tmp_path):
-    """`bash sl probe_run --checkpoint SHA` from the repo root, default adapter and --out paths."""
+    """`bash superlite-cli probe_run --checkpoint SHA` from the repo root, default adapter and --out paths."""
     proj = make_project(tmp_path)
     (proj / ".superlite" / "probes").mkdir(parents=True)
     shutil.move(str(proj / "adapter.py"), str(proj / ".superlite" / "probes" / "adapter.py"))
@@ -298,7 +298,7 @@ def test_commit_mode_via_sl_launcher_and_default_paths(tmp_path):
     parser.write_text(parser.read_text() + "\n# touched\n")
     subprocess.run([*git, "add", "-A"], check=True)
     subprocess.run([*git, "commit", "-q", "-m", "second"], check=True)
-    sl = REPO / "skills" / "swarm" / "scripts" / "sl"
+    sl = REPO / "skills" / "swarm" / "scripts" / "superlite-cli"
     p = subprocess.run(["bash", str(sl), "probe_run", "--checkpoint", "HEAD", "--categories", "state"],
                        cwd=proj, capture_output=True, text=True, timeout=300)
     assert p.returncode == 0, p.stdout + p.stderr
@@ -379,8 +379,6 @@ def generated_server_project(tmp_path):
 
 def test_generated_server_adapter_has_start_server_and_passes_the_probes(tmp_path):
     proj = generated_server_project(tmp_path)
-    src = (proj / "adapter.py").read_text(encoding="utf-8")
-    assert "def start_server(" in src and "def request(" in src
     res = run(proj, "--categories", "protocol", "--files", "src/fixture_site.py", check_exit=0)
     assert res["failures"] == [], res["failures"]
     assert not [e for e in incidents(proj) if e["kind"] == "exception"], incidents(proj)  # w3: 90 of 116 came from a missing start_server

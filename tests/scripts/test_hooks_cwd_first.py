@@ -31,7 +31,7 @@ def run(hook, hub, payload, env_extra=None):
 def test_reply_recorded_in_worktree_not_hub(tree):
     hub, wt = tree
     (wt / ".superlite" / "orchestrator.json").write_text(HUMAN)
-    r = run("record-human-reply", hub, {"cwd": str(wt), "prompt": "hello there"})
+    r = run("prompt", hub, {"cwd": str(wt), "prompt": "hello there"})
     assert r.returncode == 0
     assert (wt / ".superlite" / "human-replies.jsonl").exists()
     assert not (hub / ".superlite" / "human-replies.jsonl").exists()
@@ -40,7 +40,7 @@ def test_reply_recorded_in_worktree_not_hub(tree):
 def test_reply_at_root_unchanged(tmp_path):
     (tmp_path / ".superlite").mkdir()
     (tmp_path / ".superlite" / "orchestrator.json").write_text(HUMAN)
-    run("record-human-reply", tmp_path, {"cwd": str(tmp_path), "prompt": "hello there"})
+    run("prompt", tmp_path, {"cwd": str(tmp_path), "prompt": "hello there"})
     assert (tmp_path / ".superlite" / "human-replies.jsonl").exists()
 
 
@@ -48,7 +48,7 @@ def test_guard_denies_code_write_from_worktree_run(tree):
     hub, wt = tree
     (wt / ".superlite" / "orchestrator.json").write_text('{"mode": "human", "approved": true}')
     (wt / ".superlite" / "stable.json").write_text("{}")
-    r = run("block-coordinator-edits", hub,
+    r = run("pre-tool", hub,
             {"tool_name": "Write", "tool_input": {"file_path": str(wt / "src" / "a.py")}, "cwd": str(wt)})
     assert r.returncode == 2
 
@@ -57,7 +57,7 @@ def test_guard_prefers_worktree_over_hub_run(tree):
     hub, wt = tree
     (hub / ".superlite" / "orchestrator.json").write_text(HUMAN)
     (wt / ".superlite" / "orchestrator.json").write_text('{"mode":"ai","approved":false}')
-    r = run("block-coordinator-edits", hub,
+    r = run("pre-tool", hub,
             {"tool_name": "Write", "tool_input": {"file_path": str(wt / "a.txt")}, "cwd": str(wt)})
     assert r.returncode == 0
 
@@ -82,15 +82,16 @@ def test_compact_nudge_reads_worktree_run(tree):
     (hub / ".superlite" / "orchestrator.json").write_text(HUMAN)
     (hub / ".superlite" / "last-compact").write_text("")  # fresh at the hub: not due
     (wt / ".superlite" / "orchestrator.json").write_text(HUMAN)  # no stamp: due
-    r = run("compact-nudge", hub, {"cwd": str(wt)}, {"CLAUDE_PLUGIN_ROOT": str(ROOT)})
+    r = run("prompt", hub, {"cwd": str(wt)}, {"CLAUDE_PLUGIN_ROOT": str(ROOT), "SUPERLITE_NO_SESSION_HUD": "1",
+                                              "SUPERLITE_NO_COST_REPORT": "1"})
     assert r.stdout.strip() != ""
 
 
 def test_hooks_parse_under_bash(tree):
     if not BASH:
         pytest.skip("bash not available")
-    for h in ("record-human-reply", "block-coordinator-edits", "capture-agent-launch",
-              "capture-agent-stop", "compact-nudge"):
+    for h in ("pre-tool", "prompt", "_preamble", "_kill", "_edits", "_rewrite", "_reply", "_nudge",
+              "capture-agent-launch", "capture-agent-stop"):
         assert subprocess.run([BASH, "-n", str(HOOKS / h)]).returncode == 0
 
 
@@ -102,7 +103,7 @@ def test_guard_odd_cwd_keeps_hub_run_and_never_crashes(tree, cwd):
     payload = {"tool_name": "Write", "tool_input": {"file_path": str(hub / "src" / "a.py")}}
     if cwd is not None:
         payload["cwd"] = cwd
-    r = run("block-coordinator-edits", hub, payload)
+    r = run("pre-tool", hub, payload)
     assert r.returncode == 2
     assert "syntax error" not in r.stderr
 
@@ -125,13 +126,13 @@ def named_tree(tmp_path, request):
 
 def test_guard_resolves_run_from_cwd_with_escaped_quote(named_tree):
     hub, wt = named_tree
-    r = run("block-coordinator-edits", hub, {**AGENT, "cwd": str(wt)})
+    r = run("pre-tool", hub, {**AGENT, "cwd": str(wt)})
     assert r.returncode == 2, (wt.name, r.stderr)
 
 
 def test_reply_lands_in_worktree_with_escaped_quote(named_tree):
     hub, wt = named_tree
-    r = run("record-human-reply", hub, {"cwd": str(wt), "prompt": "hello there"})
+    r = run("prompt", hub, {"cwd": str(wt), "prompt": "hello there"})
     assert r.returncode == 0
     assert (wt / ".superlite" / "human-replies.jsonl").exists(), wt.name
     assert not (hub / ".superlite" / "human-replies.jsonl").exists()

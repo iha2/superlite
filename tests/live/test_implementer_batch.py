@@ -26,3 +26,4 @@ def test_failed_task_does_not_stop_batch(require_claude):
     text = out.detail.upper()
     assert "BLOCKED" in text
     assert "T4" in text  # rest of batch still reported
+    out.mark_pass()

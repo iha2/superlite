@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-GUARD = ROOT / "hooks" / "block-coordinator-edits"
-REPLY = ROOT / "hooks" / "record-human-reply"
+GUARD = ROOT / "hooks" / "pre-tool"
+REPLY = ROOT / "hooks" / "prompt"
 _GIT_BASH = r"C:\Program Files\Git\bin\bash.exe"
 BASH = _GIT_BASH if os.name == "nt" and os.path.exists(_GIT_BASH) else shutil.which("bash")
 
@@ -52,9 +52,9 @@ def test_human_allows_inline_code_writes(human):
 
 
 def test_human_denial_names_the_review_plan_and_the_inline_path(human):
-    r = bash(human, 'bash "$SL" dispatch implementer t1')
+    r = bash(human, 'bash "$CLI" dispatch implementer t1')
     assert r.returncode == 2
-    assert NEXT in r.stderr and "sl orchestrator approve --review" in r.stderr and "yes in chat" in r.stderr
+    assert NEXT in r.stderr and "superlite-cli orchestrator approve --review" in r.stderr and "yes in chat" in r.stderr
 
 
 def test_human_allows_review_plan_and_state_files(human):
@@ -65,8 +65,8 @@ def test_human_allows_review_plan_and_state_files(human):
 
 
 @pytest.mark.parametrize("cmd", [
-    'bash "$SL" dispatch implementer t1', "sl assign t1", 'bash "$SL" wave0', 'bash "$SL" build_prime --plan p.md',
-    'bash "$SL" checkpoint T1', 'bash "$SL" commit_task T1', 'bash "$SL" finish --plan p.md',
+    'bash "$CLI" dispatch implementer t1', "superlite-cli assign t1", 'bash "$CLI" wave0', 'bash "$CLI" build_prime --plan p.md',
+    'bash "$CLI" checkpoint T1', 'bash "$CLI" finish --plan p.md',
 ])
 def test_human_denies_bash_builds(human, cmd):
     r = bash(human, cmd)
@@ -75,11 +75,11 @@ def test_human_denies_bash_builds(human, cmd):
 
 
 @pytest.mark.parametrize("cmd", [
-    "ls", "git status", "cat README.md", "grep -rn x .", "python3 -m pytest -q", 'bash "$SL" run_tests --full',
+    "ls", "git status", "cat README.md", "grep -rn x .", "python3 -m pytest -q", 'bash "$CLI" run_tests --full',
     "echo hi > hello.txt", "sed -i s/a/b/ src/a.py", "echo x | tee hello.txt", "touch x; echo a >> y.py",
     "python3 -c \"open('hello.txt','w').write('hi')\"", "git apply p.patch", "rm src/a.py",
-    'bash "$SL" orchestrator approve --review docs/plans/a.review.md', "sl orchestrator status",
-    'bash "$SL" next_tasks', "echo hi > .superlite/progress.md",
+    'bash "$CLI" orchestrator approve --review docs/plans/a.review.md', "superlite-cli orchestrator status",
+    'bash "$CLI" next_tasks', "echo hi > .superlite/progress.md",
 ])
 def test_human_allows_reads_and_orchestrator(human, cmd):
     assert bash(human, cmd).returncode == 0, cmd
@@ -123,20 +123,20 @@ def test_protected_files_denied_in_every_state(tmp_path, state, name):
                      ("Edit", {"file_path": str(proj / ".superlite" / name)})):
         r = guard(proj, tool, ti)
         assert r.returncode == 2, (tool, ti)
-        assert "sl orchestrator" in r.stderr
+        assert "superlite-cli orchestrator" in r.stderr
     for cmd in (f"echo x > .superlite/{name}", f"echo x >> .superlite/{name}", f"sed -i s/a/b/ .superlite/{name}",
                 f"echo x | tee .superlite/{name}", f"rm .superlite/{name}",
                 f"python3 -c \"open('.superlite/{name}','w').write('x')\"",
                 f"cat > .superlite/{name} <<'EOF'\n{{}}\nEOF"):
         r = bash(proj, cmd)
         assert r.returncode == 2, cmd
-        assert "sl orchestrator" in r.stderr
+        assert "superlite-cli orchestrator" in r.stderr
 
 
 def test_protected_reads_and_sl_orchestrator_allowed(tmp_path):
     proj = make(tmp_path, "ai")
     for cmd in ("cat .superlite/orchestrator.json", "grep approved .superlite/orchestrator.json",
-                'bash "$SL" orchestrator mode human', "sl orchestrator approve --review docs/plans/a.review.md"):
+                'bash "$CLI" orchestrator mode human', "superlite-cli orchestrator approve --review docs/plans/a.review.md"):
         assert bash(proj, cmd).returncode == 0, cmd
 
 
@@ -150,12 +150,12 @@ def test_guard_fails_open(human):
         assert r.returncode == 0 and r.stderr == "", raw
 
 
-# ---- record-human-reply ----
+# ---- the reply recorder in hooks/prompt ----
 
 def reply(proj, prompt, raw=None):
     if raw is None:
         raw = json.dumps({"hook_event_name": "UserPromptSubmit", "cwd": str(proj), "prompt": prompt})
-    env = {**os.environ}
+    env = {**os.environ, "SUPERLITE_NO_AUTOCOMPACT": "1"}   # the prompt hook also nudges to compact
     env.pop("CLAUDE_PROJECT_DIR", None)
     return subprocess.run([BASH, str(REPLY)], input=raw, capture_output=True, text=True, env=env, cwd=str(proj))
 
@@ -198,7 +198,7 @@ def test_reply_approves_a_thumbs_up(human):
     "unapproved", "yesterday", "nothing", "what about the schema?", "Should I approve it?",
     "can we go ahead?", "not approved", "not sure", "not perfect", "make sure the tests cover empty files",
     "I'd like it if the button were bigger",
-    "The guard is not registered, so the gate is held only by the sl tools refusing to run until you approve. "
+    "The guard is not registered, so the gate is held only by the superlite-cli tools refusing to run until you approve. "
     "Can we fix this as well or am I misunderstanding?",
 ])
 def test_reply_does_not_approve(human, prompt):
@@ -241,11 +241,11 @@ def test_reply_fails_open(human):
 
 def test_registration_and_endings():
     data = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
-    guard_entry = [e for e in data["PreToolUse"] if e["hooks"][0]["command"].endswith("block-coordinator-edits\"")][0]
+    (guard_entry,) = data["PreToolUse"]
+    assert guard_entry["hooks"][0]["command"].endswith("pre-tool\"")
     assert "Agent" in guard_entry["matcher"].split("|")
-    ups = [h["command"] for h in data["UserPromptSubmit"][0]["hooks"]]
-    assert ups[0] == 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/record-human-reply"'
-    assert 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/cost-report"' in ups
+    ups = [h["command"] for e in data["UserPromptSubmit"] for h in e["hooks"]]
+    assert ups == ['bash "${CLAUDE_PLUGIN_ROOT}/hooks/prompt"']
     for h in (GUARD, REPLY):
         assert b"\r" not in h.read_bytes()
 
@@ -254,6 +254,7 @@ def cursor_reply(proj, prompt, roots, cwd):
     raw = json.dumps({"hook_event_name": "beforeSubmitPrompt", "prompt": prompt, "conversation_id": "c1",
                       "generation_id": "g1", "attachments": [], "workspace_roots": roots})
     env = {k: v for k, v in os.environ.items() if k not in ("CLAUDE_PROJECT_DIR", "CURSOR_PROJECT_DIR")}
+    env["SUPERLITE_NO_AUTOCOMPACT"] = "1"
     return subprocess.run([BASH, str(REPLY)], input=raw, capture_output=True, text=True, env=env, cwd=str(cwd))
 
 
@@ -285,14 +286,14 @@ def test_cursor_reply_inactive_still_continues(tmp_path):
 
 
 def launcher(name):
-    return f"git -c 'alias.sl-hook=!cd \"${{GIT_PREFIX:-.}}\" && exec bash ./hooks/{name}' sl-hook"
+    return f"git -c 'alias.superlite-hook=!cd \"${{GIT_PREFIX:-.}}\" && exec bash ./hooks/{name}' superlite-hook"
 
 
 def test_cursor_registration():
     data = json.loads((ROOT / "hooks" / "hooks-cursor.json").read_text(encoding="utf-8"))["hooks"]
     want = {"sessionStart": ["session-start"],
-            "beforeSubmitPrompt": ["record-human-reply", "cost-report"],
-            "preToolUse": ["block-coordinator-edits"], "subagentStart": ["capture-agent-launch"],
+            "beforeSubmitPrompt": ["prompt"],
+            "preToolUse": ["pre-tool"], "subagentStart": ["capture-agent-launch"],
             "subagentStop": ["capture-agent-stop", "capture-host-usage"],
             "stop": ["capture-host-usage"], "afterAgentResponse": ["capture-host-usage"]}
     assert {k: [e["command"] for e in v] for k, v in data.items()} == {
@@ -315,6 +316,7 @@ def test_cursor_launcher_runs_without_bash_on_path(human, tmp_path_factory):
     path = windows_path()
     clean = {k: v for k, v in os.environ.items() if k.upper() not in ("PATH", "CLAUDE_PROJECT_DIR", "CURSOR_PROJECT_DIR")}
     clean["Path"] = path
+    clean["SUPERLITE_NO_AUTOCOMPACT"] = "1"
     probe = subprocess.run(["powershell", "-NoProfile", "-Command", "[bool](Get-Command git -ErrorAction SilentlyContinue)"],
                            capture_output=True, text=True, env=clean)
     if probe.stdout.strip() != "True":
@@ -322,13 +324,13 @@ def test_cursor_launcher_runs_without_bash_on_path(human, tmp_path_factory):
     payload = tmp_path_factory.mktemp("payload") / "in.json"
     payload.write_text(json.dumps({"hook_event_name": "beforeSubmitPrompt", "prompt": "approve",
                                    "workspace_roots": [cursor_root(human)]}), encoding="utf-8")
-    ps = (f"Get-Content '{payload}' -Raw | & {{ $input | {launcher('record-human-reply')} }}")
+    ps = (f"Get-Content '{payload}' -Raw | & {{ $input | {launcher('prompt')} }}")
     r = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True, env=clean, cwd=str(ROOT))
     assert json.loads(r.stdout.lstrip("\ufeff")) == {"continue": True}, r.stderr
     assert lines(human)[0]["approves"] is True
 
 
-# ---- block-coordinator-edits, Cursor payloads ----
+# ---- the coordinator guard in hooks/pre-tool, Cursor payloads ----
 
 def cursor_guard(proj, tool, tool_input, cwd, sub=False):
     d = {"conversation_id": "c1", "generation_id": "g1", "model": "claude-opus-5-5", "tool_name": tool,
@@ -355,11 +357,11 @@ def plugin_dir(tmp_path_factory):
 def test_cursor_coordinator_denied_from_workspace_root(human, plugin_dir):
     denied(cursor_guard(human, "Task", {"subagent_type": "implementer", "prompt": "x"}, plugin_dir), NEXT)
     denied(cursor_guard(human, "Task", {"subagent_type": "generalPurpose", "prompt": "x"}, plugin_dir), NEXT)
-    denied(cursor_guard(human, "Shell", {"command": 'bash "$SL" dispatch --plan p.md', "cwd": ""}, plugin_dir), NEXT)
+    denied(cursor_guard(human, "Shell", {"command": 'bash "$CLI" dispatch --plan p.md', "cwd": ""}, plugin_dir), NEXT)
     denied(cursor_guard(human, "Write", {"file_path": str(human / ".superlite" / "orchestrator.json")}, plugin_dir),
-           "sl orchestrator")
+           "superlite-cli orchestrator")
     denied(cursor_guard(human, "Delete", {"file_path": str(human / ".superlite" / "human-replies.jsonl")}, plugin_dir),
-           "sl orchestrator")
+           "superlite-cli orchestrator")
 
 
 def test_cursor_research_and_reads_allowed(human, plugin_dir):
@@ -419,7 +421,7 @@ def test_latency(human):
         assert t < max(0.6, base + 0.35), (hook.name, t, base)
 
 
-# ---- the session folder and the folder sl runs in can differ (the desktop app moves the working directory) ----
+# ---- the session folder and the folder superlite-cli runs in can differ (the desktop app moves the working directory) ----
 
 def test_reply_recorded_when_the_prompt_cwd_is_below_the_project(human):
     sub = human / "movedocs" / "api"
@@ -433,7 +435,7 @@ def test_reply_recorded_when_the_prompt_cwd_is_below_the_project(human):
 def test_guard_finds_the_run_from_a_folder_below_the_project(human):
     sub = human / "movedocs" / "api"
     sub.mkdir(parents=True)
-    raw = json.dumps({"tool_name": "Bash", "tool_input": {"command": 'bash "$SL" dispatch implementer t1'}, "cwd": str(sub)})
+    raw = json.dumps({"tool_name": "Bash", "tool_input": {"command": 'bash "$CLI" dispatch implementer t1'}, "cwd": str(sub)})
     env = {k: v for k, v in os.environ.items() if k != "CLAUDE_PROJECT_DIR"}
     r = subprocess.run([BASH, str(GUARD)], input=raw, capture_output=True, text=True, env=env)
     assert r.returncode == 2 and NEXT in r.stderr

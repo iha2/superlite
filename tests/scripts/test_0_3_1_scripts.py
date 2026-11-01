@@ -17,8 +17,8 @@ SCRIPTS = HERE.parents[1] / "skills" / "swarm" / "scripts"
 FIX = HERE / "fixtures"
 sys.path.insert(0, str(SCRIPTS))
 
-# the real sibling tools, not the fake sl launcher
-ENV = {k: v for k, v in os.environ.items() if k != "SUPERLITE_SL"}
+# the real sibling tools, not the fake superlite-cli launcher
+ENV = {k: v for k, v in os.environ.items() if k != "SUPERLITE_CLI"}
 ENV["PYTHONIOENCODING"] = "utf-8"
 
 
@@ -148,7 +148,7 @@ def test_next_tasks_skips_draft_and_transitive_dependents(tmp_path):
     r = run("next_tasks", "--plan", plan, "--cap", 10)
     assert r.returncode == 0, r.stderr
     assert sorted(r.stdout.split()) == ["T1", "T5"]
-    r = run("next_tasks", "--plan", plan, "--committed", "T1,T5")
+    r = run("next_tasks", "--plan", plan, "--checkpointed", "T1,T5")
     assert r.stdout.split() == []
 
 

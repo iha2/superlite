@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# PreToolUse hook, one process per tool call: the guards run in order and the first denial wins.
+#   1. _kill     commands that kill processes by name or pattern
+#   2. _edits    the coordinator writing project code, orchestrating before approval, a wrong batch
+#   3. _rewrite  raw test runs become background `superlite-cli run_tests`; hidden test waits are denied
+# A denial is exit 2 with the reason on stderr; a rewrite prints the updated command as hook JSON and ends
+# the run. Anything else, including malformed input, exits 0 with no output (fail open).
+# Bash builtins only (each external process costs ~250 ms on Windows).
+
+# Byte-wise matching: every pattern here is ASCII, and bash 3.2 is 3x slower on long strings in a UTF-8 locale.
+LC_ALL=C
+
+here="${BASH_SOURCE[0]//\\//}"
+case "$here" in */*) here="${here%/*}" ;; *) here="." ;; esac
+. "$here/_preamble" 2>/dev/null || exit 0
+. "$here/_kill"
+. "$here/_edits"
+. "$here/_rewrite"
+
+guard_kill
+guard_edits
+guard_rewrite
+exit 0

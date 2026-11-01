@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# UserPromptSubmit / beforeSubmitPrompt hook, one process per prompt, in order:
+#   1. _reply  record the human's reply while a human-orchestrator run waits for approval
+#   2. _nudge  the compact nudge when a session is due for compact
+#   3. the session HUD line and the live cost line, added only when their text changed since the last
+#      prompt of this session (remembered in <run folder>/prompt-last), and always on the first prompt
+# One JSON object comes out: Claude Code gets hookSpecificOutput.additionalContext, or nothing; Cursor
+# (beforeSubmitPrompt) always gets {"continue":true} plus additional_context when there is text.
+# SUPERLITE_NO_SESSION_HUD=1 silences the HUD, SUPERLITE_NO_COST_REPORT=1 the cost line.
+# Exit 0 always (fail open). Bash builtins plus the Python helpers.
+
+here="${BASH_SOURCE[0]//\\//}"
+case "$here" in */*) here="${here%/*}" ;; *) here="." ;; esac
+. "$here/_preamble" 2>/dev/null || exit 0
+. "$here/_reply"
+. "$here/_nudge"
+
+is_cursor=0
+re_cursor='"hook_event_name"[[:space:]]*:[[:space:]]*"beforeSubmitPrompt"'
+[[ $input =~ $re_cursor ]] && is_cursor=1
+[ -n "${CURSOR_AGENT:-}${CURSOR_TRACE_ID:-}${CURSOR_PLUGIN_ROOT:-}" ] && is_cursor=1
+
+py="${SUPERLITE_PYTHON:-}"
+if [ -z "$py" ]; then
+  if command -v python >/dev/null 2>&1; then py=python; else py=python3; fi
+fi
+
+record_reply
+compact_nudge
+
+# The HUD and the cost line read the folder the host names (proj0), not the run found above it.
+hud=""
+hud_script="$root/skills/swarm/scripts/session_hud.py"
+if [ "${SUPERLITE_NO_SESSION_HUD:-}" != "1" ] && [ -f "$hud_script" ] && { [ -d "$proj0/.superlite" ] || [ -f "$proj0/.git" ]; }; then
+  hud="$("$py" "$hud_script" "$proj0" 2>/dev/null)" || hud=""
+fi
+cost=""
+if [ "${SUPERLITE_NO_COST_REPORT:-}" != "1" ] && [ -d "$proj0/.superlite" ]; then
+  cost="$("$py" "$root/skills/swarm/scripts/cost.py" line "$proj0/.superlite" 2>/dev/null)" || cost=""
+fi
+lines="$hud"
+if [ -n "$cost" ]; then lines="${lines:+$lines$'\n'}$cost"; fi
+
+# Same text as the last prompt of this session: say nothing.
+last_file="$proj0/.superlite/prompt-last"
+if [ -d "$proj0/.superlite" ]; then
+  jstr session_id; sid="$REPLY"
+  [ -n "$sid" ] || { jstr conversation_id; sid="$REPLY"; }
+  mark="$sid"$'\n'"$lines"
+  last=""
+  [ -f "$last_file" ] && IFS= read -r -d '' last < "$last_file"
+  printf '%s' "$mark" > "$last_file" 2>/dev/null
+  [ -n "$lines" ] && [ "$mark" = "$last" ] && lines=""
+fi
+
+ctx="$NUDGE"
+if [ -n "$lines" ]; then ctx="${ctx:+$ctx$'\n'}$lines"; fi
+if [ -z "$ctx" ]; then
+  [ "$is_cursor" = 1 ] && printf '{"continue":true}\n'
+  exit 0
+fi
+esc ctx
+if [ "$is_cursor" = 1 ]; then
+  printf '{"continue":true,"additional_context":"%s"}\n' "$ctx"
+elif [ -n "${CLAUDE_CODE:-}" ] || [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"%s"}}\n' "$ctx"
+else
+  printf '{"additionalContext":"%s"}\n' "$ctx"
+fi
+exit 0

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-HOOK = ROOT / "hooks" / "block-coordinator-edits"
+HOOK = ROOT / "hooks" / "pre-tool"
 _GIT_BASH = r"C:\Program Files\Git\bin\bash.exe"
 BASH = _GIT_BASH if os.name == "nt" and os.path.exists(_GIT_BASH) else shutil.which("bash")
 
@@ -116,7 +116,7 @@ def test_blocks_powershell_write(proj):
 @pytest.mark.parametrize("cmd", [
     "cat src/app.py", "grep -rn foo src", "ls -la", "git status", "git log --oneline", "git diff",
     "git commit -m 'fix a > b'", "python3 -m pytest -q", "pytest tests 2>&1 | tail -5",
-    "npm test 2>/dev/null", 'bash "$SL" dispatch implementer t1', 'bash "$SL" fix F-T1-1 > .superlite/out.txt',
+    "npm test 2>/dev/null", 'bash "$CLI" dispatch implementer t1', 'bash "$CLI" fix F-T1-1 > .superlite/out.txt',
     "echo hi > .superlite/progress.md", "cat > docs/plans/p.md <<'EOF'\nuse a -> b > c\nEOF",
     "sed -n 1,5p src/app.py", "sed -i s/a/b/ .superlite/progress.md", "echo hi > /dev/null",
     "echo hi > /tmp/x.txt", "cp src/a.py /tmp/a.py", "rm -f /tmp/x", "python3 -c \"print(open('a.py').read())\"",
@@ -145,9 +145,9 @@ def test_other_tools_ignored(proj):
 
 def test_hooks_json_registers_hook():
     data = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))
-    e = data["hooks"]["PreToolUse"][1]
+    (e,) = data["hooks"]["PreToolUse"]
     assert e["matcher"] == "Edit|Write|NotebookEdit|Bash|PowerShell|Agent"
-    assert e["hooks"][0]["command"] == 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/block-coordinator-edits"'
+    assert [h["command"] for h in e["hooks"]] == ['bash "${CLAUDE_PLUGIN_ROOT}/hooks/pre-tool"']
 
 
 def test_hook_has_lf_endings():
@@ -245,3 +245,39 @@ def test_typical_allowed_call_is_fast(proj):
     for hook_raw in (raw, json.dumps({"tool_name": "Edit", "tool_input": {"file_path": "x"}, "agent_id": "a"})):
         t = best([BASH, str(HOOK)], hook_raw)
         assert t < max(0.6, base + 0.35), (t, base)
+
+
+def test_gate_blocks_new_name(tmp_path):
+    (tmp_path / ".superlite").mkdir()
+    (tmp_path / ".superlite" / "orchestrator.json").write_text('{"mode": "human", "approved": false}')
+    for cmd in ("bash x/superlite-cli dispatch --plan p", 'bash "$CLI" dispatch --plan p',
+                "bash ${CLI} assign t1", "bash skills/swarm/scripts/superlite-cli wave0"):
+        assert bash(tmp_path, cmd).returncode == 2, cmd
+    assert bash(tmp_path, "bash x/superlite-cli plan_tools lint --plan p").returncode == 0
+
+
+def test_gate_blocks_every_launcher_form(tmp_path):
+    (tmp_path / ".superlite").mkdir()
+    (tmp_path / ".superlite" / "orchestrator.json").write_text('{"mode": "human", "approved": false}')
+    for tool in ("dispatch", "assign", "wave0", "checkpoint", "finish", "build_prime"):
+        for form in ("superlite-cli %s", 'bash "/a b/skills/swarm/scripts/superlite-cli" %s', '"$CLI" %s',
+                     "${CLI} %s", 'bash "$CLI" %s', 'bash "${CLI}" %s',
+                     "cd d && bash ./skills/swarm/scripts/superlite-cli %s", "FOO=1 bash ./x/superlite-cli %s"):
+            cmd = form % tool
+            assert bash(tmp_path, cmd).returncode == 2, cmd
+    for cmd in ("superlite-cli orchestrator status", "superlite-cli task T1", 'bash "$CLI" task T1'):
+        assert bash(tmp_path, cmd).returncode == 0, cmd
+
+
+def test_one_process_per_bash_call(proj):
+    """pre-tool runs the unsafe-kill, coordinator and test-run guards in that order; the first denial wins."""
+    data = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]["PreToolUse"]
+    assert sum("Bash" in e["matcher"].split("|") for e in data) == 1
+    r = bash(proj, "pytest tests && " + "pk" + "ill -f node")
+    assert r.returncode == 2 and "by name or pattern" in r.stderr and r.stdout == ""
+    r = bash(proj, "echo x > src/app.py && pytest tests")
+    assert r.returncode == 2 and "must not write project code" in r.stderr
+    r = bash(proj, "pytest")
+    out = json.loads(r.stdout)
+    assert r.returncode == 0
+    assert "run_tests --full" in out["hookSpecificOutput"]["updatedInput"]["command"]

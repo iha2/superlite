@@ -5,7 +5,7 @@ description: Use in feature mode after the feature plan is approved, to cut the 
 
 # Feature prototype
 
-The prototype is the smallest thing that stands up and shows the feature working, inside just enough of the original app to run. It lives in its own git worktree (`sl proto start`), is built by a normal superlite build scoped to it, and is tried by the human (`sl proto tryout`) before the integration build touches the real code. Its code is later ported, never merged, so stubs and fakes never reach the user's branch.
+The prototype is the smallest thing that stands up and shows the feature working, inside just enough of the original app to run. It lives in its own git worktree (`superlite-cli proto start`), is built by a normal superlite build scoped to it, and is tried by the human (`superlite-cli proto tryout`) before the integration build touches the real code. Its code is later ported, never merged, so stubs and fakes never reach the user's branch.
 
 ## Keep, stub, drop
 
@@ -30,13 +30,13 @@ When the target is a web UI, the code map names the repo's UI component set: the
 ## Sandbox levels
 
 - **L1 stubs (default):** the worktree reuses installed dependencies and every service the feature does not change is stubbed. Seconds to set up.
-- **L2 isolated environment:** only when the plan says the feature depends on real data shapes (a schema change, a migration, a query over real-looking data): the worktree gets its own dependency install, a seeded fixture database with realistic shapes, a copied config with secrets replaced by test values, and offset ports. Record the level and why as a `Ruling:` and pass `--level L2` to `sl proto start`.
+- **L2 isolated environment:** only when the plan says the feature depends on real data shapes (a schema change, a migration, a query over real-looking data): the worktree gets its own dependency install, a seeded fixture database with realistic shapes, a copied config with secrets replaced by test values, and offset ports. Record the level and why as a `Ruling:` and pass `--level L2` to `superlite-cli proto start`.
 - Never real secrets or production data in either level.
 
 ## The prototype plan
 
-- When `sl agent_specs status` is on, keep the feature `.spec.md` in view (acceptance from the spec); optional task-local notes stay under the worktree's `.superlite/specs/`.
+- When `superlite-cli agent_specs status` is on, keep the feature `.spec.md` in view (acceptance from the spec); optional task-local notes stay under the worktree's `.superlite/specs/`.
 - An agent-format plan in the worktree, `<worktree>/docs/plans/<date>-<topic>.proto.md`, at most 8 tasks and about a quarter of the integration estimate (cost and time). A larger plan means the scope is wrong: cut it back to what the acceptance checks need.
 - Wave 0 sets up the container (the stubs, fakes and fixtures, the run command); the feature tasks then run in parallel, Haiku for mechanical pieces and Sonnet for the rest.
 - Its tests are written against the feature plan's acceptance checks, so they carry into the integration build as its acceptance tests.
-- The run command goes into `sl proto start --run "<command>"` (or `sl proto tryout --run`), and how to reach it into `--reach`.
+- The run command goes into `superlite-cli proto start --run "<command>"` (or `superlite-cli proto tryout --run`), and how to reach it into `--reach`.

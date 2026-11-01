@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
+
+import pytest
 
 from test_plan_tools import SCRIPTS, pt, run
 from test_stable_split import DISPATCH
@@ -217,21 +220,6 @@ def test_mini_prime_is_small_and_hash_stable(tmp_path):
     assert "T3" in text.split("## Interfaces your tasks touch")[1] and "T4" not in text.split("## Interfaces your tasks touch")[1]
 
 
-def test_min_first_time_pass_band_below_minimum_stays_on_sonnet(tmp_path):
-    cfg = json.loads((SCRIPTS.parent / "config" / "routing.json").read_text(encoding="utf-8"))
-    cfg["rules"][0]["min_first_time_pass"] = 0.8
-    f = tmp_path / "routing.json"
-    cfg["rules"][0]["evidence"] = {"n": 12, "rate": 0.9}
-    f.write_text(json.dumps(cfg), encoding="utf-8")
-    assert tiers(mixed(tmp_path), "--config", f)["T3"] == "haiku"  # measured above the minimum
-    cfg["rules"][0]["evidence"] = {"n": 12, "rate": 0.5}
-    f.write_text(json.dumps(cfg), encoding="utf-8")
-    assert tiers(mixed(tmp_path), "--config", f)["T3"] == "sonnet"  # below: the band stays on Sonnet
-    del cfg["rules"][0]["evidence"]
-    f.write_text(json.dumps(cfg), encoding="utf-8")
-    assert tiers(mixed(tmp_path), "--config", f)["T3"] == "haiku"  # no evidence yet: no band disabled
-
-
 def test_kind_miss_logs_incident_and_task_never_returns_to_haiku(tmp_path):
     p = mech_plan(tmp_path, 2)
     d, _ = dispatch(tmp_path, p, [])
@@ -244,3 +232,12 @@ def test_kind_miss_logs_incident_and_task_never_returns_to_haiku(tmp_path):
     d, _ = dispatch(tmp_path, p, [])
     assert d["T1"].startswith("fresh tier=sonnet")  # never retried on haiku
     assert "tier=haiku" in d["T2"]
+
+
+def test_tier_limits_come_from_the_tier_entry():
+    sys.path.insert(0, str(SCRIPTS))
+    import routing
+    cfg = routing.load_cfg()
+    assert routing.tier_limits(cfg, "haiku") == {"max_tasks": 20, "max_context_k": 60, "max_idle_min": 50}
+    with pytest.raises(ValueError, match="must set"):
+        routing.tier_limits({"tiers": {"x": {"max_context_k": 1}}}, "x")

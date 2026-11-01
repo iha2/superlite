@@ -27,7 +27,7 @@ Antigravity has no plugin agents, so the `superlite:*` agents (`implementer`, `i
 | final-reviewer | `research` (read-only, no tools needed) | opus, high |
 | Explore | `research` | haiku or sonnet |
 
-If you cannot choose a model per call, keep the tier in mind and do not let the final-reviewer write files. Run tests with `bash <skill-dir>/scripts/sl run_tests`, not an agent. For several independent agents in a wave, issue the `invoke_subagent` calls in one response.
+If you cannot choose a model per call, keep the tier in mind and do not let the final-reviewer write files. Run tests with `bash <skill-dir>/scripts/superlite-cli run_tests`, not an agent. For several independent agents in a wave, issue the `invoke_subagent` calls in one response.
 
 ## Task tracking
 
