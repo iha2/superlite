@@ -11,12 +11,12 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SELF = Path(__file__).resolve().relative_to(ROOT).as_posix()
-SKIP_DIRS = ("docs/plans/", "docs/specs/", "bench/")
+SKIP_DIRS = ("docs/plans/", "docs/specs/", "bench/results/")
 BINARY = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".pyc", ".zip", ".woff", ".woff2", ".pdf"}
 
 
 def shipped_files() -> list[Path]:
-    """Everything git tracks (or would track) minus plans, specs and bench; files deleted in the tree are skipped."""
+    """Everything git tracks (or would track) minus plans, specs and recorded bench results; files deleted in the tree are skipped."""
     out = subprocess.run(["git", "ls-files", "--cached", "--others", "--exclude-standard"], cwd=ROOT, capture_output=True,
                          text=True, check=True).stdout.splitlines()
     files = []
@@ -94,8 +94,9 @@ def test_no_old_names():
 
 
 def test_no_commit_word():
-    # test code makes real git commits in its fixture repos; shipped code and prose are what must not say it
-    hits = scan(COMMIT, COMMIT_OK, skip=lambda rel: rel.startswith(COMMIT_FILES_OK + ("tests/",)))
+    # test code and bench code make real git commits in their fixture repos and tell the benchmarked agent to commit;
+    # shipped code and prose are what must not say it
+    hits = scan(COMMIT, COMMIT_OK, skip=lambda rel: rel.startswith(COMMIT_FILES_OK + ("tests/", "bench/")))
     assert not hits, "\n".join(hits)
 
 

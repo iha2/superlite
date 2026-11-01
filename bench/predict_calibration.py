@@ -3,7 +3,7 @@
     python bench/predict_calibration.py [--write]     # --write: bench/results/predict-calibration.{md,json}
 
 Data: every superlite combo run that has a transcript and a plan (per-dispatch durations, phase timeline) and the
-predictor's own per-task minutes (`sl plan_tools schedule`, same plan). Three findings are measured, not assumed:
+predictor's own per-task minutes (`superlite-cli plan_tools schedule`, same plan). Three findings are measured, not assumed:
 1. the predicted "total" is build + 3.5 min tail, but a real run also spends time BEFORE the first implementer starts
    (plan lint, stubs, primes) and AFTER the last build ends (package reviews, final review, fixes);
 2. per task the predictor is too slow (it over-predicts), so the two errors partly cancel;
