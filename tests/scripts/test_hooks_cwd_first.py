@@ -105,3 +105,33 @@ def test_guard_odd_cwd_keeps_hub_run_and_never_crashes(tree, cwd):
     r = run("block-coordinator-edits", hub, payload)
     assert r.returncode == 2
     assert "syntax error" not in r.stderr
+
+
+AGENT = {"tool_name": "Agent", "tool_input": {"subagent_type": "superlite:implementer", "description": "T1",
+                                              "prompt": "Build T1"}}
+
+
+@pytest.fixture(params=["plain", 'q"x'], ids=["plain", "quoted"])
+def named_tree(tmp_path, request):
+    """An approved AI run at the hub and an unapproved human run in a worktree whose name may hold a quote."""
+    hub = tmp_path / "hub"
+    wt = hub / ".superlite" / "worktrees" / "sessions" / request.param
+    (wt / ".superlite").mkdir(parents=True)
+    (hub / ".superlite" / "orchestrator.json").write_text(json.dumps({"mode": "ai", "approved": True}))
+    (hub / ".superlite" / "stable.json").write_text("{}")
+    (wt / ".superlite" / "orchestrator.json").write_text(HUMAN)
+    return hub, wt
+
+
+def test_guard_resolves_run_from_cwd_with_escaped_quote(named_tree):
+    hub, wt = named_tree
+    r = run("block-coordinator-edits", hub, {**AGENT, "cwd": str(wt)})
+    assert r.returncode == 2, (wt.name, r.stderr)
+
+
+def test_reply_lands_in_worktree_with_escaped_quote(named_tree):
+    hub, wt = named_tree
+    r = run("record-human-reply", hub, {"cwd": str(wt), "prompt": "hello there"})
+    assert r.returncode == 0
+    assert (wt / ".superlite" / "human-replies.jsonl").exists(), wt.name
+    assert not (hub / ".superlite" / "human-replies.jsonl").exists()

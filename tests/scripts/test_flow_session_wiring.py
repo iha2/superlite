@@ -72,3 +72,42 @@ def test_move_and_sync_check_fails_without_phrase(rel, phrases, idx, tmp_path): 
     p = tmp_path / Path(rel).name
     p.write_text(text.replace(phrases[idx], ""), encoding="utf-8")
     assert not _has(p.read_text(encoding="utf-8"), phrases), (rel, phrases[idx])
+
+
+@pytest.mark.parametrize("rel", ["commands/small.md", "commands/debug.md"])  # O(1)
+def test_command_runs_sl_finish_after_verification(rel):  # O(n)
+    text = (ROOT / rel).read_text(encoding="utf-8")
+    assert "sl finish" in text, rel
+    assert "uncommitted" in text.lower(), rel
+
+
+def test_inventing_bounded_path_runs_sl_finish():  # O(n)
+    text = (ROOT / "skills" / "inventing" / "SKILL.md").read_text(encoding="utf-8")
+    m = re.search(r"^\*\*Bounded:\*\*.*?(?=\n\n|\Z)", text, re.S | re.M)
+    assert m, "bounded paragraph not found"
+    assert "sl finish" in m.group(0), m.group(0)
+    assert "uncommitted" in m.group(0).lower(), m.group(0)
+
+
+def test_feature_step6_registers_integration_session_and_closes_start_session():  # O(n)
+    text = (ROOT / "commands" / "feature.md").read_text(encoding="utf-8")
+    m = re.search(r"^6\. \*\*Integration build\.\*\*.*?(?=\n\n|\Z)", text, re.S | re.M)
+    assert m, "step 6 not found"
+    assert "sl session ensure" in m.group(0), m.group(0)
+    assert "sl session close" in m.group(0), m.group(0)
+
+
+def test_review_resolves_target_before_ensure_and_passes_branch():  # O(n)
+    lines = (ROOT / "commands" / "review.md").read_text(encoding="utf-8").splitlines()
+    idx = next((i for i, ln in enumerate(lines) if "session ensure" in ln), None)
+    assert idx is not None, "no ensure line"
+    assert re.search(r"--branch\s+<target>", lines[idx]), lines[idx]
+    assert "target" in "\n".join(lines[:idx]).lower(), "target is not resolved before the ensure line"
+
+
+def test_shipping_merge_uses_temporary_checkout_when_main_hosts_other_session():  # O(n)
+    text = (ROOT / "skills" / "shipping" / "SKILL.md").read_text(encoding="utf-8")
+    m = re.search(r"\*\*Merge locally:\*\*(.*?)(?=\n- \*\*|\n## )", text, re.S)
+    assert m, "Merge locally step not found"
+    for phrase in ("temporary", "git worktree add", ".superlite/worktrees/", "session status"):
+        assert phrase in m.group(1), phrase

@@ -65,3 +65,13 @@ def test_lint_catches(snippet):
 ])
 def test_lint_allows(snippet):
     assert not offences(snippet)
+
+
+TESTS = sorted((ROOT / "tests").rglob("*.py"))
+
+
+@pytest.mark.parametrize("path", TESTS, ids=lambda p: p.name)
+def test_tests_resolve_bash_instead_of_bin_bash(path):
+    """Native Windows Python cannot run /bin/bash; tests use shutil.which("bash")."""
+    hits = [ln for ln in path.read_text(encoding="utf-8").splitlines() if re.search(r"""["']/bin/bash["']""", ln)]
+    assert not hits, hits

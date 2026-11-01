@@ -257,3 +257,56 @@ def test_no_network_git_verbs():
     import re
     src = (SCRIPTS / "session_sync.py").read_text()
     assert not re.search(r'"(fetch|push|pull|rebase)"|--force', src)
+
+
+def cli(script, *args, cwd):
+    env = dict(os.environ, PYTHONIOENCODING="utf-8")
+    env.pop("SUPERLITE_NO_AUTO_SESSION", None)
+    return subprocess.run([sys.executable, str(SCRIPTS / script), *map(str, args)], capture_output=True,
+                          text=True, cwd=cwd, env=env, timeout=120)
+
+
+@pytest.fixture
+def parked_p(tmp_path):
+    """Main checkout hosts session a; session p was created in a worktree and closed, so its row has no worktree."""
+    r = tmp_path.resolve() / "plain"
+    r.mkdir()
+    git(r, "init", "-q", "-b", "main")
+    git(r, "config", "user.email", "t@example.com")
+    git(r, "config", "user.name", "t")
+    (r / ".gitignore").write_text(".superlite/\n")
+    commit(r, "app.py", "one\ntwo\nthree\n", "init")
+    assert cli("session.py", "ensure", "--slug", "a", cwd=r).returncode == 0
+    assert cli("session.py", "create", "--slug", "p", "--worktree", cwd=r).returncode == 0
+    cp = cli("session.py", "close", "--slug", "p", "--keep-branch", cwd=r)
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert row(r, "p").get("worktree") in (None, "")
+    return r
+
+
+@pytest.mark.parametrize("action", ["abort", "continue"])
+def test_recovery_ignores_another_sessions_merge(parked_p, tmp_path, action):
+    """sync --abort/--continue for session p does not act on session a's merge in the main checkout."""
+    repo = parked_p
+    commit(repo, "app.py", "one\nA-side\nthree\n", "a edit")
+    tmpw = tmp_path.resolve() / "mainwt"
+    git(repo, "worktree", "add", "-q", str(tmpw), "main")
+    commit(tmpw, "app.py", "one\nMAIN-side\nthree\n", "main edit")
+    git(repo, "worktree", "remove", "--force", str(tmpw))
+    merge = subprocess.run(["git", "merge", "--no-edit", "main"], cwd=repo, capture_output=True, text=True)
+    assert merge.returncode != 0
+    assert (repo / ".git" / "MERGE_HEAD").exists()
+    head = git(repo, "rev-parse", "HEAD").strip()
+    if action == "continue":
+        (repo / "app.py").write_text("one\nresolved\nthree\n")
+        git(repo, "add", "app.py")
+    cp = cli("session_sync.py", "--slug", "p", f"--{action}", cwd=repo)
+    assert cp.returncode == 2, cp.stdout + cp.stderr
+    assert (repo / ".git" / "MERGE_HEAD").exists(), "session p's recovery touched session a's merge"
+    assert git(repo, "rev-parse", "HEAD").strip() == head
+
+
+def test_recovery_for_row_without_worktree_exits2(parked_p):
+    """sync --abort for a parked row with no worktree exits 2 without crashing."""
+    cp = cli("session_sync.py", "--slug", "p", "--abort", cwd=parked_p)
+    assert cp.returncode == 2, cp.stdout + cp.stderr

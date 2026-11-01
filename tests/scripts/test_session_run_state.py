@@ -14,6 +14,7 @@ HUD = SCRIPTS / "session_hud.py"
 HOOK = ROOT / "hooks" / "session-start"
 BASH = shutil.which("bash")
 sys.path.insert(0, str(SCRIPTS))
+import session  # noqa: E402
 import suggest_flow  # noqa: E402
 
 
@@ -68,6 +69,7 @@ def test_main_checkout_without_active_prints_none_here(hub):
 def _start(cwd, extra=None):
     env = {**os.environ, "CLAUDE_PLUGIN_ROOT": str(ROOT), "SUPERLITE_HOME": str(cwd / "home")}
     env.pop("SUPERLITE_NO_SESSION_HUD", None)
+    env.update(extra or {})
     r = subprocess.run([BASH, str(HOOK)], input="", capture_output=True, text=True, encoding="utf-8", env=env,
                        cwd=str(cwd))
     assert r.returncode == 0, r.stderr
@@ -132,3 +134,59 @@ def test_parallel_row_still_matches_by_path(hub):
     git(hub, "worktree", "add", "-q", "-b", "p1", str(wt))
     reg(hub, [row(hub, "p1", worktree=str(wt), status="parked", branch="p1")], None)
     assert hud(wt).startswith("superlite session: p1 |")
+
+
+def session_cli(*args, cwd):
+    env = {k: v for k, v in os.environ.items() if k != "SUPERLITE_NO_AUTO_SESSION"}
+    return subprocess.run([sys.executable, str(SCRIPTS / "session.py"), *map(str, args)], capture_output=True,
+                          text=True, cwd=cwd, env=env, timeout=120)
+
+
+def plan_run_files(d):
+    (d / ".superlite").mkdir(exist_ok=True)
+    (d / ".superlite" / "orchestrator.json").write_text(json.dumps({"mode": "ai"}))
+    (d / "docs" / "plans").mkdir(parents=True, exist_ok=True)
+
+
+@pytest.fixture
+def repo(tmp_path):
+    r = tmp_path.resolve() / "app"
+    r.mkdir()
+    git(r, "init", "-q", "-b", "main")
+    (r / ".gitignore").write_text(".superlite/\n")
+    git(r, "add", "-A")
+    git(r, "commit", "-qm", "init")
+    return r
+
+
+def test_session_start_finished_run_without_hud(repo):
+    """With the HUD off, a run:finished session still gives `existing code` and no HUD line."""
+    assert session_cli("ensure", "--slug", "a", cwd=repo).returncode == 0
+    plan_run_files(repo)
+    assert session.mark_run(repo, "finished") == "a"
+    ctx = _start(repo, {"SUPERLITE_NO_SESSION_HUD": "1"})
+    assert "superlite session:" not in ctx, ctx
+    assert "Project state: existing code" in ctx, ctx
+
+
+@pytest.fixture
+def nested(repo):
+    assert session_cli("ensure", "--slug", "mainsess", cwd=repo).returncode == 0
+    n = repo / "nested"
+    git(repo, "worktree", "add", "-q", str(n), "-b", "n")
+    return repo, n
+
+
+def test_hud_in_nested_unregistered_worktree_does_not_name_main_session(nested):
+    _repo, n = nested
+    assert "mainsess" not in hud(n)
+
+
+def test_project_state_in_nested_worktree_follows_its_own_orchestrator(nested):
+    repo, n = nested
+    plan_run_files(repo)
+    assert session.mark_run(repo, "finished") == "mainsess"
+    plan_run_files(n)
+    ctx = _start(n)
+    assert "mainsess" not in ctx, ctx
+    assert "Project state: run in progress" in ctx, ctx
