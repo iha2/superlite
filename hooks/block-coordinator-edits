@@ -57,7 +57,7 @@ norm() {
 lower() { LOWER="$(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]')"; }
 
 proj="${CLAUDE_PROJECT_DIR:-${CURSOR_PROJECT_DIR:-}}"
-jstr cwd; in_cwd="${REPLY//\\\\//}"
+jstr cwd; in_cwd="${REPLY//\\\\/$'\x01'}"; in_cwd="${in_cwd//\\\"/\"}"; in_cwd="${in_cwd//\\\//\/}"; in_cwd="${in_cwd//$'\x01'//}"
 if [ -z "$proj" ]; then proj="$in_cwd"; fi
 if [ -z "$proj" ]; then   # Cursor: the first workspace root that holds a superlite run
   re_roots='"workspace_roots"[[:space:]]*:[[:space:]]*\[([^]]*)\]'

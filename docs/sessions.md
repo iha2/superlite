@@ -58,6 +58,7 @@ All registry writes take `.superlite/sessions.lock` and replace `sessions.json` 
 | Command | Effect |
 |---|---|
 | `sl session ensure --slug S` | Idempotent flow entry; see [Auto-start](#auto-start). Last line `SESSION worktree=<path> slug=<s> branch=<b>`; exit 3 `REDIRECT`, exit 4 `ASK untracked` or `ASK move` |
+| `sl session ensure --slug S --branch B` | Session on an existing branch `B`: in place if `B` is checked out here, `REDIRECT` if checked out elsewhere, else a worktree on `B`; exit 2 if `B` does not exist |
 | `sl session close --slug S [--keep-branch]` | End of flow: mark `S` finished, park it and put the host back on the base branch, remove a parallel worktree `ensure` cut |
 | `sl session untracked [ask\|stash\|keep]` | Per-repo choice for untracked files (default `ask`); stored in the main checkout's `sessions.json` |
 | `sl session create --slug S` | Branch on the host (the main checkout, or an older registry's host worktree); make active (an existing slug: use `use`; asks before stashing untracked files) |
@@ -84,6 +85,8 @@ Every flow (start, regular, mvp, feature, debug, small, review) runs `sl session
 A taken slug gets `-2`, `-3`, and the slug it settled on is printed. The agent moves its root to the `SESSION worktree=<path>` line when that is not its folder.
 
 **Run status.** Each `sessions.json` row has `run: "open" | "finished"` and `finished_at`. `ensure` and `create` set `open`; `sl finish` and `sl session close` mark `finished`. `status`, `use` and the HUD show `run:open` or `run:finished`; "run in progress" is shown only for an open run.
+
+**Shipping merge.** When the main checkout hosts another open session, shipping merges in a temporary checkout of the base branch (`.superlite/worktrees/merge-<base>`) and removes it, never switching the main checkout.
 
 **Close.** `sl session close --slug S [--keep-branch]` ends a flow (shipping runs it from the main checkout): it marks `S` finished, parks its run files and switches the host back to the registry's base branch, and removes a parallel worktree that `ensure` cut. When that worktree held uncommitted work or run files, close parks them (stash + store) and keeps the row and branch even without `--keep-branch`; with `--untracked keep` the worktree stays in place. If the base branch is checked out in another worktree, close refuses and changes nothing.
 
