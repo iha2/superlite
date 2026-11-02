@@ -53,6 +53,13 @@ def test_relative_xdg_data_home_is_ignored(user, monkeypatch):
     assert hook_home(user, XDG_DATA_HOME="rel/path") == history.home()
 
 
+@pytest.mark.skipif(os.name == "nt", reason="a drive letter is absolute on Windows")
+def test_drive_letter_xdg_data_home_is_relative_off_windows(user, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", "C:/cache")
+    assert history.home() == user / ".local" / "share" / "superlite"
+    assert hook_home(user, XDG_DATA_HOME="C:/cache") == history.home()
+
+
 def test_superlite_home_beats_everything(user, monkeypatch, tmp_path):
     explicit = tmp_path / "explicit"
     monkeypatch.setenv("SUPERLITE_HOME", str(explicit))

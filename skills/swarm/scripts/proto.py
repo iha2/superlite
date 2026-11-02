@@ -218,7 +218,7 @@ def cmd_tryout(a, sl) -> int:  # O(P + R)
     if a.start and st.get("run"):
         import _pyrun
         log = Path(sl) / "proto-run.log"
-        p = _pyrun.spawn_detached(["bash", "-c", st["run"]], log, cwd=wt)
+        p = _pyrun.spawn_detached([base.bash(), "-c", st["run"]], log, cwd=wt)
         st["pid"] = p.pid
         write_state(sl, st)
         print(f"started: pid {p.pid}, log {log.as_posix()}")
