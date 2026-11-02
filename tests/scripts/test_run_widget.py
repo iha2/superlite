@@ -224,6 +224,24 @@ def test_first_stable_lint_writes_the_before_card_and_still_ends_with_dispatch(t
     assert "widget:" not in again.out and again.out.rstrip().splitlines()[-1].startswith("DISPATCH NOW:")
 
 
+def test_lint_from_a_subdirectory_names_the_card_from_there(tmp_path):
+    p = mech_plan(tmp_path, 3)
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    cp = run(SCRIPTS / "plan_tools.py", "lint", "--stable", "--plan", p, cwd=sub)
+    assert cp.returncode in (0, 1), cp.both
+    line = next(x for x in cp.out.splitlines() if x.startswith("widget: "))
+    assert (sub / line.split()[1]).resolve() == (tmp_path / ".superlite" / run_widget.BEFORE).resolve()
+
+
+def test_non_finite_numbers_read_na():
+    inf = json.loads("1e309")
+    card = run_widget.render({"headline": {"agents": {"projected": inf, "actual": 2}, "wall_min": {"actual": inf}}}, [], 0)
+    assert "inf" not in card and "proj n/a" in card
+    proj = {"wall_min": inf, "cost_usd": inf, "agents": inf, "critical_path": [], "tasks": {"T1": {"model": "sonnet", "cost_usd": inf}}}
+    assert "inf" not in run_widget.render_before(proj, {}, 3.0)
+
+
 def test_lint_then_finish_gives_both_cards(tmp_path, monkeypatch):
     monkeypatch.setenv("SUPERLITE_HOME", str(tmp_path / "home"))
     p, sl, proj, _ = linted(tmp_path)

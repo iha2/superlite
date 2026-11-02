@@ -533,7 +533,7 @@ def _forecast_card(plan_path: str, run_dir: Path, stable: list, fix: list) -> No
         print(f"run_widget: before card not written ({e})", file=sys.stderr)
         return
     if out:
-        print(run_widget.widget_line(out))
+        print(run_widget.widget_line(out, Path.cwd()))  # from the cwd, which may not be the plan's project
 
 
 def cmd_lint(args) -> int:  # O(lint) total

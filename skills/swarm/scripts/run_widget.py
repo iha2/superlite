@@ -15,6 +15,7 @@ Deterministic. Stdlib only.
 """
 import argparse
 import html
+import math
 import sys
 from pathlib import Path
 
@@ -42,7 +43,7 @@ def esc(v) -> str:
 
 
 def is_num(v) -> bool:
-    return isinstance(v, (int, float)) and not isinstance(v, bool)
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)  # 1e309 in json is inf
 
 
 def obj(v) -> dict:
