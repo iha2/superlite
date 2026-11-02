@@ -31,13 +31,42 @@ A checkpoint is a hidden save of one task under `refs/superlite/*`. superlite ne
 | `graphify_gate` | Gates Graphify for search in non-trivial codebases |
 | `orchestrator` | Who orchestrates: `set human|ai`, `approve --review <plan>` (needs an approving human reply newer than the plan), `status` |
 | `report` | The end-of-build report: a short summary in the session, the full file next to the plan, projected against actual; in feature mode the prototype and the integration as two parts |
+| `run_widget` | The run cards, one self-contained HTML fragment each: `--before` the forecast (projected time and cost against the `Budget-usd` cap, agents, critical path, projected cost by model), default the result (time and cost, tasks and tests, cost by model, rulings and checkpoint state); prints nothing without its source. See [Run cards](#run-cards) |
 | `suggest_flow` | `--text "<request>"`: one line, the suggested flow (regular, mvp, feature, debug, small, review, resume, status) from the request and the project state, with the other fits; deterministic |
 | `proto` | Feature mode's prototype: `start` (its own worktree on `superlite/<topic>-proto`), `tryout` (how to try it; `--approve` needs the human's reply in human mode), `status`, `discard`; state in `.superlite/feature.json` |
 | `session` | `ensure` (flow auto-start) / `close` (end of flow) / `untracked` (ask\|stash\|keep) / `create` / `use` (park+stash or REDIRECT) / `split` (parallel worktrees) / `discard` / `status` / `sync` (bring local main into a session branch); `session_hud` one-liner for hooks. See [Sessions](sessions.md) |
 | `mvp_check` | MVP mode: `build` the prototype page from the template, the `.mvp.md` plan's features and a mock fragment; `stamp` its sha; `check` the page (parses, every feature id in the mock, no external URLs) and `mvp-feedback.json` (schema, features, `prototype_sha`); `ai` writes the AI orchestrator's feedback; `fetch` copies a saved file in from Downloads |
-| `finish` | Collects the finish summary (rulings, checkpoints, test counts, open incidents) |
+| `finish` | Collects the finish summary (rulings, checkpoints, test counts, open incidents); with `--plan` also writes the after card and ends with a `widget:` line |
 
 `_pyrun.py` is a shared helper, not a tool. Probes live in `probes/` with the probe pack in `probes/pack/`.
+
+## Run cards
+
+Two cards in one look, for a coordinator with an inline widget tool (Claude desktop's `show_widget`); other harnesses skip the `widget:` lines and keep the text output.
+
+- **Before**: the first `plan_tools lint --stable` saves the fixed forecast (`projection.json`) and hands it, with the stable and fix tasks and the plan's `**Budget-usd:**` cap, to `run_widget`, which writes `.superlite/run-widget-before.html`. Lint prints `widget: .superlite/run-widget-before.html (...)` just before its last line, so it still ends with `DISPATCH NOW:`. The forecast is saved once, so later lints print no card. In human mode this lint runs only after approval, so the card shows right before the first dispatch.
+- **After**: `finish --plan` writes the build report, then hands `report.json`, the ledger and the checkpoint count to `run_widget`, which writes `.superlite/run-widget-after.html`; finish ends with its `widget:` line. There is no card without `--plan`, and none when this finish wrote no report (no `metrics.jsonl`), so an old `report.json` is never shown again.
+
+```mermaid
+flowchart LR
+  P[plan + Budget-usd] --> L[lint --stable]
+  L --> J[projection.json]
+  J --> W[run_widget]
+  L -- stable / fix --> W
+  W --> B[run-widget-before.html]
+  B --> BL["lint: widget: line<br/>before DISPATCH NOW"]
+  M[metrics.jsonl<br/>test-summary.json] --> R[report.write_report]
+  R --> RJ[report.json]
+  RJ --> W2[run_widget]
+  G[progress.md rulings<br/>checkpoints.json] --> W2
+  J -. projected values .-> RJ
+  W2 --> A[run-widget-after.html]
+  A --> FL["finish: widget: line"]
+  BL --> S[show_widget]
+  FL --> S
+```
+
+Both cards are HTML fragments on the host's CSS variables (so they follow light and dark mode), with no scripts and no external loads. Every value is HTML-escaped and every missing value reads `n/a`. The forecast's model bars add up to its headline cost: a muted "other" bar covers the part no task owns.
 
 ## Hung test run probe
 

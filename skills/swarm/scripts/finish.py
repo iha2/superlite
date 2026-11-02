@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Print the closing summary of a run.
 
-    finish.py [--ledger .superlite/progress.md] [--log .superlite/incidents.jsonl]
+    finish.py [--ledger .superlite/progress.md] [--log .superlite/incidents.jsonl] [--plan PLAN.md]
 
 Collects, from the progress ledger, every `Ruling:` line (in order), the
-checkpoints and the last test counts, plus the open incidents from the log.
+checkpoints and the last test counts, plus the open incidents from the log. With --plan, when the build report is
+written, it also writes the after card `run-widget-after.html` (see run_widget.py) and ends with a `widget:` line.
 Deterministic: the same files give the same text. Stdlib only.
 """
 import argparse
@@ -108,6 +109,9 @@ def unblocked_report(ledger, lint_log):  # O(R*w + L*n)
     return f"unblocked: yes - every stable task was dispatched before the next patch; {worst}"
 
 
+REPORTED: set[Path] = set()  # run folders whose build report this finish wrote (only they get an after card)
+
+
 def history_section(plan, sl_dir):  # O(M + B + n*(n + e))
     """Append the run's rows to history (global and project), refresh stats, and report predicted against actual."""
     sl = Path(sl_dir)
@@ -126,6 +130,7 @@ def history_section(plan, sl_dir):  # O(M + B + n*(n + e))
     try:
         import report
         out += ["", report.report_text(plan, sl_dir).rstrip("\n")]
+        REPORTED.add(Path(sl_dir).resolve())
     except expected as e:
         out.append(f"report: not produced ({e})")
     return chr(10).join(out)
@@ -167,6 +172,21 @@ SCOPE_TAG = re.compile(r"^\[scope\]\s*", re.I)
 def scope_rulings(rulings):  # O(G)
     """Rulings tagged `[scope]`: a change to scope or to an interface the human approved, made without asking."""
     return [SCOPE_TAG.sub("", r) for r in rulings if SCOPE_TAG.match(r)]
+
+
+def card_line(plan, sl_dir, ledger=None):  # O(file + R*w + m log m)
+    """With --plan and a report.json written by this finish: write the after card (rulings from `ledger`) and return
+    its `widget:` line."""
+    if not plan or Path(sl_dir).resolve() not in REPORTED:
+        return ""
+    import base
+    try:  # fail open: the card is extra, the summary above is the record
+        import run_widget
+        out = run_widget.write(sl_dir, plan, ledger=ledger)
+    except base.advisory_errors() as e:
+        print(f"run_widget: after card not written ({e})", file=sys.stderr)
+        return ""
+    return run_widget.widget_line(out, Path.cwd()) if out else ""  # ledger paths are from the cwd
 
 
 def summary(ledger, log, lint_log=DEFAULT_LINT_LOG, plan=None, sl_dir=None):  # O(R*w + I*w + C + G)
@@ -224,9 +244,10 @@ def main(argv=None):  # O(R*w + I*w)
     ap.add_argument("--lint-log", help="default: lint-log.jsonl next to the ledger")
     a = ap.parse_args(argv)
     sys.stdout.reconfigure(encoding="utf-8")
+    root = Path(a.ledger).resolve().parent  # .superlite, or the ledger's directory
     sys.stdout.write(summary(a.ledger, a.log, a.lint_log or str(Path(a.ledger).with_name("lint-log.jsonl")), a.plan))
     import exclusive  # the run is done: peer plugins may load again
-    root = Path(a.ledger).resolve().parent  # .superlite, or the ledger's directory
+    widget = card_line(a.plan, root, a.ledger)  # before the cleanup, which removes the checkpoint state the card counts
     clean_checkpoints(a.ledger)  # after the summary, which reads the checkpoint state
     sl_dir = root if root.name == state.DIR_NAME else root / state.DIR_NAME
     try:  # fail open: no registry, no git, unreadable sessions.json -> no line. Mark first: release looks at open runs.
@@ -237,6 +258,8 @@ def main(argv=None):  # O(R*w + I*w)
     except Exception:
         pass
     print(exclusive.release(sl_dir))
+    if widget:
+        print(widget)
     return 0
 
 

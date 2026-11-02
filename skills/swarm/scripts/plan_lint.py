@@ -468,7 +468,6 @@ def _print_report(args, run_dir: Path, stable: list, fix: list, plan_issues: lis
     if tiers:
         print(tiers_line)
         print("TIERS: " + " ".join(f"{t}={tiers[t]}" for t in stable if t in tiers))
-    print("DISPATCH NOW: " + (" ".join(pending) if pending else "none"))
 
 
 def cmd_lint_stable(args) -> int:  # O(lint + n*k*s)
@@ -509,16 +508,32 @@ def cmd_lint_stable(args) -> int:  # O(lint + n*k*s)
     with (run_dir / "lint-log.jsonl").open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(entry) + "\n")
     if stable and not frozen:  # the fixed forecast `report` compares against, written once
-        _save_projection(args.plan, run_dir)
+        _forecast_card(args.plan, run_dir, stable, fix)
+    print("DISPATCH NOW: " + (" ".join(pending) if pending else "none"))  # always the last line
     return 0 if stable and not frozen else 1
 
 
-def _save_projection(plan_path: str, run_dir: Path) -> None:
+def _save_projection(plan_path: str, run_dir: Path) -> Path | None:
     try:
         import report
-        report.save_projection(plan_path, run_dir)
+        return report.save_projection(plan_path, run_dir)
     except base.advisory_errors() as e:  # never blocks a lint: logged
         print(f"report: projection not saved ({e})", file=sys.stderr)
+        return None
+
+
+def _forecast_card(plan_path: str, run_dir: Path, stable: list, fix: list) -> None:  # O(n*(n + e)) once, O(1) after
+    """Save the fixed forecast; on the lint that first saves it, write the before card and print its `widget:` line."""
+    if _save_projection(plan_path, run_dir) is None:
+        return
+    try:
+        import run_widget
+        out = run_widget.write(run_dir, plan_path, before=True, stable={"stable": stable, "fix": fix})
+    except base.advisory_errors() as e:  # the card is extra: never blocks a lint
+        print(f"run_widget: before card not written ({e})", file=sys.stderr)
+        return
+    if out:
+        print(run_widget.widget_line(out))  # absolute: lint prints the same bytes from any directory
 
 
 def cmd_lint(args) -> int:  # O(lint) total
