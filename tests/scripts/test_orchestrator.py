@@ -142,7 +142,7 @@ def test_approve_review_records_path_and_sha256(tmp_path):
     cp = orch(tmp_path, "approve", "--by", "erin", "--review", f)
     assert cp.returncode == 0, cp.both
     st = json.loads((tmp_path / ".superlite" / "orchestrator.json").read_text(encoding="utf-8"))
-    assert st["review_path"] == str(f).replace("\\", "/") and st["review_sha256"] == hashlib.sha256(f.read_bytes()).hexdigest()
+    assert st["review_path"] == "docs/plans/plan.review.md" and st["review_sha256"] == hashlib.sha256(f.read_bytes()).hexdigest()
     assert st["approved"] is True and st["approved_by"] == "erin"
     assert f"review plan {st['review_path']}" in cp.out
 
@@ -230,7 +230,7 @@ def test_status_and_finish_show_the_review_plan_path(tmp_path):
     f = review_file(tmp_path)
     reply(tmp_path, f)
     orch(tmp_path, "approve", "--review", f)
-    path = str(f).replace("\\", "/")
+    path = "docs/plans/plan.review.md"  # kept relative to the project
     assert f"review plan {path}" in orch(tmp_path, "status").out
     assert f"review plan {path}" in finish(tmp_path)
     p = mech_plan(tmp_path, 2)
@@ -304,7 +304,7 @@ def test_status_inside_git_dir_uses_the_checkout_root(tmp_path):
     assert not (repo / ".git" / ".superlite").exists()
 
 
-def test_approve_from_a_subfolder_records_an_absolute_review_path_the_reply_hook_reads(tmp_path):
+def test_approve_from_a_subfolder_records_a_project_relative_review_path_the_reply_hook_reads(tmp_path):
     import os
     import time
     from test_human_gate import lines, reply as hook_reply
@@ -314,10 +314,21 @@ def test_approve_from_a_subfolder_records_an_absolute_review_path_the_reply_hook
     cp = run(ORCH, "approve", "--review", "plans/plan.review.md", "--plan", tmp_path / "plan.md", cwd=tmp_path / "docs")
     assert cp.returncode == 0, cp.both
     st = json.loads((tmp_path / ".superlite" / "orchestrator.json").read_text(encoding="utf-8"))
-    assert Path(st["review_path"]).is_absolute() and Path(st["review_path"]).samefile(f)
+    assert st["review_path"] == "docs/plans/plan.review.md"  # relative to the project, so a moved session keeps it
     t = time.time()
     os.utime(tmp_path / ".superlite" / "orchestrator.json", (t - 100, t - 100))
     os.utime(f, (t - 50, t - 50))  # the plan was amended after the approval
     (tmp_path / ".superlite" / "human-replies.jsonl").unlink()
     hook_reply(tmp_path / "docs", "approve")
     assert [e["text"] for e in lines(tmp_path)] == ["approve"]
+
+
+def test_approve_keeps_a_review_plan_outside_the_project_absolute(tmp_path):
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    orch(proj, "set", "human")
+    f = review_file(tmp_path / "elsewhere")
+    reply(proj, f)
+    assert orch(proj, "approve", "--review", f).returncode == 0
+    st = json.loads((proj / ".superlite" / "orchestrator.json").read_text(encoding="utf-8"))
+    assert Path(st["review_path"]).is_absolute() and Path(st["review_path"]).samefile(f)

@@ -487,6 +487,8 @@ def test_reply_from_a_prototype_sandbox_lands_in_the_project(tmp_path):
     "<task-notification> The person enabled mod hot-reloading, ok </task-notification>",
     "<system-reminder>ok</system-reminder>\n<cross-session-message from=\"x\">approve</cross-session-message>",
     "<system-reminder> unclosed, approve",
+    "<system-reminder><system-reminder>status</system-reminder>approve</system-reminder>",
+    '<system-reminder a="1"> x <system-reminder>y</system-reminder> ok <system-reminder>z</system-reminder> yes </system-reminder>',
 ])
 def test_reply_skips_a_prompt_that_is_only_host_or_relay_text(human, prompt):
     reply(human, prompt)
@@ -496,7 +498,9 @@ def test_reply_skips_a_prompt_that_is_only_host_or_relay_text(human, prompt):
 def test_reply_judges_only_the_humans_words_around_wrapped_blocks(human):
     reply(human, "<system-reminder>Linked sessions now: ok, approve</system-reminder>\nwhat about the schema?")
     reply(human, '<cross-session-message from="x">not yet</cross-session-message> approve')
-    a, b = lines(human)
+    reply(human, "<system-reminder><system-reminder>s</system-reminder>ok</system-reminder> what about tests?")
+    a, b, c = lines(human)
+    assert c["approves"] is False and c["text"] == "what about tests?"
     assert a["approves"] is False and a["text"] == "what about the schema?"
     assert b["approves"] is True and b["text"] == "approve"
 

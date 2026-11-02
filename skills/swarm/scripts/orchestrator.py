@@ -135,6 +135,16 @@ def newest_reply(plan_or_dir=None, since_ms: float = 0):  # O(replies)
     return max(hits, key=lambda e: e["t"]) if hits else None
 
 
+def stored_review_path(plan_or_dir, review: Path) -> str:  # O(d) path syscalls
+    """The review plan as the state file keeps it: relative to the project root (the run folder's parent) when it lies
+    inside, so the reply hook resolves it whatever folder approve ran from and a moved session keeps it; else absolute."""
+    path, root = review.resolve(), sl_dir(plan_or_dir).parent.resolve()
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
 def reply_note(plan_or_dir=None, review=None) -> str:  # O(replies)
     since = 0
     if review and Path(review).is_file():
@@ -220,8 +230,7 @@ def main(argv=None):
                 print(NO_REPLY, file=sys.stderr)
                 return 3
             cur["approved_reply"] = hit.get("text", "")
-            # absolute, so the reply hook finds the same file whatever folder approve ran from
-            cur.update(review_path=os.path.abspath(a.review).replace(chr(92), "/"), review_sha256=hashlib.sha256(rp.read_bytes()).hexdigest())
+            cur.update(review_path=stored_review_path(a.plan, rp), review_sha256=hashlib.sha256(rp.read_bytes()).hexdigest())
         cur.update(approved=True, approved_by=a.by, approved_time=now())
         write_state(a.plan, cur)
     print(summary_line(a.plan, getattr(a, "review", None)))

@@ -51,13 +51,22 @@ if ! [[ $oj =~ $re_unappr ]]; then
 fi
 
 pjstr prompt; text="$REPLY"
-# Cut out every wrapped block the host or another session added; an unclosed one runs to the end.
+# Cut out every wrapped block the host or another session added, nested ones whole (depth counted); an unclosed
+# one runs to the end.
 for tag in system-reminder cross-session-message agent-message task-notification bash-input bash-stdout bash-stderr \
   local-command-stdout local-command-caveat; do
   while [[ $text == *"<$tag>"* || $text == *"<$tag "* ]]; do
     pre="${text%%"<$tag"[ >]*}"
-    post="${text:${#pre}}"
-    if [[ $post == *"</$tag>"* ]]; then post="${post#*"</$tag>"}"; else post=""; fi
+    post="${text:$(( ${#pre} + ${#tag} + 1 ))}"
+    depth=1
+    while [ "$depth" -gt 0 ] && [ -n "$post" ]; do
+      head="${post%%"</$tag>"*}"   # up to the next closing tag (all of post when there is none)
+      if [[ $head == *"<$tag>"* || $head == *"<$tag "* ]]; then   # an inner block opens first
+        head="${head%%"<$tag"[ >]*}"; post="${post:$(( ${#head} + ${#tag} + 1 ))}"; depth=$((depth + 1))
+      elif [[ $post == *"</$tag>"* ]]; then post="${post#*"</$tag>"}"; depth=$((depth - 1))
+      else post=""
+      fi
+    done
     text="$pre $post"
   done
 done

@@ -556,3 +556,39 @@ def test_contract_reports_a_missing_typescript_module_for_a_typescript_only_sign
     out = capsys.readouterr().out
     assert "model.parseRegistry: no module found (hooks/model.ts missing)" in out
     assert "verified" not in out
+
+
+def test_typescript_export_forms(tmp_path: Path):
+    import review_ts
+    f = tmp_path / "m.ts"
+    f.write_text("export default function parseRegistry() {}\n"
+                 "export const a = () => null, pickSession = (x: number, y = [1, 2]) => ({ k: 1 }), c = 3;\n"
+                 "export let d = 1\nexport const e = 2\nexport const enum Mode { A }\n"
+                 "export { type Registry, x as y };\nconst z = 1, hidden = 2;\n", encoding="utf-8")
+    found = {n: review_ts.export_line(f, n) for n in
+             ("parseRegistry", "a", "pickSession", "c", "d", "e", "Mode", "Registry", "y", "x", "hidden", "z")}
+    assert found == {"parseRegistry": 0, "a": 2, "pickSession": 2, "c": 2, "d": 3, "e": 4, "Mode": 5,
+                     "Registry": 6, "y": 6, "x": 0, "hidden": 0, "z": 0}
+
+
+def test_typescript_exports_count_only_at_module_level(tmp_path: Path):
+    import review_ts
+    f = tmp_path / "m.ts"
+    f.write_text("namespace Inner { export function parseRegistry() {} }\n"
+                 "export const first = 1; export function pickSession() {}\n"
+                 "export class K { static helper() { return { export: 1 } } }\n"
+                 "function wrap() {\n  export const notTop = 1\n}\n"
+                 "export const o = { x: 1, y: { z: 2 } }, after = 2;\n", encoding="utf-8")
+    found = {n: review_ts.export_line(f, n) for n in ("parseRegistry", "first", "pickSession", "K", "helper", "notTop", "o", "after")}
+    assert found == {"parseRegistry": 0, "first": 2, "pickSession": 2, "K": 3, "helper": 0, "notTop": 0, "o": 7, "after": 7}
+
+
+def test_a_missing_owned_typescript_file_never_falls_back_to_a_namesake(tmp_path: Path, capsys):
+    p = ts_proj(tmp_path)
+    (p / "client").mkdir()
+    (p / "client" / "model.ts").write_text("export function parseRegistry() {}\nexport function pickSession() {}\n", encoding="utf-8")
+    edit(p / "plan.md", "**Owns:** hooks/register.ts", "**Owns:** hooks/register.ts, client/model.ts")
+    (p / "hooks" / "model.ts").unlink()
+    assert contract(p, "--seam", "T1,T2") == 1
+    out = capsys.readouterr().out
+    assert "client/model.ts" not in out and "model.parseRegistry" in out
