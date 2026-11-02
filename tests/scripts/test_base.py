@@ -318,5 +318,7 @@ def test_git_bash_is_found_next_to_git_not_the_wsl_stub(tmp_path):
     (git_root / "bin").mkdir()
     (git_root / "bin" / "bash.exe").write_text("")
     assert base.git_bash(str(git_root / "cmd" / "git.exe"), str(tmp_path / "none")) == str(git_root / "bin" / "bash.exe")
+    assert base.git_bash(str(git_root / "mingw64" / "bin" / "git.exe"), str(tmp_path / "none")) == \
+        str(git_root / "bin" / "bash.exe")   # a portable Git puts mingw64\bin on PATH
     assert base.git_bash(None, str(tmp_path)) == str(git_root / "bin" / "bash.exe")
     assert base.git_bash(None, str(tmp_path / "none")) is None

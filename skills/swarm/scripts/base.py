@@ -146,8 +146,9 @@ def bash() -> str:
 
 
 def git_bash(git_exe: str | None, program_files: str) -> str | None:
-    """Git for Windows' bash.exe, next to the git on PATH or under Program Files; None if neither has one."""
-    roots = [Path(git_exe).parent.parent] if git_exe else []
+    """Git for Windows' bash.exe, near the git on PATH (Git\\cmd, Git\\bin or Git\\mingw64\\bin) or under Program Files;
+    None if neither has one."""
+    roots = list(Path(git_exe).parents)[1:3] if git_exe else []
     roots.append(Path(program_files) / "Git")
     return next((str(r / sub / "bash.exe") for r in roots for sub in ("bin", "usr/bin")
                  if (r / sub / "bash.exe").is_file()), None)
