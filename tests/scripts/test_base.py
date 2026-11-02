@@ -322,3 +322,29 @@ def test_git_bash_is_found_next_to_git_not_the_wsl_stub(tmp_path):
         str(git_root / "bin" / "bash.exe")   # a portable Git puts mingw64\bin on PATH
     assert base.git_bash(None, str(tmp_path)) == str(git_root / "bin" / "bash.exe")
     assert base.git_bash(None, str(tmp_path / "none")) is None
+
+
+def test_win_retry_rides_out_a_brief_sharing_violation(monkeypatch):
+    # Windows: a reader of a file being os.replace'd (or a replace over an open file) gets PermissionError briefly.
+    calls = []
+
+    def flaky():
+        calls.append(1)
+        if len(calls) < 3:
+            raise PermissionError("in use")
+        return "ok"
+    monkeypatch.setattr(base.os, "name", "nt")
+    monkeypatch.setattr(base.time, "sleep", lambda s: None)
+    assert base._win_retry(flaky) == "ok" and len(calls) == 3
+
+
+def test_win_retry_runs_once_off_windows(monkeypatch):
+    calls = []
+
+    def denied():
+        calls.append(1)
+        raise PermissionError("denied")
+    monkeypatch.setattr(base.os, "name", "posix")
+    with pytest.raises(PermissionError):
+        base._win_retry(denied)
+    assert len(calls) == 1

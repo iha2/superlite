@@ -6,6 +6,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 if os.name == "nt":
@@ -46,9 +47,20 @@ def advisory_errors() -> tuple:
             planfile.PlanError, predict.PredictError, project_config.ProjectConfigError)
 
 
+def _win_retry(fn):
+    """fn(), retried briefly on Windows while another process holds the file open or is replacing it (a sharing
+    violation surfaces as PermissionError there); elsewhere PermissionError is final, so fn() runs once."""
+    for _ in range(50 if os.name == "nt" else 0):
+        try:
+            return fn()
+        except PermissionError:
+            time.sleep(0.01)
+    return fn()
+
+
 def read_json(path: Path, default):
     try:
-        return json.loads(Path(path).read_text(encoding="utf-8"))
+        return json.loads(_win_retry(lambda: Path(path).read_text(encoding="utf-8")))
     except (OSError, ValueError):
         return default
 
@@ -65,7 +77,7 @@ def write_json(path: Path, data) -> None:
             f.write("\n")
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp, path)
+        _win_retry(lambda: os.replace(tmp, path))
         replaced = True
     finally:
         if not replaced:
