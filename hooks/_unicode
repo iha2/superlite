@@ -1,0 +1,23 @@
+# Sourced by hooks/_slug and hooks/prompt (not run on its own).
+# udecode VAR: replace every JSON \uXXXX escape in VAR (surrogate pairs included) by its UTF-8 bytes. Python's
+# json.dumps writes non-ASCII path characters that way (base.write_json). Bash builtins only; bash 3.2 has no
+# printf \u, so the bytes are built by arithmetic and printed as \x escapes.
+udecode() {
+  local _us="${!1}" _uout="" _uhex _ucp _ulo _ufmt _uch _ure='^([^\\]*(\\[^u][^\\]*)*)\\u([0-9a-fA-F]{4})(.*)$' _ure_lo='^\\u([dD][c-fC-F][0-9a-fA-F]{2})(.*)$'
+  [[ $_us == *'\u'* ]] || return 0
+  while [[ $_us =~ $_ure ]]; do
+    _uout+="${BASH_REMATCH[1]}"; _uhex="${BASH_REMATCH[3]}"; _us="${BASH_REMATCH[4]}"
+    _ucp=$((16#$_uhex))
+    if [ "$_ucp" -ge 55296 ] && [ "$_ucp" -le 56319 ] && [[ $_us =~ $_ure_lo ]]; then   # high surrogate + low surrogate
+      _ulo=$((16#${BASH_REMATCH[1]})); _us="${BASH_REMATCH[2]}"
+      _ucp=$(( 65536 + ((_ucp - 55296) << 10) + (_ulo - 56320) ))
+    fi
+    if [ "$_ucp" -lt 128 ]; then printf -v _ufmt '\\x%02x' "$_ucp"
+    elif [ "$_ucp" -lt 2048 ]; then printf -v _ufmt '\\x%02x\\x%02x' $((192 | _ucp >> 6)) $((128 | _ucp & 63))
+    elif [ "$_ucp" -lt 65536 ]; then printf -v _ufmt '\\x%02x\\x%02x\\x%02x' $((224 | _ucp >> 12)) $((128 | _ucp >> 6 & 63)) $((128 | _ucp & 63))
+    else printf -v _ufmt '\\x%02x\\x%02x\\x%02x\\x%02x' $((240 | _ucp >> 18)) $((128 | _ucp >> 12 & 63)) $((128 | _ucp >> 6 & 63)) $((128 | _ucp & 63))
+    fi
+    printf -v _uch "$_ufmt"; _uout+="$_uch"
+  done
+  printf -v "$1" '%s' "$_uout$_us"
+}

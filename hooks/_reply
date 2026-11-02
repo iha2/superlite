@@ -41,7 +41,7 @@ re_unappr='"approved"[[:space:]]*:[[:space:]]*false'
 if ! [[ $oj =~ $re_unappr ]]; then
   re_review='"review_path"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
   rp=""
-  [[ $oj =~ $re_review ]] && { rp="${BASH_REMATCH[1]//\\\\//}"; case "$rp" in /*|?:/*) ;; *) rp="$proj/$rp" ;; esac; }
+  [[ $oj =~ $re_review ]] && { rp="${BASH_REMATCH[1]//\\\\//}"; udecode rp 2>/dev/null; case "$rp" in /*|?:/*) ;; *) rp="$proj/$rp" ;; esac; }
   if ! { [ -n "$rp" ] && [ "$rp" -nt "$sd/orchestrator.json" ]; }; then   # the approved plan changed since: a new reply is due
     [ -f "$sd/feature.json" ] || return 0
     IFS= read -r -d '' fj < "$sd/feature.json"

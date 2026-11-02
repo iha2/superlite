@@ -499,3 +499,18 @@ def test_reply_judges_only_the_humans_words_around_wrapped_blocks(human):
     a, b = lines(human)
     assert a["approves"] is False and a["text"] == "what about the schema?"
     assert b["approves"] is True and b["text"] == "approve"
+
+
+def test_reply_reads_an_escaped_non_ascii_review_path(tmp_path):
+    p = tmp_path / "café"
+    p.mkdir()
+    amended(p)
+    oj = p / ".superlite" / "orchestrator.json"
+    st = json.loads(oj.read_text())
+    st["review_path"] = str(p / "docs" / "plans" / "x.feature.md")
+    t = os.stat(oj).st_mtime
+    oj.write_text(json.dumps(st))  # ensure_ascii, as base.write_json writes it
+    os.utime(oj, (t, t))
+    assert "\\u00e9" in oj.read_text()
+    reply(p, None, raw=json.dumps({"hook_event_name": "UserPromptSubmit", "cwd": str(p), "prompt": "approve"}, ensure_ascii=False))
+    assert [e["text"] for e in lines(p)] == ["approve"]

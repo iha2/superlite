@@ -269,3 +269,26 @@ def test_rows_in_a_linked_worktree_outside_the_main_checkout_find_its_registry(t
     assert run_at(hook, wt / "src", {**payload, "session_id": "s3"}).returncode == 0
     (rec,) = records(wt)
     assert rec["session"] == "s3" and rec["slug"] == "feat"
+
+
+def test_udecode_turns_json_unicode_escapes_into_utf8():
+    script = '. "$1/_unicode"; s=$2; udecode s; printf "%s" "$s"'
+    raw = json.dumps("/tmp/café/naïve/€/😀/a\\u0041")[1:-1]  # json escapes, plus a literal backslash-u kept as is
+    r = subprocess.run([BASH, "-c", script, "x", str(ROOT / "hooks"), raw.replace("\\\\", "/")], capture_output=True)
+    assert r.returncode == 0
+    assert r.stdout.decode("utf-8") == "/tmp/café/naïve/€/😀/a/u0041"
+
+
+@pytest.mark.parametrize("hook,payload", [(LAUNCH, LAUNCH_PAYLOAD), (STOP, STOP_PAYLOAD)])
+def test_rows_match_a_worktree_whose_path_the_registry_escaped(tmp_path, hook, payload):
+    host = tmp_path / "café"
+    wt = host / ".superlite" / "worktrees" / "naïve"
+    (wt / ".superlite").mkdir(parents=True)
+    (wt / ".superlite" / "pool.json").write_text("{}")
+    registry(host, "blink", [("blink", host), ("naive", wt)])  # json.dumps writes é, as base.write_json does
+    assert "\\u00e9" in (host / ".superlite" / "sessions.json").read_text()
+    env = {k: v for k, v in os.environ.items() if k != "CLAUDE_PROJECT_DIR"}
+    raw = json.dumps({**payload, "cwd": str(wt)}, ensure_ascii=False)  # the host sends UTF-8 as is
+    assert subprocess.run([BASH, str(hook)], input=raw.encode("utf-8"), capture_output=True, env=env).returncode == 0
+    (rec,) = records(wt)
+    assert rec["slug"] == "naive"

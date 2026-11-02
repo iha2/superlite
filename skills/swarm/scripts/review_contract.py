@@ -451,6 +451,10 @@ def check_interfaces(plan: planfile.Plan, root: Path, task_ids: list[str] | None
     for i, (f, name) in ts.items():
         if not review_ts.export_line(f, name):
             out.append(Mismatch(1, rel_to(root, f), 1, f"{items[i].task} Produces: {items[i].qual}: {name} is not exported", items[i].task))
+    for p in (p for i, p in enumerate(items) if i not in ts and p.ts_only):  # an owned .ts the name points at is missing
+        o = review_ts.owned_match(p.parts, [owned_files(t) for t in plan.tasks.values()])
+        if o:
+            out.append(Mismatch(1, o, 1, f"{p.task} Produces: {p.qual}: no module found ({o} missing)", p.task))
     items = [p for i, p in enumerate(items) if i not in ts and not p.ts_only]
     locs = [locate(root, plan, p) for p in items]
     reals = read_real(root, [(m, c) for m, c, _f in locs])

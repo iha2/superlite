@@ -3,15 +3,17 @@
 # The registry is the nearest .superlite/sessions.json at or above DIR, or, from a linked worktree, the one in the
 # main checkout its .git file names. The session whose worktree holds DIR
 # (the longest match) wins; at the host, or below it outside any session worktree (a prototype sandbox), the
-# registry's active slug. Bash builtins only.
+# registry's active slug. Paths are compared after \uXXXX escapes are decoded (hooks/_unicode). Bash builtins only.
+
+. "${here:-.}/_unicode" 2>/dev/null || udecode() { :; }
 
 session_slug() {
-  local d="$1" up reg host="" active="" rest chunk slug wt best="" bestlen=0
+  local d="$1" cwd="${1%/}" up reg host="" active="" rest chunk slug wt best="" bestlen=0
   local re_str='^[[:space:]]*:[[:space:]]*"([^"]*)"' re_wt='"worktree"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
   local re_host='"host_worktree"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"' re_act='"active"[[:space:]]*:[[:space:]]*"([^"]*)"'
   SLUG=""
   [ -n "$d" ] || return 0
-  d="${d%/}"
+  udecode cwd; d="$cwd"
   while [ ! -f "$d/.superlite/sessions.json" ]; do
     if [ -f "$d/.git" ]; then   # a linked worktree (possibly outside the main checkout): .git names <main>/.git/worktrees/<name>
       IFS= read -r up < "$d/.git"; up="${up#gitdir: }"; up="${up//\\//}"
@@ -21,7 +23,7 @@ session_slug() {
   done
   IFS= read -r -d '' reg < "$d/.superlite/sessions.json"
   [[ $reg =~ $re_act ]] && active="${BASH_REMATCH[1]}"
-  if [[ $reg =~ $re_host ]]; then host="${BASH_REMATCH[1]//\\\\//}"; host="${host%/}"; else host="$d"; fi
+  if [[ $reg =~ $re_host ]]; then host="${BASH_REMATCH[1]//\\\\//}"; udecode host; host="${host%/}"; else host="$d"; fi
   rest="$reg"
   while [[ $rest == *'"slug"'* ]]; do
     rest="${rest#*\"slug\"}"
@@ -29,9 +31,9 @@ session_slug() {
     [[ $chunk =~ $re_str ]] || continue
     slug="${BASH_REMATCH[1]}"
     [[ $chunk =~ $re_wt ]] || continue
-    wt="${BASH_REMATCH[1]//\\\\//}"; wt="${wt%/}"
+    wt="${BASH_REMATCH[1]//\\\\//}"; udecode wt; wt="${wt%/}"
     [ -n "$wt" ] && [ "$wt" != "$host" ] || continue
-    case "$1/" in "$wt"/*) [ "${#wt}" -gt "$bestlen" ] && { best="$slug"; bestlen="${#wt}"; } ;; esac
+    case "$cwd/" in "$wt"/*) [ "${#wt}" -gt "$bestlen" ] && { best="$slug"; bestlen="${#wt}"; } ;; esac
   done
   SLUG="${best:-$active}"
 }

@@ -546,3 +546,13 @@ def test_contract_keeps_an_owned_python_module_over_a_typescript_namesake(tmp_pa
     assert contract(tmp_path, "--seam", "T1,T2") == 1
     out = capsys.readouterr().out
     assert "src/pkg/model.py" in out and "not exported" not in out
+
+
+def test_contract_reports_a_missing_typescript_module_for_a_typescript_only_signature(tmp_path: Path, capsys):
+    p = ts_proj(tmp_path)
+    edit(p / "plan.md", "model.parseRegistry(text: string) -> Registry", "model.parseRegistry(lines: string[])")
+    (p / "hooks" / "model.ts").unlink()
+    assert contract(p, "--seam", "T1,T2") == 1
+    out = capsys.readouterr().out
+    assert "model.parseRegistry: no module found (hooks/model.ts missing)" in out
+    assert "verified" not in out

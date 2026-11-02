@@ -12,6 +12,7 @@
 here="${BASH_SOURCE[0]//\\//}"
 case "$here" in */*) here="${here%/*}" ;; *) here="." ;; esac
 . "$here/_preamble" 2>/dev/null || exit 0
+. "$here/_unicode"
 . "$here/_reply"
 . "$here/_nudge"
 

@@ -73,6 +73,12 @@ def locate(root: Path, parts: list[str], owns: list[list[str]]) -> tuple[Path, s
     return (f, parts[-1]) if f else None
 
 
+def owned_match(parts: list[str], owns: list[list[str]]) -> str | None:  # O(k*o) total
+    """The first owned TypeScript path that dotted `parts` name as a module, whether or not the file exists."""
+    rels = ["/".join(parts[:k]) for k in range(len(parts) - 1, 0, -1)]
+    return next((o for rel in rels for group in owns for o in group if ts_match(o, rel)), None)
+
+
 def export_line(f: Path, name: str) -> int:  # O(B) total
     """The 1-based line where `name` is exported from TypeScript file `f`, else 0."""
     try:
