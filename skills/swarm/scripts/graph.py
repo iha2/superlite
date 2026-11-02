@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""ASCII task graph from a plan's %% taskgraph block.
+"""Mermaid flowchart of a plan's %% taskgraph block, for the chat to draw.
 
     graph.py --plan PATH
     graph.render(plan_path, critical=None) -> str
 
 Writes graph.txt in the run folder (cached by plan SHA-256 and the critical ids).
-Lines <=79, ASCII, critical-path tasks marked with *: the given ids, else the
-longest path by task count. Stdlib only.
+Always `flowchart TD` (the `graph` keyword does not render in Claude Code). Nodes are
+labelled with id and title, in task order; critical-path tasks get the `critical`
+class: the given ids, else the longest path by task count. Stdlib only.
 """
 from __future__ import annotations
 
@@ -19,9 +20,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import planfile  # noqa: E402
 import plan_tools  # noqa: E402
-
-WIDTH = 79
-
 
 def _parse_graph(text: str) -> dict[str, list[str]]:  # O(L)
     """deps[tid] = list of prerequisite ids (edges a --> b mean b waits on a)."""
@@ -70,45 +68,23 @@ def _longest_path(deps: dict[str, list[str]]) -> list[str]:  # O(n+e)
     return max((path_of(t) for t in deps), key=_path_key)
 
 
-def _tiers(deps: dict[str, list[str]]) -> list[list[str]]:  # O(n+e)
-    """Topological levels: each task after the max tier of its deps."""
-    tier: dict[str, int] = {}
-
-    def level(t: str) -> int:  # O(n+e) total
-        if t in tier:
-            return tier[t]
-        ds = deps.get(t, ())
-        tier[t] = 0 if not ds else 1 + max(level(d) for d in ds)
-        return tier[t]
-
-    for t in deps:
-        level(t)
-    if not tier:
-        return []
-    width = max(tier.values()) + 1
-    rows: list[list[str]] = [[] for _ in range(width)]
-    for t in sorted(tier, key=_nkey):
-        rows[tier[t]].append(t)
-    return rows
+_SAFE = str.maketrans({'"': "'", "`": "'", "[": "(", "]": ")", "<": "(", ">": ")", "#": "no. "})
 
 
-def _cell(tid: str, critical: set[str]) -> str:
-    star = "*" if tid in critical else ""
-    return f"[{tid}{star}]"
+def _label(tid: str, title: str) -> str:  # O(len title)
+    """Quoted node label. Characters that break or restyle a label become plain look-alikes, since the chat
+    shows mermaid entity codes (#34;) as literal text; other characters, accents included, pass through."""
+    return '"' + f"{tid} {title}".strip().translate(_SAFE) + '"'
 
 
-def _draw(deps: dict[str, list[str]], critical: set[str]) -> str:  # O(n)
-    rows = _tiers(deps)
-    lines: list[str] = []
-    for i, row in enumerate(rows):
-        cells = [_cell(t, critical) for t in row]
-        line = "  ".join(cells)
-        if len(line) > WIDTH:
-            line = line[: WIDTH - 3] + "..."
-        lines.append(line)
-        if i + 1 < len(rows):
-            lines.append("  v")
-    lines.append("* = critical path")
+def _flowchart(deps: dict[str, list[str]], titles: dict[str, str], critical: set[str]) -> str:  # O(n+e)
+    order = sorted(deps, key=_nkey)
+    lines = ["flowchart TD"]
+    lines += [f"  {t}[{_label(t, titles.get(t, ''))}]" for t in order]
+    lines += [f"  {a} --> {b}" for b in order for a in deps[b]]
+    marked = [t for t in order if t in critical]
+    if marked:
+        lines += ["  classDef critical stroke:#d33,stroke-width:3px", f"  class {','.join(marked)} critical"]
     return "\n".join(lines) + "\n"
 
 
@@ -117,7 +93,7 @@ def _cache_path(plan_path: str) -> Path:
 
 
 def render(plan_path: str, critical: list[str] | None = None) -> str:  # O(L + n+e)
-    """Render ASCII graph; cache graph.txt in the run folder by plan hash plus
+    """Render the flowchart; cache graph.txt in the run folder by plan hash plus
     the critical ids (none given: the longest path is starred)."""
     p = Path(plan_path)
     if not p.is_file():
@@ -131,14 +107,10 @@ def render(plan_path: str, critical: list[str] | None = None) -> str:  # O(L + n
         prev = cache.read_text(encoding="utf-8")
         if prev.split("\n", 1)[0] == head:
             return prev
-    deps = _parse_graph(raw.decode("utf-8-sig"))
-    stars = set(critical) if critical else set(_longest_path(deps))
-    body = _draw(deps, stars)
-    if not body.isascii():
-        body = body.encode("ascii", "replace").decode("ascii")
-    for ln in body.splitlines():  # the head line may be wider: it is stripped before showing
-        if len(ln) > WIDTH:
-            raise AssertionError(f"line wider than {WIDTH}: {ln!r}")
+    text = raw.decode("utf-8-sig")
+    deps = _parse_graph(text)
+    titles = {tid: t.title for tid, t in planfile.Plan(text).tasks.items()}
+    body = _flowchart(deps, titles, set(critical) if critical else set(_longest_path(deps)))
     out = f"{head}\n{body}"
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(out, encoding="utf-8", newline="\n")

@@ -424,7 +424,7 @@ def _wave0_line(plan_path: str, run_dir: Path, pending: list, sent: set) -> list
 
 
 def _graph_lines(plan_path: str, run_dir: Path, critical: list) -> list[str]:  # O(L + n+e)
-    """The framed task graph with lint's critical path starred, only when the drawing differs from the last one
+    """The framed mermaid flowchart with lint's critical path marked, only when it differs from the last one
     shown (graph-shown.txt). Never blocks the lint."""
     try:
         import graph
@@ -436,7 +436,7 @@ def _graph_lines(plan_path: str, run_dir: Path, critical: list) -> list[str]:  #
     except base.advisory_errors() as e:  # logged, the lint goes on
         print(f"graph: not drawn ({e})", file=sys.stderr)
         return []
-    return ["GRAPH (show the user verbatim in a text block):", *body.splitlines(), "END GRAPH"]
+    return ["GRAPH (show the user as a mermaid block):", *body.splitlines(), "END GRAPH"]
 
 
 def _print_report(args, run_dir: Path, stable: list, fix: list, plan_issues: list, warnings: list, pending: list,
