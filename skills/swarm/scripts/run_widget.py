@@ -154,8 +154,8 @@ def actual_model_rows(rep) -> list[str]:  # O(m log m)
 
 def ruling_rows(rulings, checkpoints) -> list[str]:  # O(R)
     scope = finish.scope_rulings(rulings)
-    saved = (f"{plural(checkpoints, 'checkpoint')} kept in the folder, branch untouched" if checkpoints
-             else "no checkpoints left in the folder")
+    saved = (f"{plural(checkpoints, 'checkpoint')} taken; work uncommitted in the folder, branch untouched" if checkpoints
+             else "no checkpoint state recorded")
     rows = [line(f"rulings {len(rulings)}", f"scope changes {len(scope)}", saved)]
     shown = [f"<li>{esc(r)}</li>" for r in rulings[:MAX_RULINGS]]
     if len(rulings) > MAX_RULINGS:
