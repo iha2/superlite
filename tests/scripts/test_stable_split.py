@@ -320,3 +320,63 @@ def test_rewrite_dropping_a_dispatched_block_is_frozen(tmp_path):
     p = make_plan(tmp_path, [{"id": "T2", "time": 2}])
     cp = pt("lint", "--stable", "--plan", p)
     assert "FROZEN: T1 dispatched block was removed" in cp.out
+
+
+# ---------------------------------------------------------------- GRAPH block
+
+GRAPH_EDGES = [("T1", "T2"), ("T1", "T3"), ("T2", "T4"), ("T3", "T4"), ("T5", "T4")]
+
+
+def _graph_plan(tmp_path, edges=GRAPH_EDGES, t2_title="task t2"):
+    tasks = [{"id": "T1", "time": 2}, {"id": "T2", "time": 2, "title": t2_title}, {"id": "T3", "time": 4},
+             {"id": "T4", "time": 2}, {"id": "T5", "time": 2}]
+    return make_plan(tmp_path, tasks, edges)
+
+
+def _graph_block(cp):
+    lines = cp.out.splitlines()
+    if "END GRAPH" not in lines:
+        return None
+    start = lines.index("GRAPH (show the user as a mermaid block):")
+    return lines[start + 1:lines.index("END GRAPH")]
+
+
+def test_first_lint_prints_the_graph_before_stable(tmp_path):
+    cp = pt("lint", "--stable", "--plan", _graph_plan(tmp_path))
+    assert cp.returncode == 0, cp.both
+    block = _graph_block(cp)
+    assert block == ["flowchart TD", '  T1["T1 task t1"]', '  T2["T2 task t2"]', '  T3["T3 task t3"]',
+                     '  T4["T4 task t4"]', '  T5["T5 task t5"]', "  T1 --> T2", "  T1 --> T3", "  T2 --> T4",
+                     "  T3 --> T4", "  T5 --> T4", "  classDef critical stroke:#d33,stroke-width:3px",
+                     "  class T1,T3,T4 critical"]
+    lines = cp.out.splitlines()
+    assert lines.index("END GRAPH") < next(i for i, ln in enumerate(lines) if ln.startswith("STABLE:"))
+    assert lines[-1].startswith("DISPATCH NOW: ")
+
+
+def test_critical_class_is_lints_critical_path(tmp_path):
+    cp = pt("lint", "--stable", "--plan", _graph_plan(tmp_path))
+    starred = _graph_block(cp)[-1].split()[1].split(",")
+    assert starred == stable_json(tmp_path)["critical_path"] == ["T1", "T3", "T4"]
+
+
+def test_graph_prints_again_only_when_the_flowchart_changes(tmp_path):
+    p = _graph_plan(tmp_path)
+    pt("lint", "--stable", "--plan", p)
+    assert _graph_block(pt("lint", "--stable", "--plan", p)) is None
+    _graph_plan(tmp_path, t2_title="task t2 reworded")
+    assert '  T2["T2 task t2 reworded"]' in _graph_block(pt("lint", "--stable", "--plan", p))
+    _graph_plan(tmp_path, GRAPH_EDGES + [("T2", "T3")], t2_title="task t2 reworded")
+    cp = pt("lint", "--stable", "--plan", p)
+    block = _graph_block(cp)
+    assert "  T2 --> T3" in block and block[-1] == "  class T1,T2,T3,T4 critical"
+    assert cp.out.rstrip().splitlines()[-1].startswith("DISPATCH NOW: ")
+
+
+def test_undrawable_graph_fails_open(tmp_path):
+    p = _graph_plan(tmp_path)
+    p.write_text(p.read_text(encoding="utf-8").replace("%% taskgraph\n", ""), encoding="utf-8")
+    cp = pt("lint", "--stable", "--plan", p)
+    assert _graph_block(cp) is None
+    assert "graph: not drawn (" in cp.err
+    assert cp.out.rstrip().splitlines()[-1].startswith("DISPATCH NOW: ")
