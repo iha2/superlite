@@ -1,13 +1,18 @@
 # Sourced by hooks/prompt: while a human-orchestrator run is unapproved (.superlite/orchestrator.json
-# has mode human and approved false), or a feature-flow try-out waits for the human (mode human and
-# .superlite/feature.json has status tryout), append one line per human prompt to
-# <project>/.superlite/human-replies.jsonl:
+# has mode human and approved false), its approved review plan (review_path) was changed after the
+# approval (so `orchestrator approve --review` needs a new reply), or a feature-flow try-out waits for
+# the human (mode human and .superlite/feature.json has status tryout), append one line per human
+# prompt to <project>/.superlite/human-replies.jsonl:
 #   {"t":<epoch ms>,"approves":true|false,"text":"<first 160 chars of the prompt>"}
 # approves is true when the prompt expresses approval in any common way (approve, yes, yeah, yep,
 # ok, okay, sure, go ahead, looks good, sounds good, lgtm, proceed, it works, and similar), including
 # a long reply or one that also names a change. It is false for an explicit refusal (don't approve,
 # do not proceed), a real question (should I approve?, can we go ahead?), or a message that only
 # mentions approving. Only this hook writes the file.
+# Text the host or another session wrapped in a tag (<system-reminder>, <cross-session-message>,
+# <agent-message>, <task-notification>, <bash-input>/<bash-stdout>/<bash-stderr>,
+# <local-command-stdout>/<local-command-caveat>) is not the human's words: it is cut out before
+# matching, and a prompt with nothing else is not recorded.
 # Bash builtins only (each external process costs ~250 ms on Windows). Never blocks.
 # Returning means nothing to record.
 
@@ -34,13 +39,30 @@ re_human='"mode"[[:space:]]*:[[:space:]]*"human"'
 re_unappr='"approved"[[:space:]]*:[[:space:]]*false'
 [[ $oj =~ $re_human ]] || return 0
 if ! [[ $oj =~ $re_unappr ]]; then
-  [ -f "$sd/feature.json" ] || return 0
-  IFS= read -r -d '' fj < "$sd/feature.json"
-  re_tryout='"status"[[:space:]]*:[[:space:]]*"tryout"'
-  [[ $fj =~ $re_tryout ]] || return 0
+  re_review='"review_path"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
+  rp=""
+  [[ $oj =~ $re_review ]] && { rp="${BASH_REMATCH[1]//\\\\//}"; case "$rp" in /*|?:/*) ;; *) rp="$proj/$rp" ;; esac; }
+  if ! { [ -n "$rp" ] && [ "$rp" -nt "$sd/orchestrator.json" ]; }; then   # the approved plan changed since: a new reply is due
+    [ -f "$sd/feature.json" ] || return 0
+    IFS= read -r -d '' fj < "$sd/feature.json"
+    re_tryout='"status"[[:space:]]*:[[:space:]]*"tryout"'
+    [[ $fj =~ $re_tryout ]] || return 0
+  fi
 fi
 
 pjstr prompt; text="$REPLY"
+# Cut out every wrapped block the host or another session added; an unclosed one runs to the end.
+for tag in system-reminder cross-session-message agent-message task-notification bash-input bash-stdout bash-stderr \
+  local-command-stdout local-command-caveat; do
+  while [[ $text == *"<$tag>"* || $text == *"<$tag "* ]]; do
+    pre="${text%%"<$tag"[ >]*}"
+    post="${text:${#pre}}"
+    if [[ $post == *"</$tag>"* ]]; then post="${post#*"</$tag>"}"; else post=""; fi
+    text="$pre $post"
+  done
+done
+text="${text#"${text%%[![:space:]]*}"}"; text="${text%"${text##*[![:space:]]}"}"
+[ -n "$text" ] || return 0
 # bash 3.2 (stock macOS) has neither ${var,,} nor $'\u': tr, and the curly quotes as UTF-8 bytes.
 lc="$(printf '%s' "$text" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
 lc="${lc//$'\xe2\x80\x99'/\'}"; lc="${lc//$'\xe2\x80\x98'/\'}"

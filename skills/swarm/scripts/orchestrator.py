@@ -12,7 +12,7 @@ gated (existing runs behave as before). `--ruling` on `set ai` also appends a `R
 (for a headless run where no human can answer).
 In human mode `approve` needs `--review PATH` (the plain-language review plan; refused without it, exit 2; a missing file exit 2)
 and evidence of a real human reply: `.superlite/human-replies.jsonl` (written only by the UserPromptSubmit hook, one
-{"t": epoch ms, "approves": bool, "text": ...} per human prompt while unapproved) must hold a line whose t is
+{"t": epoch ms, "approves": bool, "text": ...} per human prompt while unapproved, or once the approved review plan changed) must hold a line whose t is
 later than the review file's modification time, else exit 3 with a BLOCKED line. The coordinator sends `approve` when it
 understands that reply as approval; the hook's phrase flag does not decide. The path and sha256 are recorded. AI mode never
 needs `approve`. Feature flow: in human mode, while `.superlite/feature.json` (written by `superlite-cli proto`) has status tryout, the same
