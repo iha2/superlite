@@ -186,7 +186,7 @@ def card_line(plan, sl_dir, ledger=None):  # O(file + R*w + m log m)
     except base.advisory_errors() as e:
         print(f"run_widget: after card not written ({e})", file=sys.stderr)
         return ""
-    return run_widget.widget_line(out) if out else ""
+    return run_widget.widget_line(out, Path.cwd()) if out else ""  # ledger paths are from the cwd
 
 
 def summary(ledger, log, lint_log=DEFAULT_LINT_LOG, plan=None, sl_dir=None):  # O(R*w + I*w + C + G)

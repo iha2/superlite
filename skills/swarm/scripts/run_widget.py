@@ -295,12 +295,16 @@ def write(sl_dir, plan=None, before=False, stable=None, ledger=None) -> Path | N
     return out
 
 
-def widget_line(path) -> str:
-    """The line a tool prints after writing a card; the coordinator shows the file when it has a widget tool. The path
-    is `<run dir>/<file>` from the project root, as lint's THEN LOG line names the ledger, so the bytes never depend on
-    the working directory."""
+def widget_line(path, root=None) -> str:
+    """The line a tool prints after writing a card; the coordinator shows the file when it has a widget tool. Without
+    `root` the path is `<run dir>/<file>`, as lint's THEN LOG line names the ledger, so the bytes never depend on the
+    working directory. With `root` it is the full path from there, or absolute when the card is outside it."""
     p = Path(path)
-    return f"widget: {p.parent.name}/{p.name} (show it with an inline widget tool if you have one, e.g. show_widget; else skip)"
+    shown = f"{p.parent.name}/{p.name}"
+    if root is not None:
+        full = p.resolve()
+        shown = full.relative_to(Path(root).resolve()).as_posix() if full.is_relative_to(Path(root).resolve()) else str(full)
+    return f"widget: {shown} (show it with an inline widget tool if you have one, e.g. show_widget; else skip)"
 
 
 def main(argv=None):  # O(file + R*w + n + m log m)

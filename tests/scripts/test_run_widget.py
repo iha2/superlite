@@ -126,6 +126,24 @@ def test_finish_card_reads_the_ledger_it_was_given(tmp_path, monkeypatch):
     assert "dropped the CSV export" in card and "stale ruling" not in card
 
 
+def test_finish_widget_line_keeps_a_nested_ledger_path(tmp_path, monkeypatch):
+    p, sl = finished_run(tmp_path, monkeypatch)
+    nested = tmp_path / "logs" / "run"
+    nested.mkdir(parents=True)
+    for name in ("progress.md", "report.json", "metrics.jsonl", "checkpoints.json"):
+        if (sl / name).exists():
+            (nested / name).write_text((sl / name).read_text(encoding="utf-8"), encoding="utf-8")
+    cp = run(FINISH, "--ledger", "logs/run/progress.md", "--log", "logs/run/i.jsonl", "--plan", p, cwd=tmp_path)
+    assert cp.returncode == 0, cp.both
+    assert cp.out.rstrip("\n").splitlines()[-1].split()[1] == "logs/run/" + run_widget.AFTER
+    assert (nested / run_widget.AFTER).is_file()
+
+
+def test_widget_line_outside_root_is_absolute(tmp_path):
+    out = tmp_path / "a" / run_widget.AFTER
+    assert run_widget.widget_line(out, tmp_path / "b").split()[1] == str(out.resolve())
+
+
 def test_float_actual_against_whole_projected_agents():
     card = run_widget.render({"headline": {"agents": {"projected": 3, "actual": 2.0}}}, [], 0)
     assert "proj 3 · -1" in card
