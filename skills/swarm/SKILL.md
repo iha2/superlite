@@ -24,7 +24,7 @@ Shorthand (every agent brief states `SUPERLITE=<path>`):
 
 ## Planning check
 
-Fixed order, nothing waits on plan polishing: write plan -> `bash "$CLI" plan_tools lint --plan $PLAN --spec SPEC --stable` (lists STABLE and FIX tasks, writes `.superlite/stable.json`; prints `SEND BEFORE ANY PLAN EDIT:`, ends with `DISPATCH NOW: T2 T4` or `none`) -> `dispatch` and start every task on that line in the same turn -> only then patch the FIX tasks (edits or a rewrite) -> re-lint -> dispatch the newly stable tasks -> repeat until lint passes. No agent waits on plan polishing: never patch, rewrite or re-lint while a `DISPATCH NOW` task is unsent.
+When lint or finish prints `widget:`, show that file verbatim with your inline widget tool (e.g. `show_widget`) in the same turn. Fixed order, nothing waits on plan polishing: write plan -> `bash "$CLI" plan_tools lint --plan $PLAN --spec SPEC --stable` (lists STABLE and FIX tasks, writes `.superlite/stable.json`; prints `SEND BEFORE ANY PLAN EDIT:`, ends with `DISPATCH NOW: T2 T4` or `none`) -> `dispatch` and start every task on that line in the same turn -> only then patch the FIX tasks (edits or a rewrite) -> re-lint -> dispatch the newly stable tasks -> repeat until lint passes. No agent waits on plan polishing: never patch, rewrite or re-lint while a `DISPATCH NOW` task is unsent.
 
 Each dispatch round, in the same message as the Agent calls, run the `THEN LOG` line lint prints (it appends `unblocked: dispatched T2 T4 at HH:MM:SS; waiting on fixes: T1 T3` to `.superlite/progress.md`). `finish` checks it against `lint-log.jsonl`.
 
