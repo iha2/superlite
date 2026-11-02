@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "skills" / "swarm" / "scripts"
 HOOK = ROOT / "hooks" / "prompt"
@@ -166,6 +168,7 @@ def test_per_agent_cost_when_host_names_agents(tmp_path):
     assert "implementer $0.1200" in ctx and "package-reviewer $0.0800" in ctx
 
 
+@pytest.mark.skipif(os.name == "nt", reason="a python3 symlink as the only PATH entry is a POSIX setup")
 def test_hook_falls_back_to_python3_when_python_is_missing(tmp_path):
     sl = _sl(tmp_path)
     _host_usage(sl, usd=0.55)

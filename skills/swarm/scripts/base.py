@@ -1,10 +1,12 @@
 """Shared base: git, json files, locks, processes, flags. Stdlib only."""
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 if os.name == "nt":
@@ -45,9 +47,20 @@ def advisory_errors() -> tuple:
             planfile.PlanError, predict.PredictError, project_config.ProjectConfigError)
 
 
+def _win_retry(fn):
+    """fn(), retried briefly on Windows while another process holds the file open or is replacing it (a sharing
+    violation surfaces as PermissionError there); elsewhere PermissionError is final, so fn() runs once."""
+    for _ in range(50 if os.name == "nt" else 0):
+        try:
+            return fn()
+        except PermissionError:
+            time.sleep(0.01)
+    return fn()
+
+
 def read_json(path: Path, default):
     try:
-        return json.loads(Path(path).read_text(encoding="utf-8"))
+        return json.loads(_win_retry(lambda: Path(path).read_text(encoding="utf-8")))
     except (OSError, ValueError):
         return default
 
@@ -64,7 +77,7 @@ def write_json(path: Path, data) -> None:
             f.write("\n")
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp, path)
+        _win_retry(lambda: os.replace(tmp, path))
         replaced = True
     finally:
         if not replaced:
@@ -130,6 +143,27 @@ def spawn_background(argv: list, log: Path) -> int:
     with open(log, "ab") as fh:
         return subprocess.Popen(list(argv), stdin=subprocess.DEVNULL, stdout=fh, stderr=subprocess.STDOUT,
                                 env=env, close_fds=True, **kw).pid
+
+
+def bash() -> str:
+    """A real bash: SUPERLITE_BASH, else Git's on Windows (a bare "bash" there resolves to System32's WSL stub
+    before PATH), else whatever is on PATH."""
+    if os.environ.get("SUPERLITE_BASH"):
+        return os.environ["SUPERLITE_BASH"]
+    if os.name == "nt":
+        found = git_bash(shutil.which("git"), os.environ.get("ProgramFiles", r"C:\Program Files"))
+        if found:
+            return found
+    return shutil.which("bash") or "bash"
+
+
+def git_bash(git_exe: str | None, program_files: str) -> str | None:
+    """Git for Windows' bash.exe, near the git on PATH (Git\\cmd, Git\\bin or Git\\mingw64\\bin) or under Program Files;
+    None if neither has one."""
+    roots = list(Path(git_exe).parents)[1:3] if git_exe else []
+    roots.append(Path(program_files) / "Git")
+    return next((str(r / sub / "bash.exe") for r in roots for sub in ("bin", "usr/bin")
+                 if (r / sub / "bash.exe").is_file()), None)
 
 
 def flag(env: str, path: Path, key: str, default: bool) -> bool:
