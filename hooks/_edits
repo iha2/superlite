@@ -4,10 +4,10 @@
 #     .superlite/feature.json (changed only by `superlite-cli proto`) and .superlite/human-replies.jsonl (written
 #     only by hooks/prompt) are never written by the model.
 #  2. HUMAN-UNAPPROVED (.superlite/orchestrator.json has mode human and approved false): nothing is
-#     orchestrated until the human approves the review plan. Agent calls of superlite:* and
-#     general-purpose and superlite-cli dispatch/assign/wave0/checkpoint/finish/build_prime
-#     are denied. File writes are not: small inline work needs only the human's yes in chat, not a
-#     review plan.
+#     orchestrated until the human approves the review plan. Agent calls are denied, except Explore, Plan, the
+#     guide agents and (not in Cursor) an agent that cannot write files (see agent_read_only), and so are
+#     superlite-cli dispatch/assign/wave0/checkpoint/finish/build_prime. File writes are not: small inline
+#     work needs only the human's yes in chat, not a review plan.
 #     TRYOUT-PENDING (feature flow: mode human and .superlite/feature.json has status tryout) is the
 #     same denial, for the integration build, until `superlite-cli proto tryout --approve` records the try-out.
 #  3. Active run (.superlite/stable.json, prime.md or pool.json exists): project code is not written
@@ -30,6 +30,96 @@ norm() {
   [[ $p =~ $re ]] && { lower "${BASH_REMATCH[1]}"; p="/$LOWER/${BASH_REMATCH[2]}"; }
   while [[ $p == */ && $p != / ]]; do p="${p%/}"; done
   NORM="$p"
+}
+
+# tool_items VALUE: counts the tool names in a tools: value or list line into TOOLS. Fails for a tool that can
+# write files or start an agent that can (subagent calls skip this hook), and for a value it cannot read (a block
+# scalar, a [ with no ] on the line). Names split at commas and at whitespace outside parentheses, as in Claude
+# Code: `Read Write` is two tools.
+tool_items() {
+  local v="$1" base bad=0
+  v="${v%%#*}"
+  case "$v" in *\[*) case "$v" in *\]*) ;; *) bad=1 ;; esac ;; esac
+  v="${v//\[/}"; v="${v//\]/}"; v="${v//\"/}"; v="${v//\'/}"
+  case "$v" in '>'*|'|'*) bad=1 ;; esac
+  shopt -s nocasematch
+  while [ -n "$v" ]; do
+    v="${v#"${v%%[![:space:],-]*}"}"   # separators and list dashes before a name
+    base="${v%%[[:space:],(]*}"; v="${v#"$base"}"
+    case "$v" in '('*) case "$v" in *\)*) v="${v#*)}" ;; *) v="" ;; esac ;; esac
+    case "$base" in
+      '') ;;
+      edit|write|multiedit|notebookedit|agent|task|all|'*'|mcp__*) bad=1 ;;
+      *) TOOLS=$((TOOLS+1)) ;;
+    esac
+  done
+  shopt -u nocasematch
+  return "$bad"
+}
+
+# agent_unique NAME FILE: succeeds when no other agent file of the same or a higher rank can define NAME. Claude
+# Code keys an agent on its name: and also reads subfolders of agents/, so a subfolder, or another top-level file
+# whose frontmatter says name: NAME, fails it.
+agent_unique() {
+  local n="$1" f="$2" d g line i
+  for d in "$proj/.claude/agents" "${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/agents"; do
+    d="${d//\\//}"
+    for g in "$d"/*; do
+      [ -d "$g" ] && return 1
+      case "$g" in "$f") continue ;; *.md) ;; *) continue ;; esac
+      i=0
+      while [ "$i" -lt 60 ] && { IFS= read -r line || [ -n "$line" ]; }; do
+        i=$((i+1)); line="${line%$'\r'}"
+        [ "$i" -gt 1 ] && [ "$line" = --- ] && break
+        case "$line" in name:*)
+          line="${line#name:}"; line="${line%%#*}"; line="${line//[\"\' $'\t']/}"
+          shopt -s nocasematch
+          [[ $line == "$n" ]] && { shopt -u nocasematch; return 1; }
+          shopt -u nocasematch ;;
+        esac
+      done < "$g"
+    done
+    case "$f" in "$d"/*) break ;; esac   # folders after the one that holds FILE rank lower
+  done
+  return 0
+}
+
+# agent_read_only NAME: succeeds when agent NAME cannot write files. Its definition is .claude/agents/NAME.md in
+# the project, else ${CLAUDE_CONFIG_DIR:-~/.claude}/agents/NAME.md. The frontmatter must carry a matching name:
+# and a tools: list of at least one tool, none of them a writer (an agent without one inherits every tool). A
+# memory: other than none (it adds Write and Edit) and an mcpServers: key fail it too, as does anything else
+# that is not a plain name or that it cannot parse.
+agent_read_only() {
+  local n="$1" f="" d line key val i=0 intools=0 named=0 closed=0 bad=0
+  local re_name='^[A-Za-z0-9_-]+$' re_key='^([A-Za-z_-]+):[[:space:]]*(.*)$'
+  TOOLS=0
+  [[ $n =~ $re_name ]] || return 1
+  [ "$n" = general-purpose ] && return 1
+  for d in "$proj/.claude/agents" "${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/agents"; do
+    d="${d//\\//}"
+    [ -f "$d/$n.md" ] && { f="$d/$n.md"; break; }
+  done
+  [ -r "$f" ] || return 1
+  agent_unique "$n" "$f" || return 1
+  while [ "$i" -lt 60 ] && { IFS= read -r line || [ -n "$line" ]; }; do
+    i=$((i+1)); line="${line%$'\r'}"
+    if [ "$i" = 1 ]; then [ "$line" = --- ] || return 1; continue; fi
+    if [ "$line" = --- ]; then closed=1; break; fi
+    if [ "$intools" = 1 ]; then   # list items and continuation lines of a tools: value
+      case "$line" in ''|[[:space:]]*|-*|'#'*) tool_items "$line" || bad=1; continue ;; esac
+      intools=0
+    fi
+    [[ $line =~ $re_key ]] || continue
+    key="${BASH_REMATCH[1]}"; val="${BASH_REMATCH[2]}"
+    [ "$key" = tools ] || { val="${val%%#*}"; val="${val//[\"\' ]/}"; }
+    case "$key" in
+      name) [ "$val" = "$n" ] && named=1 ;;
+      tools) intools=1; tool_items "$val" || bad=1 ;;
+      memory) case "$val" in ''|none) ;; *) bad=1 ;; esac ;;
+      mcpServers) bad=1 ;;
+    esac
+  done < "$f"
+  [ "$closed" = 1 ] && [ "$named" = 1 ] && [ "$bad" = 0 ] && [ "$TOOLS" -gt 0 ]
 }
 
 guard_edits() {
@@ -69,7 +159,8 @@ if [ "$tool" = Agent ] || [ "$tool" = Task ]; then
   case "$st" in Explore|explore|Plan|claude-code-guide|cursor-guide) ;;
   *)
     if [ "$gated" = 1 ]; then
-      hit="Agent ${st:-general-purpose}"; gatehit=1
+      # An agent that cannot write files cannot build. Cursor keeps its agents elsewhere: it keeps the denial.
+      if [ "$cursor" = 1 ] || ! agent_read_only "$st"; then hit="Agent ${st:-general-purpose}"; gatehit=1; fi
     elif [ "$active" = 1 ]; then
       jstr prompt; pr="$REPLY"
       [ -n "$pr" ] || { jstr description; pr="$REPLY"; }
@@ -330,9 +421,9 @@ nl=$'\n'
 if [ "$prot" = 1 ]; then
   msg='Blocked: .superlite/orchestrator.json, .superlite/feature.json and .superlite/human-replies.jsonl are never written directly. Change the orchestrator state only with `superlite-cli orchestrator ...` (for example `superlite-cli orchestrator approve --review <path>`) and the prototype state only with `superlite-cli proto ...`; human-replies.jsonl is written only by the hook that records the human'"'"'s replies.'
 elif [ "$human" = 1 ]; then
-  msg='Human orchestrator: no build is orchestrated until the human approves the plan. Write the review plan docs/plans/<date>-<topic>.review.md (see skills/drafting/review-plan.md), show its path with a five-line summary, ask the human to reply approve, end your turn, then run superlite-cli orchestrator approve --review <path>. Small inline work without a plan needs only the human'"'"'s yes in chat.'
+  msg='Human orchestrator: no build is orchestrated until the human approves the plan. Write the review plan docs/plans/<date>-<topic>.review.md (see skills/drafting/review-plan.md), show its path with a five-line summary, ask the human to reply approve, end your turn, then run superlite-cli orchestrator approve --review <path>. Small inline work without a plan needs only the human'"'"'s yes in chat. Agents with no Edit or Write tools (read-only reviewers and scanners) may run.'
 elif [ "$tryout" = 1 ] && [ "$gatehit" = 1 ]; then
-  msg='Feature flow: the integration build waits for the human'"'"'s try-out of the prototype. Show how to try it (`superlite-cli proto tryout`), ask the human to reply "it works" or list changes, end your turn, then run `superlite-cli proto tryout --approve`. Changes go back to the prototype: `superlite-cli proto start --topic <topic>` reopens it for a fix round.'
+  msg='Feature flow: the integration build waits for the human'"'"'s try-out of the prototype. Show how to try it (`superlite-cli proto tryout`), ask the human to reply "it works" or list changes, end your turn, then run `superlite-cli proto tryout --approve`. Changes go back to the prototype: `superlite-cli proto start --topic <topic>` reopens it for a fix round. Agents with no Edit or Write tools (read-only reviewers and scanners) may run.'
 elif [ "$batchhit" = 1 ]; then
   msg="Blocked: implementer tasks must match one batch from the last superlite-cli dispatch. Printed batches: ${BATCH_PRINTED}. Launch exactly one of those batches, not ${hit#batch }."
 elif [ "${qhit:-0}" = 1 ]; then
