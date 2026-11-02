@@ -102,6 +102,14 @@ def test_critical_argument_marks_exactly_those_tasks(tmp_path):
     assert _critical(graph.render(plan, ["T1", "T4"])) == ["T1", "T4"]
 
 
+def test_empty_critical_marks_nothing_and_has_its_own_cache_key(tmp_path):
+    plan = str(tiny_plan(tmp_path))
+    graph.render(plan)
+    out = graph.render(plan, [])
+    assert not any("critical" in ln for ln in out.splitlines()[1:])
+    assert _critical(graph.render(plan)) == ["T1", "T2", "T3"]
+
+
 def test_one_argument_render_ignores_a_critical_cache(tmp_path):
     plan = str(tiny_plan(tmp_path))
     graph.render(plan, ["T1", "T4"])

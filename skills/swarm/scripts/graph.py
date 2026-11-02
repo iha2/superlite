@@ -97,13 +97,13 @@ def _cache_path(plan_path: str) -> Path:
 
 def render(plan_path: str, critical: list[str] | None = None) -> str:  # O(L + n+e)
     """Render the flowchart; cache graph.txt in the run folder by plan hash plus
-    the critical ids (none given: the longest path is starred)."""
+    the critical ids (None: the longest path is marked; an empty list marks nothing)."""
     p = Path(plan_path)
     if not p.is_file():
         raise FileNotFoundError(plan_path)
     raw = p.read_bytes()
     head = f"# hash: {hashlib.sha256(raw).hexdigest()} format: {FORMAT}"
-    if critical:
+    if critical is not None:
         head += " critical: " + " ".join(critical)
     cache = _cache_path(plan_path)
     if cache.is_file():
@@ -113,7 +113,7 @@ def render(plan_path: str, critical: list[str] | None = None) -> str:  # O(L + n
     text = raw.decode("utf-8-sig")
     deps = _parse_graph(text)
     titles = {tid: t.title for tid, t in planfile.Plan(text).tasks.items()}
-    body = _flowchart(deps, titles, set(critical) if critical else set(_longest_path(deps)))
+    body = _flowchart(deps, titles, set(critical) if critical is not None else set(_longest_path(deps)))
     out = f"{head}\n{body}"
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(out, encoding="utf-8", newline="\n")
