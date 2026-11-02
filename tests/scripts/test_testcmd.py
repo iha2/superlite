@@ -167,3 +167,17 @@ def test_python_project_still_uses_pytest(tmp_path):
     (tmp_path / "test_a.py").write_text("def test_a():\n    assert 1 == 1\n", encoding="utf-8")
     cp = rt(tmp_path, "--full")
     assert cp.returncode == 0 and cp.out.strip().startswith("1 0 0"), cp.both
+
+
+def test_parse_output_reads_bun_style_pass_and_fail_lines():
+    sys.path.insert(0, str(SCRIPTS))
+    import testcmd
+    green = "bun test v1.2.0\n\n 107 pass\n 0 fail\n 241 expect() calls\nRan 107 tests across 5 files. [1.20s]\n"
+    p = testcmd.parse_output(green, 0)
+    assert (p["passed"], p["failed"], p["skipped"]) == (107, 0, 0)
+    red = "(fail) graph > clock [0.4ms]\n 35 pass\n 1 skip\n 2 fail\nRan 38 tests across 2 files. [0.79s]\n"
+    p = testcmd.parse_output(red, 1)
+    assert (p["passed"], p["failed"], p["skipped"]) == (35, 2, 1)
+    only_total = "Ran 37 tests across 2 files. [0.79s]\n"
+    assert testcmd.parse_output(only_total, 0)["passed"] == 37
+    assert testcmd.parse_output("12 passed, 1 failed in 0.4s\n", 1)["passed"] == 12  # pytest unchanged

@@ -146,7 +146,8 @@ def resolve(root=".", paths=()):  # O(m + f)
 
 NAME_PATTERNS = [r"^--- FAIL: (\S+)", r"^test (\S+) \.\.\. FAILED", r"^\s*(?:FAIL|✗|×|✕)\s+(.+?)\s*$", r"^\s*Failed\s+(\S+)",
                  r"^\s*\d+\)\s+(.+?)\s*$"]
-COUNT_PASSED = [r"(\d+)\s+passed", r"Passed!?.*?Passed:\s*(\d+)", r"test result: \w+\. (\d+) passed", r"^ok\s+\S+", ]
+COUNT_PASSED = [r"(\d+)\s+passed", r"Passed!?.*?Passed:\s*(\d+)", r"test result: \w+\. (\d+) passed", r"^ok\s+\S+", r"^\s*(\d+)\s+pass$"]
+COUNT_FAILED = [r"(\d+)\s+failed", r"Failed:\s*(\d+)", r"^\s*(\d+)\s+fail$"]  # the last: bun and the Claude Code plugin test runner
 
 
 def parse_output(text: str, rc: int) -> dict:  # O(o)
@@ -164,10 +165,16 @@ def parse_output(text: str, rc: int) -> dict:  # O(o)
     blob = "\n".join(lines)
     passed = sum(int(x) for x in re.findall(r"(\d+)\s+passed", blob)) + sum(int(x) for x in re.findall(r"Passed:\s*(\d+)", blob))  # vitest, jest, cargo, dotnet
     passed += len(re.findall(r"^ok\s+\S+", blob, re.M))  # go: one line per package
+    passed += sum(int(x) for x in re.findall(r"^\s*(\d+)\s+pass$", blob, re.M))  # bun, claude plugin test: " 107 pass"
     failed = sum(int(x) for x in re.findall(r"(\d+)\s+failed", blob)) + sum(int(x) for x in re.findall(r"Failed:\s*(\d+)", blob))
+    failed += sum(int(x) for x in re.findall(r"^\s*(\d+)\s+fail$", blob, re.M))  # " 0 fail"
     failed = max(failed, len(names) if rc else 0)
     skipped = 0
     skipped = sum(int(x) for x in re.findall(r"(\d+)\s+skipped", blob))
+    skipped += sum(int(x) for x in re.findall(r"^\s*(\d+)\s+skip$", blob, re.M))
+    ran = re.search(r"^Ran (\d+) tests? across \d+ files?", blob, re.M)  # bun's total, when no pass line was printed
+    if ran and not passed:
+        passed = max(int(ran.group(1)) - failed - skipped, 0)
     if rc and not failed:  # a red exit with nothing parsed is one failure
         failed = 1
     if not rc and not (passed or skipped):  # green exit, nothing parsed: one pass so the run counts as green
