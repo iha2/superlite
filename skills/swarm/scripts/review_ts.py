@@ -18,6 +18,13 @@ SKIP_DIRS = {"node_modules", ".git", state.DIR_NAME, "dist", "build", "coverage"
 DECL = (r"^\s*export\s+(?:default\s+)?(?:declare\s+)?(?:async\s+)?"
         r"(?:function\s*\*?|const|let|var|type|interface|class|abstract\s+class|enum|const\s+enum|namespace)\s+{name}\b")
 EXPORT_LIST = re.compile(r"^\s*export\s+(?:type\s+)?\{([^}]*)\}", re.M)
+# Comments and string or template literals, leftmost first, so `//` inside a string stays a string.
+LEXEMES = re.compile(r"//[^\n]*|/\*.*?\*/|\"(?:\\.|[^\"\\\n])*\"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`", re.S)
+
+
+def mask(text: str) -> str:  # O(B) total
+    """`text` with every comment and literal blanked to spaces (newlines kept, so line numbers hold)."""
+    return LEXEMES.sub(lambda m: re.sub(r"[^\n]", " ", m.group(0)), text)
 
 
 def ts_match(path: str, rel: str) -> bool:  # O(m) total
@@ -69,7 +76,7 @@ def locate(root: Path, parts: list[str], owns: list[list[str]]) -> tuple[Path, s
 def export_line(f: Path, name: str) -> int:  # O(B) total
     """The 1-based line where `name` is exported from TypeScript file `f`, else 0."""
     try:
-        text = f.read_text(encoding="utf-8", errors="replace")
+        text = mask(f.read_text(encoding="utf-8", errors="replace"))
     except OSError:
         return 0
     m = re.search(DECL.format(name=re.escape(name)), text, re.M)

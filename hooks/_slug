@@ -1,6 +1,7 @@
 # Sourced by hooks/capture-agent-launch and hooks/capture-agent-stop (not run on its own).
 # session_slug DIR: the superlite session slug for working directory DIR, into SLUG (empty if none).
-# The registry is the nearest .superlite/sessions.json at or above DIR. The session whose worktree holds DIR
+# The registry is the nearest .superlite/sessions.json at or above DIR, or, from a linked worktree, the one in the
+# main checkout its .git file names. The session whose worktree holds DIR
 # (the longest match) wins; at the host, or below it outside any session worktree (a prototype sandbox), the
 # registry's active slug. Bash builtins only.
 
@@ -12,6 +13,10 @@ session_slug() {
   [ -n "$d" ] || return 0
   d="${d%/}"
   while [ ! -f "$d/.superlite/sessions.json" ]; do
+    if [ -f "$d/.git" ]; then   # a linked worktree (possibly outside the main checkout): .git names <main>/.git/worktrees/<name>
+      IFS= read -r up < "$d/.git"; up="${up#gitdir: }"; up="${up//\\//}"
+      case "$up" in */.git/worktrees/*) up="${up%%/.git/worktrees/*}"; [ -f "$up/.superlite/sessions.json" ] && { d="$up"; break; } ;; esac
+    fi
     up="${d%/*}"; { [ -z "$up" ] || [ "$up" = "$d" ]; } && return 0; d="$up"
   done
   IFS= read -r -d '' reg < "$d/.superlite/sessions.json"

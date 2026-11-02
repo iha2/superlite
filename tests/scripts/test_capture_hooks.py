@@ -256,3 +256,16 @@ def test_rows_in_a_prototype_sandbox_carry_the_active_slug(tmp_path):
     assert run_at(LAUNCH, sb, LAUNCH_PAYLOAD).returncode == 0
     (rec,) = records(sb)
     assert rec["slug"] == "blink" and rec["session"] == ""
+
+
+@pytest.mark.parametrize("hook,payload", [(LAUNCH, LAUNCH_PAYLOAD), (STOP, STOP_PAYLOAD)])
+def test_rows_in_a_linked_worktree_outside_the_main_checkout_find_its_registry(tmp_path, hook, payload):
+    host, wt = tmp_path / "host", tmp_path / "elsewhere" / "feat"
+    (host / ".git" / "worktrees" / "feat").mkdir(parents=True)
+    (wt / ".superlite").mkdir(parents=True)
+    (wt / ".superlite" / "pool.json").write_text("{}")
+    (wt / ".git").write_text(f"gitdir: {(host / '.git' / 'worktrees' / 'feat').as_posix()}\n")
+    registry(host, "blink", [("blink", host), ("feat", wt)])
+    assert run_at(hook, wt / "src", {**payload, "session_id": "s3"}).returncode == 0
+    (rec,) = records(wt)
+    assert rec["session"] == "s3" and rec["slug"] == "feat"

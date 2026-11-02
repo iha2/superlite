@@ -302,3 +302,22 @@ def test_status_inside_git_dir_uses_the_checkout_root(tmp_path):
     cp = run(ORCH, "status", cwd=repo / ".git")
     assert cp.returncode == 0, cp.both
     assert not (repo / ".git" / ".superlite").exists()
+
+
+def test_approve_from_a_subfolder_records_an_absolute_review_path_the_reply_hook_reads(tmp_path):
+    import os
+    import time
+    from test_human_gate import lines, reply as hook_reply
+    orch(tmp_path, "set", "human")
+    f = review_file(tmp_path)
+    reply(tmp_path, f)
+    cp = run(ORCH, "approve", "--review", "plans/plan.review.md", "--plan", tmp_path / "plan.md", cwd=tmp_path / "docs")
+    assert cp.returncode == 0, cp.both
+    st = json.loads((tmp_path / ".superlite" / "orchestrator.json").read_text(encoding="utf-8"))
+    assert Path(st["review_path"]).is_absolute() and Path(st["review_path"]).samefile(f)
+    t = time.time()
+    os.utime(tmp_path / ".superlite" / "orchestrator.json", (t - 100, t - 100))
+    os.utime(f, (t - 50, t - 50))  # the plan was amended after the approval
+    (tmp_path / ".superlite" / "human-replies.jsonl").unlink()
+    hook_reply(tmp_path / "docs", "approve")
+    assert [e["text"] for e in lines(tmp_path)] == ["approve"]

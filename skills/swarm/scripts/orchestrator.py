@@ -220,7 +220,8 @@ def main(argv=None):
                 print(NO_REPLY, file=sys.stderr)
                 return 3
             cur["approved_reply"] = hit.get("text", "")
-            cur.update(review_path=a.review.replace(chr(92), "/"), review_sha256=hashlib.sha256(rp.read_bytes()).hexdigest())
+            # absolute, so the reply hook finds the same file whatever folder approve ran from
+            cur.update(review_path=os.path.abspath(a.review).replace(chr(92), "/"), review_sha256=hashlib.sha256(rp.read_bytes()).hexdigest())
         cur.update(approved=True, approved_by=a.by, approved_time=now())
         write_state(a.plan, cur)
     print(summary_line(a.plan, getattr(a, "review", None)))

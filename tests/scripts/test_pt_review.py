@@ -500,3 +500,49 @@ def test_contract_reports_a_missing_typescript_export(tmp_path: Path, capsys):
     out = capsys.readouterr().out
     assert "autoopen.shouldOpen: shouldOpen is not exported" in out and "hooks/autoopen.ts:1" in out
     assert "no module found" not in out
+
+
+def test_contract_checks_typescript_only_signatures(tmp_path: Path, capsys):
+    p = ts_proj(tmp_path)
+    edit(p / "plan.md", "model.parseRegistry(text: string) -> Registry",
+         "model.parseRegistry(lines: string[], strict?: boolean) -> Registry · model.dropRegistry(lines: string[])")
+    assert contract(p, "--seam", "T1,T2") == 1
+    out = capsys.readouterr().out
+    assert "model.dropRegistry: dropRegistry is not exported" in out and "parseRegistry" not in out
+
+
+def test_contract_ignores_exports_inside_comments_and_literals(tmp_path: Path, capsys):
+    p = ts_proj(tmp_path)
+    (p / "hooks" / "autoopen.ts").write_text(
+        "/*\nexport async function shouldOpen() {}\n*/\n// export function shouldOpen() {}\n"
+        "const s = `\nexport function shouldOpen() {}\n`;\nconst t = \"export function shouldOpen\";\n", encoding="utf-8")
+    assert contract(p, "--seam", "T3,T2") == 1
+    assert "autoopen.shouldOpen: shouldOpen is not exported" in capsys.readouterr().out
+
+
+def test_contract_keeps_an_owned_python_module_over_a_typescript_namesake(tmp_path: Path, capsys):
+    (tmp_path / "src" / "pkg").mkdir(parents=True)
+    (tmp_path / "src" / "pkg" / "__init__.py").write_text("", encoding="utf-8")
+    (tmp_path / "src" / "pkg" / "model.py").write_text("def parse(text, strict):\n    return text\n", encoding="utf-8")
+    (tmp_path / "client").mkdir()
+    (tmp_path / "client" / "model.ts").write_text("export function parse(text: string) {}\n", encoding="utf-8")
+    (tmp_path / "plan.md").write_text(textwrap.dedent('''\
+        # plan
+
+        ```mermaid
+        flowchart LR
+        %% taskgraph
+        T1 --> T2
+        ```
+
+        ### T1 model · Complexity 2
+        **Owns:** src/pkg/model.py
+        **Produces:** model.parse(text: str) -> str
+
+        ### T2 client · Complexity 2
+        **Owns:** client/model.ts
+        **Consumes:** model.parse (T1)
+    '''), encoding="utf-8")
+    assert contract(tmp_path, "--seam", "T1,T2") == 1
+    out = capsys.readouterr().out
+    assert "src/pkg/model.py" in out and "not exported" not in out

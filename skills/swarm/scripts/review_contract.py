@@ -131,6 +131,7 @@ class Planned:
     args_src: str | None  # None => "(...)": params unchecked
     ret: str | None
     plan_line: int = 0
+    ts_only: bool = False  # not a Python signature (`lines: string[]`): checked only when it resolves to TypeScript
 
     @property
     def parts(self) -> list[str]:  # O(m) total
@@ -186,8 +187,11 @@ def planned_items(plan: planfile.Plan, task_ids: list[str] | None = None) -> lis
             continue
         for item in t.produces:
             parsed = parse_sig(item)
+            name = re.match(r"^([A-Za-z_]\w*(?:\.\w+)+)\s*\(", item.strip().strip("`").strip())
             if parsed:
                 out.append(Planned(tid, item, parsed[0], parsed[1], parsed[2], task_start(plan, tid) + 1))
+            elif name:  # TypeScript syntax the Python parser refuses: keep the name for the export check
+                out.append(Planned(tid, item, name.group(1), None, None, task_start(plan, tid) + 1, ts_only=True))
     return out
 
 
@@ -447,7 +451,7 @@ def check_interfaces(plan: planfile.Plan, root: Path, task_ids: list[str] | None
     for i, (f, name) in ts.items():
         if not review_ts.export_line(f, name):
             out.append(Mismatch(1, rel_to(root, f), 1, f"{items[i].task} Produces: {items[i].qual}: {name} is not exported", items[i].task))
-    items = [p for i, p in enumerate(items) if i not in ts]
+    items = [p for i, p in enumerate(items) if i not in ts and not p.ts_only]
     locs = [locate(root, plan, p) for p in items]
     reals = read_real(root, [(m, c) for m, c, _f in locs])
     for p, (_mod, _chain, f), real in zip(items, locs, reals):
@@ -461,10 +465,20 @@ def check_interfaces(plan: planfile.Plan, root: Path, task_ids: list[str] | None
 
 def locate_ts(root: Path, plan: planfile.Plan, p: Planned) -> tuple[Path, str] | None:  # O(T*o + F) per item
     """(TypeScript file, exported name) for a dotted Produces name with no Python module, else None."""
-    if any(find_module_file(root, ".".join(p.parts[:k])) for k in range(1, len(p.parts))):
+    if any(find_module_file(root, ".".join(p.parts[:k])) for k in range(1, len(p.parts))) or _owned_py(root, plan, p):
         return None
     owns = [owned_files(plan.tasks[p.task])] + [owned_files(t) for tid, t in plan.tasks.items() if tid != p.task]
     return review_ts.locate(root, p.parts, owns)
+
+
+def _owned_py(root: Path, plan: planfile.Plan, p: Planned) -> bool:  # O(o*B) total
+    """True when the task's own Python files resolve the name (a short module name or a top-level definition)."""
+    owned = [root / o for o in owned_files(plan.tasks[p.task]) if o.endswith(".py") and not TEST_PATH_RE.search(o)]
+    mods = {module_name(root, f) for f in owned}
+    short = {m.rsplit(".", 1)[-1] for m in mods}
+    if any(".".join(p.parts[:k]) in mods for k in range(1, len(p.parts) + 1)) or p.parts[0] in short:
+        return True
+    return any(p.parts[0] in _top_level_names(f) for f in owned if f.is_file())
 
 
 # --------------------------------------------------------------------------- data contract
