@@ -60,7 +60,7 @@ def diff(proj, act, fmt) -> str:
     """`proj 12.0 · +2.2`; n/a where either side is missing."""
     if not is_num(proj) or not is_num(act):
         return f"proj {num(proj, fmt)}"
-    return f"proj {format(proj, fmt)} · {format(act - proj, '+' + fmt)}"
+    return f"proj {num(proj, fmt)} · {num(act - proj, '+' + fmt)}"
 
 
 def plural(n, word) -> str:
