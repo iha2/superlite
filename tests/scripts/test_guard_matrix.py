@@ -278,7 +278,7 @@ def test_long_bash_command_is_decided_fast(tmp_path):
         assert r.returncode == 0, name
     t0 = time.time()
     r = hook(root, claude("Bash", {"command": "echo " + "a" * 1_000_000 + "\n" + KILL_BY_NAME}))
-    assert time.time() - t0 < 2
+    assert time.time() - t0 < limit
     assert r.returncode == 2
 
 
