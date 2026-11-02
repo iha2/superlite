@@ -3,6 +3,8 @@
 Plan conventions read here (per task section `### Tn ...`):
   **Owns:** a.py, tests/test_a.py          **Consumes:** f(x) -> y (T1)
   **Produces:** pkg.mod.f(a: int, b=1) -> str  ·  Class.method(ref: str) -> list[str]
+      A dotted name with no Python module resolves to a TypeScript file (`model.parseRegistry` ->
+      hooks/model.ts, the task's Owns first): there only the export itself is checked.
   Data contract lines (any line, anchored at the start, bullets allowed):
       POST /api/cells {"ref":"A1"} -> 200 {cells: dict, note?: str}
   Task graph: a `%% taskgraph` block of `Tn --> Tm` edges (Tn produces for Tm).
@@ -20,6 +22,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import planfile  # noqa: E402
+import review_ts  # noqa: E402
 
 HTTP_LINE_RE = re.compile(r"^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(/\S*)\s*(.*)$")
 TEST_PATH_RE = re.compile(r"(^|/)(tests?/|test_[^/]*$|[^/]*_test\.py$)")
@@ -439,16 +442,29 @@ def rel_to(root: Path, f: str | Path | None) -> str:  # O(d) path syscalls total
 def check_interfaces(plan: planfile.Plan, root: Path, task_ids: list[str] | None  # O(P*(d^2 + o*B + p^2)) + 1 subprocess total
                      ) -> tuple[list[Mismatch], int]:
     items = planned_items(plan, task_ids)
+    out: list[Mismatch] = []
+    ts = {i: hit for i, p in enumerate(items) if (hit := locate_ts(root, plan, p))}
+    for i, (f, name) in ts.items():
+        if not review_ts.export_line(f, name):
+            out.append(Mismatch(1, rel_to(root, f), 1, f"{items[i].task} Produces: {items[i].qual}: {name} is not exported", items[i].task))
+    items = [p for i, p in enumerate(items) if i not in ts]
     locs = [locate(root, plan, p) for p in items]
     reals = read_real(root, [(m, c) for m, c, _f in locs])
-    out: list[Mismatch] = []
     for p, (_mod, _chain, f), real in zip(items, locs, reals):
         msgs = compare_sig(p, real)
         where = real.get("file") or f
         file = rel_to(root, where) if where else rel_to(root, plan.path)
         line = int(real.get("line") or 1) if real.get("file") else (1 if f else p.plan_line)
         out += [Mismatch(1, file, line, f"{p.task} Produces: {m}", p.task) for m in msgs]
-    return out, len(items)
+    return out, len(items) + len(ts)
+
+
+def locate_ts(root: Path, plan: planfile.Plan, p: Planned) -> tuple[Path, str] | None:  # O(T*o + F) per item
+    """(TypeScript file, exported name) for a dotted Produces name with no Python module, else None."""
+    if any(find_module_file(root, ".".join(p.parts[:k])) for k in range(1, len(p.parts))):
+        return None
+    owns = [owned_files(plan.tasks[p.task])] + [owned_files(t) for tid, t in plan.tasks.items() if tid != p.task]
+    return review_ts.locate(root, p.parts, owns)
 
 
 # --------------------------------------------------------------------------- data contract

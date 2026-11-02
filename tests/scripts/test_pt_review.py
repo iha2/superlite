@@ -443,3 +443,60 @@ def test_packet_default_paths_follow_root_not_cwd(proj: Path, tmp_path: Path, mo
     assert run("packet", "--plan", str(proj / "plan.md"), "--root", str(proj)) == 0
     assert (proj / ".superlite" / "review-packet.md").is_file()
     assert not (elsewhere / ".superlite").exists()
+
+
+# ----------------------------------------------------------------------------- TypeScript Produces
+
+TS_PLAN = textwrap.dedent('''\
+    # agent map plan
+
+    ```mermaid
+    flowchart LR
+    %% taskgraph
+    T1 --> T2
+    T3 --> T2
+    ```
+
+    ### T1 model · Complexity 3
+    **Owns:** hooks/model.ts, hooks/ledger.tsx, tests/model.test.ts
+    **Produces:** model.parseRegistry(text: string) -> Registry · model.pickSession(reg, cwd) · ledger.Ledger(props) · model.Registry(...)
+
+    ### T3 open · Complexity 2
+    **Owns:** hooks/autoopen.ts
+    **Produces:** autoopen.shouldOpen(mode, key) -> bool · graph.clockBand(now) -> str
+
+    ### T2 wire · Complexity 3
+    **Owns:** hooks/register.ts
+    **Consumes:** model.parseRegistry (T1) · autoopen.shouldOpen (T3)
+''')
+
+
+def ts_proj(tmp_path: Path) -> Path:
+    h = tmp_path / "hooks"
+    h.mkdir()
+    (tmp_path / "plan.md").write_text(TS_PLAN, encoding="utf-8")
+    (h / "model.ts").write_text("import x from './y';\n\nexport type Registry = { v: number };\n"
+                                "export function parseRegistry(text: string): Registry { return JSON.parse(text); }\n"
+                                "const pick = (r: Registry, cwd: string) => null;\nexport { pick as pickSession };\n", encoding="utf-8")
+    (h / "ledger.tsx").write_text("export const Ledger = (props: {}) => <div/>;\n", encoding="utf-8")
+    (h / "autoopen.ts").write_text("export async function shouldOpen(mode: string, key: string) { return true; }\n", encoding="utf-8")
+    (h / "graph.ts").write_text("export const clockBand = (now: number) => '';\n", encoding="utf-8")
+    return tmp_path
+
+
+def test_contract_resolves_dotted_names_to_typescript_exports(tmp_path: Path, capsys):
+    p = ts_proj(tmp_path)
+    assert contract(p) == 0, capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "no module found" not in out and "6 Produces signature(s) checked" in out
+    assert contract(p, "--seam", "T1,T2") == 0
+    assert "PASS: verified: seam T1↔T2" in capsys.readouterr().out
+
+
+def test_contract_reports_a_missing_typescript_export(tmp_path: Path, capsys):
+    p = ts_proj(tmp_path)
+    edit(p / "hooks" / "autoopen.ts", "function shouldOpen", "function shouldOpenNow")
+    assert contract(p, "--seam", "T3,T2") == 1
+    out = capsys.readouterr().out
+    assert "autoopen.shouldOpen: shouldOpen is not exported" in out and "hooks/autoopen.ts:1" in out
+    assert "no module found" not in out
