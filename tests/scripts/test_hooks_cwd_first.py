@@ -112,7 +112,10 @@ AGENT = {"tool_name": "Agent", "tool_input": {"subagent_type": "superlite:implem
                                               "prompt": "Build T1"}}
 
 
-@pytest.fixture(params=["plain", 'q"x'], ids=["plain", "quoted"])
+_QUOTED = pytest.param('q"x', id="quoted", marks=pytest.mark.skipif(os.name == "nt", reason='Windows forbids " in file names'))
+
+
+@pytest.fixture(params=[pytest.param("plain", id="plain"), _QUOTED])
 def named_tree(tmp_path, request):
     """An approved AI run at the hub and an unapproved human run in a worktree whose name may hold a quote."""
     hub = tmp_path / "hub"

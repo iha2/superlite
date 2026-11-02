@@ -157,7 +157,8 @@ def reply(proj, prompt, raw=None):
         raw = json.dumps({"hook_event_name": "UserPromptSubmit", "cwd": str(proj), "prompt": prompt})
     env = {**os.environ, "SUPERLITE_NO_AUTOCOMPACT": "1"}   # the prompt hook also nudges to compact
     env.pop("CLAUDE_PROJECT_DIR", None)
-    return subprocess.run([BASH, str(REPLY)], input=raw, capture_output=True, text=True, env=env, cwd=str(proj))
+    return subprocess.run([BASH, str(REPLY)], input=raw, capture_output=True, text=True, encoding="utf-8", env=env,
+                          cwd=str(proj))
 
 
 def lines(proj):

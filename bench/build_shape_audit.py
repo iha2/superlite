@@ -120,7 +120,7 @@ def schedule(text: str) -> dict:
     with tempfile.TemporaryDirectory() as tmp:
         p = Path(tmp) / "plan.md"
         p.write_text(text, encoding="utf-8")
-        r = subprocess.run(["bash", str(CLI), "plan_tools", "schedule", "--plan", str(p), "--json"], capture_output=True, text=True, check=True)
+        r = subprocess.run([harness.bash_exe(), str(CLI), "plan_tools", "schedule", "--plan", str(p), "--json"], capture_output=True, text=True, check=True)
     return json.loads(r.stdout)
 
 

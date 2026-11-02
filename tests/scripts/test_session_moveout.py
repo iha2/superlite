@@ -98,7 +98,7 @@ def test_check2_both_sessions_move_out(started):
     assert not (started / ".superlite" / "orchestrator.json").exists()
     lines = cp.out.strip().splitlines()
     assert f"session: moved a -> {a.as_posix()}" in lines
-    assert lines[-1] == f"SESSION worktree={b} slug=b branch=superlite/sessions/b"
+    assert lines[-1] == f"SESSION worktree={b.as_posix()} slug=b branch=superlite/sessions/b"
     reg = reg_of(started)
     assert reg["active"] is None and reg["host_worktree"] == started.as_posix()
     ra, rb = row_of(started, "a"), row_of(started, "b")
