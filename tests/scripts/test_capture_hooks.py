@@ -59,7 +59,8 @@ def test_launch_record(proj):
     t = rec.pop("t")
     assert t0 - 50 <= t <= t1 + 50
     assert rec == {"ev": "launch", "agent_id": "a123", "type": "implementer-haiku",
-                   "model": "claude-haiku-5-5", "desc": "T1 build parser", "parent": ""}
+                   "model": "claude-haiku-5-5", "desc": "T1 build parser", "parent": "",
+                   "session": "", "slug": ""}
     assert list(json.loads((proj / ".superlite" / "metrics.jsonl").read_text()).keys())[:2] == ["ev", "t"]
 
 
@@ -80,7 +81,8 @@ def test_stop_record(proj):
     t = rec.pop("t")
     assert t0 - 50 <= t <= t1 + 50
     assert rec == {"ev": "stop", "agent_id": "a123", "type": "implementer-haiku",
-                   "transcript": "C:/Users/me/.claude/agent-a123.jsonl", "last": "Done: T1"}
+                   "transcript": "C:/Users/me/.claude/agent-a123.jsonl", "last": "Done: T1",
+                   "session": "s", "slug": ""}
 
 
 def test_records_append(proj):
@@ -209,3 +211,48 @@ def test_fast(proj):
     for hook, payload in ((LAUNCH, LAUNCH_PAYLOAD), (STOP, STOP_PAYLOAD)):
         t = best([BASH, str(hook)], json.dumps(payload))
         assert t < max(0.6, base + 0.35), (hook.name, t, base)
+
+
+# ---- session identity: the hook's session_id and the superlite session slug from .superlite/sessions.json ----
+
+def registry(host, active, rows):
+    (host / ".superlite").mkdir(exist_ok=True)
+    reg = {"v": 2, "base": "main", "active": active, "host_worktree": str(host),
+           "sessions": [{"slug": s, "branch": f"superlite/sessions/{s}", "worktree": str(w), "status": "active"} for s, w in rows]}
+    (host / ".superlite" / "sessions.json").write_text(json.dumps(reg, indent=1))
+
+
+def run_at(hook, cwd, payload):
+    env = {k: v for k, v in os.environ.items() if k != "CLAUDE_PROJECT_DIR"}
+    return subprocess.run([BASH, str(hook)], input=json.dumps({**payload, "cwd": str(cwd)}), capture_output=True, text=True, env=env)
+
+
+@pytest.mark.parametrize("hook,payload", [(LAUNCH, LAUNCH_PAYLOAD), (STOP, STOP_PAYLOAD)])
+def test_rows_carry_session_id_and_the_hosts_active_slug(proj, hook, payload):
+    registry(proj, "blink", [("blink", proj), ("other", proj / ".superlite" / "worktrees" / "other")])
+    assert run_at(hook, proj, {**payload, "session_id": "sess-42"}).returncode == 0
+    (rec,) = records(proj)
+    assert rec["session"] == "sess-42" and rec["slug"] == "blink"
+
+
+@pytest.mark.parametrize("hook,payload", [(LAUNCH, LAUNCH_PAYLOAD), (STOP, STOP_PAYLOAD)])
+def test_rows_in_a_session_worktree_carry_that_sessions_slug(tmp_path, hook, payload):
+    host = tmp_path / "host"
+    wt = host / ".superlite" / "worktrees" / "other"
+    (wt / ".superlite").mkdir(parents=True)
+    (wt / ".superlite" / "pool.json").write_text("{}")
+    registry(host, "blink", [("blink", host), ("other", wt), ("oth", host / ".superlite" / "worktrees" / "oth")])
+    assert run_at(hook, wt / "src", {**payload, "session_id": "s2"}).returncode == 0
+    (rec,) = records(wt)
+    assert rec["session"] == "s2" and rec["slug"] == "other"
+
+
+def test_rows_in_a_prototype_sandbox_carry_the_active_slug(tmp_path):
+    host = tmp_path / "host"
+    sb = host / ".superlite" / "sandboxes" / "blink-proto"
+    (sb / ".superlite").mkdir(parents=True)
+    (sb / ".superlite" / "stable.json").write_text("{}")
+    registry(host, "blink", [("blink", host)])
+    assert run_at(LAUNCH, sb, LAUNCH_PAYLOAD).returncode == 0
+    (rec,) = records(sb)
+    assert rec["slug"] == "blink" and rec["session"] == ""

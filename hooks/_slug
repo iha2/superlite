@@ -1,0 +1,32 @@
+# Sourced by hooks/capture-agent-launch and hooks/capture-agent-stop (not run on its own).
+# session_slug DIR: the superlite session slug for working directory DIR, into SLUG (empty if none).
+# The registry is the nearest .superlite/sessions.json at or above DIR. The session whose worktree holds DIR
+# (the longest match) wins; at the host, or below it outside any session worktree (a prototype sandbox), the
+# registry's active slug. Bash builtins only.
+
+session_slug() {
+  local d="$1" up reg host="" active="" rest chunk slug wt best="" bestlen=0
+  local re_str='^[[:space:]]*:[[:space:]]*"([^"]*)"' re_wt='"worktree"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
+  local re_host='"host_worktree"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"' re_act='"active"[[:space:]]*:[[:space:]]*"([^"]*)"'
+  SLUG=""
+  [ -n "$d" ] || return 0
+  d="${d%/}"
+  while [ ! -f "$d/.superlite/sessions.json" ]; do
+    up="${d%/*}"; { [ -z "$up" ] || [ "$up" = "$d" ]; } && return 0; d="$up"
+  done
+  IFS= read -r -d '' reg < "$d/.superlite/sessions.json"
+  [[ $reg =~ $re_act ]] && active="${BASH_REMATCH[1]}"
+  if [[ $reg =~ $re_host ]]; then host="${BASH_REMATCH[1]//\\\\//}"; host="${host%/}"; else host="$d"; fi
+  rest="$reg"
+  while [[ $rest == *'"slug"'* ]]; do
+    rest="${rest#*\"slug\"}"
+    chunk="${rest%%\"slug\"*}"
+    [[ $chunk =~ $re_str ]] || continue
+    slug="${BASH_REMATCH[1]}"
+    [[ $chunk =~ $re_wt ]] || continue
+    wt="${BASH_REMATCH[1]//\\\\//}"; wt="${wt%/}"
+    [ -n "$wt" ] && [ "$wt" != "$host" ] || continue
+    case "$1/" in "$wt"/*) [ "${#wt}" -gt "$bestlen" ] && { best="$slug"; bestlen="${#wt}"; } ;; esac
+  done
+  SLUG="${best:-$active}"
+}
