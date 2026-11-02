@@ -18,6 +18,8 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "skills" / "swarm" / "scripts"))
+import base  # noqa: E402
 RUNNER = REPO / "skills" / "swarm" / "probes" / "probe_run.py"
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
@@ -299,7 +301,7 @@ def test_commit_mode_via_sl_launcher_and_default_paths(tmp_path):
     subprocess.run([*git, "add", "-A"], check=True)
     subprocess.run([*git, "commit", "-q", "-m", "second"], check=True)
     sl = REPO / "skills" / "swarm" / "scripts" / "superlite-cli"
-    p = subprocess.run(["bash", str(sl), "probe_run", "--checkpoint", "HEAD", "--categories", "state"],
+    p = subprocess.run([base.bash(), str(sl), "probe_run", "--checkpoint", "HEAD", "--categories", "state"],
                        cwd=proj, capture_output=True, text=True, timeout=300)
     assert p.returncode == 0, p.stdout + p.stderr
     res = json.loads((proj / ".superlite" / "probes" / "probe-results.json").read_text())
