@@ -59,7 +59,7 @@ def test_card_shows_time_cost_tests_models_and_rulings(tmp_path, monkeypatch):
     assert f"{rep['headline']['wall_min']['actual']:.1f} min" in card
     assert f"${rep['cost_split']['total_usd']:.2f}" in card
     assert "tests 142 passed, 0 failed" in card and "rulings 2" in card and "scope changes 1" in card
-    assert "3 checkpoints kept in the folder" in card
+    assert "3 checkpoints taken; work uncommitted in the folder" in card
     bars = [a["data-bar"] for t, a in tags(card) if "data-bar" in a]
     assert sorted(bars) == sorted(rep["model_mix"])  # one bar per model, no coordinator record in this run
     names = {t for t, _ in tags(card)}
@@ -92,7 +92,7 @@ def test_missing_values_read_na_and_the_coordinator_gets_a_bar():
     card = run_widget.render(rep, [], 0, "feature: run-widget", "human orchestrator")
     assert "14.2 min" in card and "proj n/a" in card and "proj 5 · +1" in card and "$2.31" in card
     assert "tests n/a passed, n/a failed" in card and "first-time pass n/a" in card and "1 task<" in card
-    assert "prototype 3.1 min" in card and "integration n/a min" in card and "no checkpoints left in the folder" in card
+    assert "prototype 3.1 min" in card and "integration n/a min" in card and "no checkpoint state recorded" in card
     assert [a["data-bar"] for _, a in tags(card) if "data-bar" in a] == ["sonnet", "haiku", "coordinator"]
     assert "superlite run · feature: run-widget · human orchestrator" in card
 
@@ -100,7 +100,7 @@ def test_missing_values_read_na_and_the_coordinator_gets_a_bar():
 def test_many_rulings_are_capped(tmp_path):
     card = run_widget.render({}, [f"r{i}" for i in range(8)], 1, "", "")
     assert card.count("<li>") == run_widget.MAX_RULINGS + 1 and "+3 more in the finish summary" in card
-    assert "1 checkpoint kept in the folder" in card
+    assert "1 checkpoint taken; work uncommitted in the folder" in card
 
 
 def test_finish_with_plan_writes_the_card_and_ends_with_the_widget_line(tmp_path, monkeypatch):
@@ -112,8 +112,23 @@ def test_finish_with_plan_writes_the_card_and_ends_with_the_widget_line(tmp_path
     shown = last.split()[1]
     assert (tmp_path / shown).resolve() == (sl / run_widget.AFTER).resolve()
     card = (sl / run_widget.AFTER).read_text(encoding="utf-8")
-    assert "3 checkpoints kept in the folder" in card  # counted before finish cleans the checkpoint state
+    assert "3 checkpoints taken; work uncommitted in the folder" in card  # counted before finish cleans the checkpoint state
     assert not (sl / "checkpoints.json").exists()
+
+
+def test_finish_card_reads_the_ledger_it_was_given(tmp_path, monkeypatch):
+    p, sl = finished_run(tmp_path, monkeypatch)
+    (sl / "progress.md").write_text("# Progress ledger\n- Ruling: stale ruling\n", encoding="utf-8")
+    (sl / "custom.md").write_text(LEDGER, encoding="utf-8")
+    cp = run(FINISH, "--ledger", sl / "custom.md", "--log", sl / "i.jsonl", "--plan", p, cwd=tmp_path)
+    assert cp.returncode == 0, cp.both
+    card = (sl / run_widget.AFTER).read_text(encoding="utf-8")
+    assert "dropped the CSV export" in card and "stale ruling" not in card
+
+
+def test_float_actual_against_whole_projected_agents():
+    card = run_widget.render({"headline": {"agents": {"projected": 3, "actual": 2.0}}}, [], 0)
+    assert "proj 3 · -1" in card
 
 
 def test_finish_without_plan_has_no_widget(tmp_path, monkeypatch):
@@ -215,4 +230,4 @@ def test_malformed_json_reads_na_instead_of_failing(tmp_path):
     (sl / "checkpoints.json").write_text(json.dumps({"entries": 7}), encoding="utf-8")
     assert "critical path n/a" in run_widget.build_before(sl, tmp_path / "missing.md")
     (sl / "report.json").write_text(json.dumps(rep), encoding="utf-8")
-    assert "no checkpoints left in the folder" in run_widget.build(sl)
+    assert "no checkpoint state recorded" in run_widget.build(sl)

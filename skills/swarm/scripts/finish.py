@@ -174,14 +174,15 @@ def scope_rulings(rulings):  # O(G)
     return [SCOPE_TAG.sub("", r) for r in rulings if SCOPE_TAG.match(r)]
 
 
-def card_line(plan, sl_dir):  # O(file + R*w + m log m)
-    """With --plan and a report.json written by this finish: write the after card and return its `widget:` line."""
+def card_line(plan, sl_dir, ledger=None):  # O(file + R*w + m log m)
+    """With --plan and a report.json written by this finish: write the after card (rulings from `ledger`) and return
+    its `widget:` line."""
     if not plan or Path(sl_dir).resolve() not in REPORTED:
         return ""
     import base
     try:  # fail open: the card is extra, the summary above is the record
         import run_widget
-        out = run_widget.write(sl_dir, plan)
+        out = run_widget.write(sl_dir, plan, ledger=ledger)
     except base.advisory_errors() as e:
         print(f"run_widget: after card not written ({e})", file=sys.stderr)
         return ""
@@ -246,7 +247,7 @@ def main(argv=None):  # O(R*w + I*w)
     root = Path(a.ledger).resolve().parent  # .superlite, or the ledger's directory
     sys.stdout.write(summary(a.ledger, a.log, a.lint_log or str(Path(a.ledger).with_name("lint-log.jsonl")), a.plan))
     import exclusive  # the run is done: peer plugins may load again
-    widget = card_line(a.plan, root)  # before the cleanup, which removes the checkpoint state the card counts
+    widget = card_line(a.plan, root, a.ledger)  # before the cleanup, which removes the checkpoint state the card counts
     clean_checkpoints(a.ledger)  # after the summary, which reads the checkpoint state
     sl_dir = root if root.name == state.DIR_NAME else root / state.DIR_NAME
     try:  # fail open: no registry, no git, unreadable sessions.json -> no line. Mark first: release looks at open runs.

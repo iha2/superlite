@@ -257,13 +257,14 @@ def budget_cap(plan) -> float | None:  # O(C)
         return None
 
 
-def build(sl_dir, plan=None) -> str:  # O(file + R*w + m log m)
-    """The after card for a run folder; "" when it has no report.json."""
+def build(sl_dir, plan=None, ledger=None) -> str:  # O(file + R*w + m log m)
+    """The after card for a run folder; "" when it has no report.json. Rulings come from `ledger` (default
+    `<dir>/progress.md`)."""
     sl = Path(sl_dir)
     rep = base.read_json(sl / "report.json", None)
     if not isinstance(rep, dict):
         return ""
-    rulings, _, _ = finish.read_ledger(sl / "progress.md")
+    rulings, _, _ = finish.read_ledger(ledger or sl / "progress.md")
     cps = base.read_json(sl / "checkpoints.json", {})
     entries = obj(cps).get("entries")
     checkpoints = len(entries) if isinstance(entries, list) else 0
@@ -284,9 +285,9 @@ def build_before(sl_dir, plan, stable=None) -> str:  # O(file + C + n + m log m)
     return render_before(proj, stable, budget_cap(plan), Path(plan).stem, mode_label(sl))
 
 
-def write(sl_dir, plan=None, before=False, stable=None) -> Path | None:  # O(file + R*w + n + m log m)
+def write(sl_dir, plan=None, before=False, stable=None, ledger=None) -> Path | None:  # O(file + R*w + n + m log m)
     """Write `<dir>/run-widget-after.html` (or `-before.html`); None (and no file) when its source is missing."""
-    text = build_before(sl_dir, plan, stable) if before else build(sl_dir, plan)
+    text = build_before(sl_dir, plan, stable) if before else build(sl_dir, plan, ledger)
     if not text:
         return None
     out = Path(sl_dir) / (BEFORE if before else AFTER)
