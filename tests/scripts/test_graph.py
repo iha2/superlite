@@ -86,6 +86,17 @@ def test_cache_file_hash(tmp_path):
     assert cache.stat().st_mtime_ns == mtime1
 
 
+def test_cache_from_the_ascii_renderer_is_redrawn(tmp_path):
+    plan = tiny_plan(tmp_path)
+    cache = tmp_path / ".superlite" / "graph.txt"
+    cache.parent.mkdir(parents=True)
+    digest = hashlib.sha256(plan.read_bytes()).hexdigest()
+    cache.write_text(f"# hash: {digest}\n[T1*]\n  v\n[T2*]  [T4]\n* = critical path\n", encoding="utf-8")
+    out = graph.render(str(plan))
+    assert out.splitlines()[1] == "flowchart TD"
+    assert cache.read_text(encoding="utf-8") == out
+
+
 def test_critical_argument_marks_exactly_those_tasks(tmp_path):
     plan = str(tiny_plan(tmp_path))
     assert _critical(graph.render(plan, ["T1", "T4"])) == ["T1", "T4"]

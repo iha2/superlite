@@ -4,7 +4,7 @@
     graph.py --plan PATH
     graph.render(plan_path, critical=None) -> str
 
-Writes graph.txt in the run folder (cached by plan SHA-256 and the critical ids).
+Writes graph.txt in the run folder (cached by plan SHA-256, the drawing format and the critical ids).
 Always `flowchart TD` (the `graph` keyword does not render in Claude Code). Nodes are
 labelled with id and title, in task order; critical-path tasks get the `critical`
 class: the given ids, else the longest path by task count. Stdlib only.
@@ -20,6 +20,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import planfile  # noqa: E402
 import plan_tools  # noqa: E402
+
+FORMAT = "flowchart"  # in the cache key, so a cache from another renderer is redrawn
+
 
 def _parse_graph(text: str) -> dict[str, list[str]]:  # O(L)
     """deps[tid] = list of prerequisite ids (edges a --> b mean b waits on a)."""
@@ -99,7 +102,7 @@ def render(plan_path: str, critical: list[str] | None = None) -> str:  # O(L + n
     if not p.is_file():
         raise FileNotFoundError(plan_path)
     raw = p.read_bytes()
-    head = f"# hash: {hashlib.sha256(raw).hexdigest()}"
+    head = f"# hash: {hashlib.sha256(raw).hexdigest()} format: {FORMAT}"
     if critical:
         head += " critical: " + " ".join(critical)
     cache = _cache_path(plan_path)
