@@ -304,3 +304,47 @@ def test_journal_an_undo_raising_typeerror_does_not_stop_the_next_undo(capsys):
             raise ValueError("boom")
     assert order == [1]
     assert "buggy" in capsys.readouterr().err
+
+
+def test_bash_prefers_superlite_bash(monkeypatch):
+    monkeypatch.setenv("SUPERLITE_BASH", "/opt/bash")
+    assert base.bash() == "/opt/bash"
+
+
+def test_git_bash_is_found_next_to_git_not_the_wsl_stub(tmp_path):
+    # A bare "bash" on Windows finds System32\bash.exe (WSL) before PATH, so base.bash() asks git_bash first.
+    git_root = tmp_path / "Git"
+    (git_root / "cmd").mkdir(parents=True)
+    (git_root / "bin").mkdir()
+    (git_root / "bin" / "bash.exe").write_text("")
+    assert base.git_bash(str(git_root / "cmd" / "git.exe"), str(tmp_path / "none")) == str(git_root / "bin" / "bash.exe")
+    assert base.git_bash(str(git_root / "mingw64" / "bin" / "git.exe"), str(tmp_path / "none")) == \
+        str(git_root / "bin" / "bash.exe")   # a portable Git puts mingw64\bin on PATH
+    assert base.git_bash(None, str(tmp_path)) == str(git_root / "bin" / "bash.exe")
+    assert base.git_bash(None, str(tmp_path / "none")) is None
+
+
+def test_win_retry_rides_out_a_brief_sharing_violation(monkeypatch):
+    # Windows: a reader of a file being os.replace'd (or a replace over an open file) gets PermissionError briefly.
+    calls = []
+
+    def flaky():
+        calls.append(1)
+        if len(calls) < 3:
+            raise PermissionError("in use")
+        return "ok"
+    monkeypatch.setattr(base.os, "name", "nt")
+    monkeypatch.setattr(base.time, "sleep", lambda s: None)
+    assert base._win_retry(flaky) == "ok" and len(calls) == 3
+
+
+def test_win_retry_runs_once_off_windows(monkeypatch):
+    calls = []
+
+    def denied():
+        calls.append(1)
+        raise PermissionError("denied")
+    monkeypatch.setattr(base.os, "name", "posix")
+    with pytest.raises(PermissionError):
+        base._win_retry(denied)
+    assert len(calls) == 1

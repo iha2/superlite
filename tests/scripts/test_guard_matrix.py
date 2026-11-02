@@ -261,8 +261,10 @@ def test_unreadable_state_dir_fails_open(tmp_path):
 
 
 def test_long_bash_command_is_decided_fast(tmp_path):
-    # The Bash guards are linear in command length: a 1 MB command is decided in under 2 seconds, in a run
-    # where the kill guard, the coordinator guard and the test-run rewrite all look at it.
+    # The Bash guards are linear in command length: a 1 MB command is decided in under 2 seconds (10 under Git Bash
+    # on Windows, which is slower per byte), in a run where the kill guard, the coordinator guard and the test-run
+    # rewrite all look at it.
+    limit = 10 if os.name == "nt" else 2
     root = build_state(tmp_path, "ai_run")
     shapes = {
         "one word": "echo " + "a" * 1_000_000,
@@ -272,11 +274,11 @@ def test_long_bash_command_is_decided_fast(tmp_path):
     for name, cmd in shapes.items():
         t0 = time.time()
         r = hook(root, claude("Bash", {"command": cmd}))
-        assert time.time() - t0 < 2, name
+        assert time.time() - t0 < limit, name
         assert r.returncode == 0, name
     t0 = time.time()
     r = hook(root, claude("Bash", {"command": "echo " + "a" * 1_000_000 + "\n" + KILL_BY_NAME}))
-    assert time.time() - t0 < 2
+    assert time.time() - t0 < limit
     assert r.returncode == 2
 
 

@@ -33,7 +33,7 @@ def hub(tmp_path):
 
 
 def hud(cwd):
-    r = subprocess.run([sys.executable, str(HUD), str(cwd)], capture_output=True, text=True, env=ENV)
+    r = subprocess.run([sys.executable, str(HUD), str(cwd)], capture_output=True, text=True, encoding="utf-8", env=ENV)
     return r.stdout.splitlines()
 
 

@@ -73,7 +73,7 @@ def last(cp):
 def test_ensure_creates_in_place_on_main_checkout(repo):
     cp = run("ensure", "--slug", "demo", cwd=repo)
     assert cp.returncode == 0, cp.both
-    assert last(cp) == f"SESSION worktree={repo} slug=demo branch=superlite/sessions/demo"
+    assert last(cp) == f"SESSION worktree={repo.as_posix()} slug=demo branch=superlite/sessions/demo"
     assert branch(repo) == "superlite/sessions/demo"
     reg = reg_of(repo)
     assert reg["host_worktree"] == repo.as_posix() and reg["active"] == "demo" and reg["base"] == "main"
@@ -98,7 +98,7 @@ def test_ensure_moves_open_host_session_out_while_active_is_open(repo):
     assert cp.returncode == 0, cp.both
     wt = repo / ".superlite" / "worktrees" / "sessions" / "next"
     assert branch(wt) == "superlite/sessions/next"
-    assert last(cp) == f"SESSION worktree={wt} slug=next branch=superlite/sessions/next"
+    assert last(cp) == f"SESSION worktree={wt.as_posix()} slug=next branch=superlite/sessions/next"
     old = repo / ".superlite" / "worktrees" / "sessions" / "demo"
     assert branch(old) == "superlite/sessions/demo" and (old / "app.py").read_text() == "print('wip')\n"
     assert branch(repo) == "main" and git(repo, "status", "--porcelain").strip() == ""
@@ -186,7 +186,7 @@ def test_unregistered_linked_worktree_is_registered_in_place(repo, tmp_path):
     row = row_of(repo, "x")
     assert row["owned"] is False and row["branch"] == "feat/y" and row["run"] == "open"
     assert Path(row["worktree"]).resolve() == other
-    assert last(cp) == f"SESSION worktree={other} slug=x branch=feat/y"
+    assert last(cp) == f"SESSION worktree={other.as_posix()} slug=x branch=feat/y"
     assert not (repo / ".superlite" / "worktrees" / "sessions" / "x").exists()
     assert "already open here" in run("ensure", "--slug", "x", cwd=other).out
 
@@ -546,7 +546,7 @@ def test_close_host_refuses_when_base_checked_out_elsewhere(repo, tmp_path):
     before = (repo / ".superlite" / "sessions.json").read_bytes()
     cp = run("close", "--slug", "a", cwd=repo)
     assert cp.returncode == 2, cp.both
-    assert str(other) in cp.err, cp.err
+    assert other.as_posix() in cp.err, cp.err
     assert branch(repo) == "superlite/sessions/a"
     assert (repo / "app.py").read_text() == "one\nTWO-edit\nthree\n"
     assert (repo / ".superlite" / "run-file.txt").is_file()
@@ -562,7 +562,7 @@ def test_ensure_outside_git_continues_without_session(tmp_path):
     cp = run("ensure", "--slug", "demo", cwd=d)
     assert cp.returncode == 0, cp.both
     assert "session: no git repository here; continuing without a session" in cp.out, cp.both
-    assert last(cp) == f"SESSION worktree={d} slug=demo branch=-"
+    assert last(cp) == f"SESSION worktree={d.as_posix()} slug=demo branch=-"
     assert not (d / ".superlite" / "sessions.json").exists()
 
 
@@ -574,7 +574,7 @@ def test_ensure_in_repo_without_commits_continues_without_session(tmp_path):
     cp = run("ensure", "--slug", "demo", cwd=d)
     assert cp.returncode == 0, cp.both
     assert "session: repository has no commits yet; continuing without a session" in cp.out, cp.both
-    assert last(cp) == f"SESSION worktree={d} slug=demo branch=-"
+    assert last(cp) == f"SESSION worktree={d.as_posix()} slug=demo branch=-"
     assert not (d / ".superlite" / "sessions.json").exists()
 
 
@@ -643,7 +643,7 @@ def test_ensure_branch_registers_current_branch_in_place(repo):
     assert branch(repo) == "feature"
     assert (repo / "app.py").read_text() == "one\nEDITED\nthree\n"
     assert row_of(repo, "rev")["branch"] == "feature"
-    assert last(cp) == f"SESSION worktree={repo} slug=rev branch=feature"
+    assert last(cp) == f"SESSION worktree={repo.as_posix()} slug=rev branch=feature"
 
 
 def test_ensure_branch_parallel_worktree_checks_out_existing_branch(repo):
