@@ -20,7 +20,7 @@ flowchart TD
   class T1,T3,T4 critical
 ```
 
-  Nodes are labelled with the task id and title. Edges come from the `%% taskgraph` block. Lint's critical path (the one it saves in `stable.json`) gets the red, thick `critical` style. A task with no edges still shows as a lone node. Output is deterministic (tasks in plan order). Characters that break a label become plain look-alikes (`"` and `` ` `` to `'`, `[ ] < >` to `( )`, `#` to `no. `), because the chat shows mermaid entity codes such as `#34;` as literal text. Accents and other non-ASCII characters pass through.
+  Nodes are labelled with the task id and title. Edges come from the `%% taskgraph` block. Lint's critical path (the one it saves in `stable.json`) gets the red, thick `critical` style. A task with no edges still shows as a lone node. Output is deterministic (nodes in id order, T2 before T10). Characters that break a label become plain look-alikes (`"` and `` ` `` to `'`, `[ ] < >` to `( )`, `#` to `no. `), because the chat shows mermaid entity codes such as `#34;` as literal text. Accents and other non-ASCII characters pass through.
 - **Fail open:** if the flowchart can't be drawn, lint prints `graph: not drawn (<reason>)` on stderr and finishes as usual.
 - **`superlite-cli graph --plan <plan>`:** prints the same flowchart on demand.
 - **`/superlite:status`:** shows the flowchart in a `mermaid` block below the status lines.

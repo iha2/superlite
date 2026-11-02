@@ -6,7 +6,7 @@
 
 Writes graph.txt in the run folder (cached by plan SHA-256, the drawing format and the critical ids).
 Always `flowchart TD` (the `graph` keyword does not render in Claude Code). Nodes are
-labelled with id and title, in task order; critical-path tasks get the `critical`
+labelled with id and title, in id order (T2 before T10); critical-path tasks get the `critical`
 class: the given ids, else the longest path by task count. Stdlib only.
 """
 from __future__ import annotations

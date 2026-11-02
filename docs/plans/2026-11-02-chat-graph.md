@@ -16,7 +16,7 @@ flowchart LR
 **Est. time:** 6 min
 **Produces:** graph.render(plan_path, critical=None) -> str
 
-`render` returns `flowchart TD`. Every task in plan order is a node labelled with its id and title, followed by one `a --> b` line per edge and a `critical` class on the given ids (or else the longest path). Labels swap `"`, `` ` ``, `[`, `]`, `<`, `>` and `#` for plain look-alikes. The ASCII helpers (`_tiers`, `_draw`, `_cell`, `WIDTH`) are removed. FROZEN: the signature of `render`, the `graph.txt` cache and its `# hash:` head, and `superlite-cli graph --plan`.
+`render` returns `flowchart TD`. Every task, in id order (T2 before T10), is a node labelled with its id and title, followed by one `a --> b` line per edge and a `critical` class on the given ids (or else the longest path). Labels swap `"`, `` ` ``, `[`, `]`, `<`, `>` and `#` for plain look-alikes. The ASCII helpers (`_tiers`, `_draw`, `_cell`, `WIDTH`) are removed. FROZEN: the signature of `render`, the `graph.txt` cache and its `# hash:` head, and `superlite-cli graph --plan`.
 
 ### T2 lint header · Complexity 2 (O-1) · Est. context 20k
 **Owns:** skills/swarm/scripts/plan_lint.py, tests/scripts/test_stable_split.py
