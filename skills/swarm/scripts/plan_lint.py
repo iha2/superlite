@@ -423,6 +423,22 @@ def _wave0_line(plan_path: str, run_dir: Path, pending: list, sent: set) -> list
     return [line] if tid not in pending and tid not in sent else []
 
 
+def _graph_lines(plan_path: str, run_dir: Path, critical: list) -> list[str]:  # O(L + n+e)
+    """The framed mermaid flowchart with lint's critical path marked, only when it differs from the last one
+    shown (graph-shown.txt). Never blocks the lint."""
+    try:
+        import graph
+        body = graph.render(plan_path, critical).split("\n", 1)[1]
+        shown = run_dir / "graph-shown.txt"
+        if shown.is_file() and shown.read_text(encoding="utf-8") == body:
+            return []
+        shown.write_text(body, encoding="utf-8", newline="\n")
+    except base.advisory_errors() as e:  # logged, the lint goes on
+        print(f"graph: not drawn ({e})", file=sys.stderr)
+        return []
+    return ["GRAPH (show the user as a mermaid block):", *body.splitlines(), "END GRAPH"]
+
+
 def _print_report(args, run_dir: Path, stable: list, fix: list, plan_issues: list, warnings: list, pending: list,
                   first: list, tiers: dict, tiers_line: str) -> None:
     print("STABLE: " + " ".join(stable))
@@ -479,6 +495,8 @@ def cmd_lint_stable(args) -> int:  # O(lint + n*k*s)
     tiers, cp_ids, tiers_line = _tiers(plan, args, run_dir, stable)
     plan_issues = list(plan_issues) + frozen
     first = _wave0_line(args.plan, run_dir, pending, sent)
+    for line in _graph_lines(args.plan, run_dir, cp_ids):
+        print(line)
     _print_report(args, run_dir, stable, fix, plan_issues, warnings, pending, first, tiers, tiers_line)
     accepted = [w[len("NOTE: "):] for w in warnings if w.startswith("NOTE: accepted Ruling: sequential")]  # for finish
     base.write_json(run_dir / "chain-rulings.json", accepted)
