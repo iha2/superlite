@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 HOOK = ROOT / "hooks" / "pre-tool"
 _GIT_BASH = r"C:\Program Files\Git\bin\bash.exe"
 BASH = _GIT_BASH if os.name == "nt" and os.path.exists(_GIT_BASH) else shutil.which("bash")
+SCRATCH = "/tmp/claude-501/-Users-me-work-app/0000/scratchpad"
 
 
 @pytest.fixture
@@ -104,8 +105,98 @@ def test_prime_marker_activates(tmp_path):
     "cp /tmp/x.py src/a.py 2>/dev/null",
     "echo \"multi\nline\" > src/a.py",
     "echo \"x\\\"y\" > src/a.py",
+    # after a cd, a relative target is read from the folder it leads to
+    "cd src && echo x > a.py",
+    "cd src && rm a.py",
+    "cd src; cp /tmp/x.py a.py",
+    "cd {proj}/src && sed -i s/a/b/ a.py",
+    "cd .superlite/sandboxes/x && echo x > a.py",
+    "cd .superlite && mv ../src/a.py b.py",
+    "cd .superlite && echo x > ../src/a.py",
+    "cd docs && echo x > code.py",
+    "cd {proj} && echo x > src/a.py",
+    "cd /tmp && echo x > a.txt && cd {proj}/src && echo x > b.py",
+    "cd $HOME && echo x > a.py",
+    "cd ~ && echo x > a.py",
+    "cd .. && echo x > a.py",
+    "cd -P src && echo x > a.py",
+    "cd a b && echo x > a.py",
+    "cd /tmp && (cd src && rm a.py)",
+    "cd /tmp && { cd src; rm a.py; }",
+    "CDPATH=./src cd .superlite && echo x > a.json",
+    "export CDPATH=./src; cd .superlite; echo x > a.json",
+    # a cd the hook cannot follow leaves a relative target with none of the allow rules
+    "cd skills/x && cd .. && echo x > SKILL.md",
+    "cd skills/x && cd .. && echo x > README.md",
+    "(cd skills/x && echo x > SKILL.md)",
+    "{ cd skills/x; echo x > SKILL.md; }",
+    "pushd skills/x && echo x > SKILL.md",
+    "pushd skills/x >/dev/null; echo x > SKILL.md; popd",
+    "cd -P skills/x && echo x > SKILL.md",
+    "cd -- skills/x && echo x > SKILL.md",
+    "cd .. && echo x > README.md",
+    "cd -P . && echo x > README.md",
+    "cd && echo x > README.md",
+    "cd - && echo x > README.md",
+    "cd $HOME/x && echo x > README.md",
+    "cd . && cd .. && echo x > README.md",
+    "cd .. && cd .superlite && echo x > README.md",
+    "cd .. && echo x > .agents/n.txt",
+    "cd .. && echo x > spikes/n.md",
+    "cd .. && cp x README.md",
+    "cd .. && tee README.md",
+    "cd .. && sed -i s/a/b/ README.md",
+    "cd .. && rm README.md",
+    "cd .. && mv x README.md",
+    "ls && cd skills/x && cd .. && echo x > SKILL.md",
+    "cd skills/x && (cd .. ; echo x > SKILL.md)",
+    # a . or .. component: the real file is not worked out
+    "cd .superlite/. && echo x > orchestrator.json",
+    "cd .superlite/. && echo x > feature.json",
+    "cd .superlite/./ && echo x > human-replies.jsonl",
+    "cd ./.superlite/. && echo x > orchestrator.json",
+    "cd .superlite/./sandboxes && echo x > a.py",
+    "cd .superlite/sandboxes/./x && echo x > a.py",
+    "cd .superlite && echo x > ./sandboxes/./a.py",
+    "echo x > .superlite/./orchestrator.json",
+    "echo x > .superlite/../src/a.py",
+    "echo x > .agents/../src/a.py",
+    "echo x > spikes/../src/a.py",
+    "cd .superlite && cp x ./../src/a.py",
+    # cp -t DIR files: the folder is not the last word, so a root Markdown name does not vouch for it
+    "cp -t src README.md",
+    "cp -t skills/x SKILL.md",
+    "cp -rt src README.md",
+    "cp --target-directory=src README.md",
+    "cp --target-directory src README.md",
+    "cp -tsrc README.md",
+    "cd .agents && cp -t ../src x",
+    # a quoted path that is one plain word is still a path
+    'rm "src/a.py"',
+    "rm 'src/a.py'",
+    'echo x > "src/a.py"',
+    "echo x >> 'src/a.py'",
+    "cp a 'src/b.py'",
+    'cp "a.py" "src/b.py"',
+    'mv "src/a.py" /tmp/x',
+    'echo x | tee "src/a.py"',
+    'sed -i "s/a/b/" "src/a.py"',
+    'cat > "src/a.py" <<\'EOF\'\nx\nEOF',
+    'echo x > src/"a.py"',
+    'rm "src/my file.py"',
+    "echo x > 'src/a b.py'",
+    'cp a "src/my dir/b.py"',
+    'mv "src/a b.py" /tmp/x',
+    # a file called Q is a file: Q is no placeholder
+    "rm Q",
+    "echo x > Q",
+    'echo "$S" > Q',
+    'cd "$S" && echo x > out.txt',   # a cd it cannot read leaves the base at the project root
+    "cd .agents; echo x > src/a.py",   # a cd into a missing folder fails, so the shell stays at the root
+    "cd spikes/new; echo x > README.md",
 ])
 def test_blocks_bash_writes(proj, cmd):
+    cmd = cmd.replace("{proj}", str(proj))
     assert bash(proj, cmd).returncode == 2, cmd
 
 
@@ -124,8 +215,55 @@ def test_blocks_powershell_write(proj):
     # Redirects are not cp operands; escaped and multi-line quotes hide their '>'.
     "cp src/a.py /tmp/a.py 2>/dev/null", "grep -E \"href=\\\"[^>]*>\" x.html",
     "grep -c \"<li[^>]*>\nfoo\" x.html",
+    # after a cd, a relative target is read from the folder it leads to
+    "cd .superlite && mv stable.json prime.md pool.json archive/",
+    "cd .superlite && mkdir -p archive-1 && mv progress.md incidents.jsonl archive-1/ && ls archive-1",
+    "cd {proj}/.superlite && mv stable.json archive/",
+    "cd {proj}/docs/plans && echo x > p.md",
+    "cd docs && sed -i s/a/b/ guide.md",
+    "cd docs/plans; rm -f old.md",
+    "cd .superlite && cp pool.json pool.bak",
+    "cd .superlite && echo x | tee notes.md",
+    f"cd {SCRATCH} && echo x > out.txt",
+    f"cd {SCRATCH} && rm -f a.py b.py",
+    f"cd {SCRATCH} && python3 -c \"print(1)\" > msgs.txt; sed -n 1,3p msgs.txt",
+    f"cd {SCRATCH} && cp /tmp/x.py a.py",
+    "cd /tmp && cd {proj}/.superlite && mv stable.json archive/",
+    "cd .superlite && cd archive && echo x > a.json",
+    "cd docs && cd plans && echo x > p.md",
+    "cd .superlite/ && mv stable.json archive/",
+    "cd .. && echo x > docs/plans/p.md",
+    "cd .. && echo x > .superlite/notes.md",
+    # a quoted string that is not one plain word is an unknown path, as an unquoted $VAR is
+    'rm -rf "$S/home"',
+    'mv "$S/a" "$S/b"',
+    'cp ~/x.jpg "$S/photo.jpg"',
+    'mise run build > "$S/install.log" 2>&1; echo "exit $?"',
+    f'S={SCRATCH}; rm -rf "$S/home" "$S/photos"; ls -A "$S" | wc -l',
+    'echo x > "$(pwd)/a.txt"',
+    'echo x > "/tmp/a b/x"',
+    'rm "$S/my dir"',
+    'echo "hello world" > /tmp/x.txt',
+    'git commit -m "fix a b" && rm "/tmp/my file.txt"',
+    'rm "/tmp/x.txt"',
+    "cp 'a' '/tmp/b.py'",
+    # an operator or a space inside quotes stays inside one word
+    'echo x > "docs/plans/$f.md"',
+    'echo x > ".superlite/$f.json"',
+    'echo "a > b" > /tmp/o.txt',
+    'echo "a; rm src/a.py" > /tmp/o.txt',
+    'git commit -m "fix src/a.py > b" && ls',
+    'cp "/tmp/a b.txt" /tmp/c.txt',
+    'echo "x" > /tmp/""o.txt',
+    # cp -t outside the project
+    "cp -t /tmp README.md", "cp -rt /tmp x.md", "cp --target-directory=/tmp README.md",
 ])
-def test_allows_bash_reads_and_safe_writes(proj, cmd):
+def test_allows_bash_reads_and_safe_writes(proj, cmd, tmp_path_factory):
+    # A cd is followed only into a folder that exists, so make the ones the cases use.
+    for d in ("docs/plans", ".superlite/archive", ".agents", "spikes"):
+        (proj / d).mkdir(parents=True, exist_ok=True)
+    scratch = tmp_path_factory.mktemp("scratchpad")
+    cmd = cmd.replace("{proj}", str(proj)).replace(SCRATCH, str(scratch))
     r = bash(proj, cmd)
     assert r.returncode == 0, cmd
 
@@ -281,3 +419,133 @@ def test_one_process_per_bash_call(proj):
     out = json.loads(r.stdout)
     assert r.returncode == 0
     assert "run_tests --full" in out["hookSpecificOutput"]["updatedInput"]["command"]
+
+
+def test_allows_notes_and_root_markdown(proj):
+    for p in ("spikes/COMPARISON.md", "spikes/a/notes.md", ".agents/handoffs/x.md", ".agents/PROGRESS-app.md",
+              ".agents/a/b/c.txt", "README.md", "CHANGELOG.md", str(proj / "spikes" / "COMPARISON.md")):
+        for tool in ("Edit", "Write"):
+            assert run(proj, tool, {"file_path": p}).returncode == 0, (tool, p)
+
+
+def test_blocks_code_beside_the_notes_folders(proj):
+    # Markdown passes at the root and in spikes/ only: SKILL.md and agents/*.md are product code.
+    for p in ("spikes/run-all.sh", "spikes/a/run.py", "src/README.md", "skills/x/SKILL.md", "agents/x.md",
+              "handoffs/x.md", "app/pyproject.toml", "typos.toml", "Makefile", "docs/code.py",
+              ".superlite/sandboxes/x/notes.md", str(proj / "src" / "README.md")):
+        assert run(proj, "Write", {"file_path": p}).returncode == 2, p
+
+
+@pytest.mark.parametrize("path", [
+    ".superlite/./orchestrator.json", ".superlite/sandboxes/../orchestrator.json", ".superlite/x/../feature.json",
+    ".superlite/./sandboxes/a.py", ".superlite/../src/a.py", ".agents/../src/a.py", "spikes/../src/a.md",
+    "spikes/../a.md", "docs/plans/../../src/a.py", "docs/../src/a.md", ".superlite/./notes.md", "docs/./a.md",
+    "././src/a.py",
+])
+def test_blocks_a_path_with_a_dot_component(proj, path):
+    for tool in ("Edit", "Write"):
+        assert run(proj, tool, {"file_path": path}).returncode == 2, (tool, path)
+
+
+def test_dot_component_matters_only_in_a_run_and_for_protected_files(proj):
+    (proj / ".superlite" / "pool.json").unlink()
+    assert run(proj, "Write", {"file_path": "src/./a.py"}).returncode == 0
+    assert run(proj, "Write", {"file_path": "docs/../a.md"}).returncode == 0
+    assert bash(proj, "echo x > src/./a.py").returncode == 0
+    for path in (".superlite/./orchestrator.json", ".superlite/x/../human-replies.jsonl"):
+        r = run(proj, "Write", {"file_path": path})
+        assert r.returncode == 2 and "never written directly" in r.stderr, path
+
+
+@pytest.mark.parametrize("name", ["orchestrator.json", "feature.json", "human-replies.jsonl"])
+def test_protected_files_stay_blocked(proj, name):
+    assert run(proj, "Write", {"file_path": f".superlite/{name}"}).returncode == 2
+    r = bash(proj, f"python3 - <<'EOF'\np = '.superlite/{name}'\nopen(p, 'w').write('x')\nEOF")
+    assert r.returncode == 2 and "never written directly" in r.stderr
+    r = bash(proj, f"cd .superlite && echo x > {name}")
+    assert r.returncode == 2 and "never written directly" in r.stderr
+
+
+@pytest.mark.parametrize("name", ["orchestrator.json", "feature.json", "human-replies.jsonl"])
+@pytest.mark.parametrize("fmt", [
+    'echo x > "$PWD/.superlite/{}"',
+    "echo x > $PWD/.superlite/{}",
+    'cp x "${{P}}/.superlite/{}"',
+    'echo x > "$P"/.superlite/{}',
+    'echo x > "$P/.superlite"/{}',
+    'echo x > "$P"/.superlite/"{}"',
+    'echo x > "$P"/"$Q"/.superlite/{}',
+    'echo x >> "$P"/.superlite/{}',
+    'echo x | tee "$P"/.superlite/{}',
+    'cp x "$P"/.superlite/{}',
+    'cp x "$P/.superlite"/{}',
+    'echo x > "$P"/.SuperLite/{}',
+    'cd .superlite && echo x > "$P"/.superlite/{}',
+])
+def test_blocks_a_protected_file_under_an_unknown_folder(proj, name, fmt):
+    r = bash(proj, fmt.format(name))
+    assert r.returncode == 2 and "never written directly" in r.stderr, fmt
+
+
+def test_blocks_a_protected_file_under_an_unknown_folder_without_a_run(proj):
+    (proj / ".superlite" / "pool.json").unlink()
+    for name in ("orchestrator.json", "feature.json", "human-replies.jsonl"):
+        for cmd in (f'echo x > "$P"/.superlite/{name}', f"echo x > $P/.superlite/{name}"):
+            r = bash(proj, cmd)
+            assert r.returncode == 2 and "never written directly" in r.stderr, cmd
+
+
+@pytest.mark.parametrize("cmd", [
+    # an empty pair of quotes, or a quoted piece inside a word, does not hide the word
+    'echo x > sr""c/a.py',
+    'echo x > src/a"".py',
+    "echo x > src/''a.py",
+    'rm src/a"".py',
+    "rm sr''c/a.py",
+    'cp x src/a""',
+    'tee src/a"".py',
+    'mv x src/a"".py',
+    'sed -i s/a/b/ src/a"".py',
+    'cd .superlite && cat > orch""estrator.json',
+    'cd .superlite && echo x > feature.json""',
+    'echo x > .superlite/human-repl""ies.jsonl',
+    # a quoted piece with a $ keeps the text before it: src/ is still project code
+    'echo x > "src/$f.py"',
+    'cp x "src/$f.py"',
+    'rm -rf "src/$d"',
+    'sed -i "s/$x/y/" "src/$f"',
+    'echo x > src/"$f"',
+    'echo x > src/"$f".py',
+    'rm src/"$f"',
+    'rm -rf src/"$d"',
+    'cp x src/"$f"',
+    'mv x src/"a$f"',
+    'tee src/"$f"',
+    "echo x > src/'$f'*",
+    'sed -i s/a/b/ src/"$f"',
+    'echo x > "src"/"$f"',
+])
+def test_blocks_a_word_broken_up_by_quotes(proj, cmd):
+    r = bash(proj, cmd)
+    assert r.returncode == 2, cmd
+    protected = any(s in cmd for s in ("estrator", "feature.json", "ies.jsonl"))
+    assert ("never written directly" in r.stderr) == protected, cmd
+
+
+def test_incident_line_stays_valid_json(proj):
+    for cmd in ('echo x > "src/$f.py"', 'echo x > src/"$f"', 'rm -rf "src/my dir/$f"', 'echo x > "$P"/.superlite/orchestrator.json'):
+        assert bash(proj, cmd).returncode == 2, cmd
+    lines = (proj / ".superlite" / "incidents.jsonl").read_text().splitlines()
+    assert len(lines) == 4
+    rows = [json.loads(line) for line in lines]
+    assert rows[0]["target"] == "> src/$"
+    assert rows[2]["target"] == "rm src/my dir/$"
+
+
+def test_many_quoted_variables_are_decided_quickly(proj):
+    import time
+
+    cmd = "mkdir -p " + " ".join(f'"$S/f{i}"' for i in range(1500)) + " && echo done"
+    t = time.perf_counter()
+    assert bash(proj, cmd).returncode == 0
+    assert time.perf_counter() - t < 3
