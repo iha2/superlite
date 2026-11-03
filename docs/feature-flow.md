@@ -46,6 +46,10 @@ The user is asked for the feature in their own words if the request is thin, wit
 - the acceptance checks a human can try (aligned with the feature spec when agent_specs is on);
 - after step 2: the code map, the interfaces to keep, the prototype scope and an outline of the integration build.
 
+### Step 2b: the grill
+
+After research the plan has a code map, so open questions can name real files and seams. The **Grill** block of `superlite:inventing` runs here (and in debug after the cause is found, in review after the diff is read; not in small, MVP or regular builds on an empty folder). Caps: round 1 is one `AskUserQuestion` of at most 4 questions with the recommended option first; round 2 only for what round 1 opened (feature only); never a round 3. Nothing the code answers is asked; "I don't know" becomes `Assumption:`; look-and-feel questions become `Prototype decides:`. Human mode asks; AI mode grills itself, answers from the code map and edits the plan in place, recording `Ruling:` lines. The output is a `## Decisions` section of at most 10 lines, not a file. Design source: aihero.dev/skills-grill-me, kept stateless and capped.
+
 ### Step 2: research the code base
 
 Read before designing, as `commands/feature.md` already says, and write the result into the plan as a **code map**:
