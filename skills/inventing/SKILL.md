@@ -32,8 +32,8 @@ Run this in feature, debug and review modes, once the code is read: feature afte
 - Ask nothing the code, the code map or the request already answers; state the finding. Skip the grill when nothing material is open.
 - Round 1 is the whole frontier in ONE `AskUserQuestion`: at most 4 questions, recommended option first, so one click accepts all. Round 2 only for questions round 1's answers opened, in feature mode only. Never a round 3.
 - "I don't know" or "you decide" is an answer: `Assumption:` and move on. A look-and-feel question is not grilled: `Prototype decides:`.
-- Human orchestrator: ask. AI orchestrator: grill yourself. Write the same round 1 questions, answer each from the code map and best default, run round 2 on what that opens (the same caps apply to what you write), and record each as `Ruling: <decision> (because <reason>)`. Edit the plan in place to match, so it reads as one plan.
-- The result is not a file: a `## Decisions` section of at most 10 lines in the plan (in debug, with no plan, in the chat and the regression test's comment) (`Decided:`, `Assumption:`, `Prototype decides:`, `Ruling:`).
+- Human orchestrator: ask. AI orchestrator: grill yourself. Write the same round 1 questions, answer each from the code map and best default, run round 2 on what that opens (the same caps apply to what you write), and record each as `Ruling: <decision> (because <reason>)`. Edit the plan in place to match, so it reads as one plan. When `agent_specs` is on, keep the feature `.spec.md` consistent: reconcile any ruling that changes scope into it, or do not make that ruling (the spec wins).
+- The result is not a file: a `## Decisions` section of at most 10 lines in the plan (with no plan, as in debug and a review of a branch or path, in the chat, and in the regression test's comment only when one is written) (`Decided:`, `Assumption:`, `Prototype decides:`, `Ruling:`).
 
 ## 3. Design
 
