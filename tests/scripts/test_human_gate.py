@@ -21,8 +21,10 @@ def make(tmp_path, state):
     sd.mkdir()
     if state == "human":
         (sd / "orchestrator.json").write_text('{"mode": "human", "approved": false}')
-    elif state == "approved":
+    elif state in ("approved", "tryout"):
         (sd / "orchestrator.json").write_text('{"mode": "human", "approved": true}')
+        if state == "tryout":
+            (sd / "feature.json").write_text('{"status": "tryout"}')
     elif state == "ai":
         (sd / "orchestrator.json").write_text('{"mode":"ai","approved":false}')
     return tmp_path
@@ -33,9 +35,9 @@ def human(tmp_path):
     return make(tmp_path, "human")
 
 
-def guard(proj, tool, tool_input, **extra):
+def guard(proj, tool, tool_input, env=None, **extra):
     raw = json.dumps({"tool_name": tool, "tool_input": tool_input, **extra})
-    env = {**os.environ, "CLAUDE_PROJECT_DIR": str(proj)}
+    env = {**os.environ, "CLAUDE_PROJECT_DIR": str(proj), **(env or {})}
     return subprocess.run([BASH, str(GUARD)], input=raw, capture_output=True, text=True, env=env)
 
 
@@ -92,6 +94,157 @@ def test_human_agent_calls(human):
         assert NEXT in r.stderr
     for t in ("Explore", "Plan", "claude-code-guide"):
         assert guard(human, "Agent", {"subagent_type": t, "prompt": "x"}).returncode == 0, t
+
+
+# ---- agents that cannot write files may run while the gate is closed ----
+
+def agent_file(directory, name, tools=None, body="Review the diff.\n", name_line=True):
+    # <directory>/<name>.md; tools are the frontmatter lines after the description (None: no tools line)
+    directory.mkdir(parents=True, exist_ok=True)
+    head = ["---"] + ([f"name: {name}"] if name_line else []) + ["description: x", *(tools or []), "---", body]
+    (directory / f"{name}.md").write_text("\n".join(head), encoding="utf-8")
+
+
+def agent_env(proj, **env):
+    # the user's agents live in an empty home inside the project, and CLAUDE_CONFIG_DIR is off unless given
+    return {"HOME": str(proj / "home"), "CLAUDE_CONFIG_DIR": "", **env}
+
+
+def spawn(proj, name, tool="Agent", prompt="Review T1", **env):
+    return guard(proj, tool, {"subagent_type": name, "prompt": prompt}, env=agent_env(proj, **env))
+
+
+@pytest.fixture
+def reviewer(human):
+    agent_file(human / ".claude" / "agents", "reviewer", ["tools: Read, Grep"])
+    return human
+
+
+@pytest.mark.parametrize("state", ["human", "tryout"])
+def test_human_allows_read_only_project_agent(tmp_path, state):
+    proj = make(tmp_path, state)
+    agent_file(proj / ".claude" / "agents", "reviewer", ["tools: Read, Grep, Glob"])
+    for tool in ("Agent", "Task"):
+        r = spawn(proj, "reviewer", tool)
+        assert r.returncode == 0 and r.stderr == "", (tool, r.stderr)
+
+
+def test_human_allows_read_only_user_agent(human, tmp_path_factory):
+    agent_file(human / "home" / ".claude" / "agents", "scanner", ["tools:", "  - Read", "  - Grep", "  - Glob"])
+    assert spawn(human, "scanner").returncode == 0
+    cfg = tmp_path_factory.mktemp("config")   # CLAUDE_CONFIG_DIR replaces ~/.claude
+    agent_file(cfg / "agents", "auditor", ["tools: [Read, Grep]"])
+    assert spawn(human, "auditor", CLAUDE_CONFIG_DIR=str(cfg)).returncode == 0
+    assert spawn(human, "auditor").returncode == 2
+
+
+@pytest.mark.parametrize("tools", [
+    ["tools: read, grep, glob"], ['tools: "Read, Grep"'], ["tools: [Read, 'Grep']"], ["tools:", "- Read", "- Grep"],
+    ["tools: Read, Grep   # no writes here"], ["tools: Read, Grep", "disallowedTools: Write"],
+    ["tools:", "  - Read", "# a comment", "  - Grep", "model: sonnet"],
+    ["tools: Read Grep Glob"], ["tools: Read, Grep", "memory: none"], ["tools: [Read Grep]", "memory:"],
+])
+def test_human_reads_tools_in_every_yaml_form(human, tools):
+    agent_file(human / ".claude" / "agents", "reviewer", tools)
+    assert spawn(human, "reviewer").returncode == 0, tools
+
+
+@pytest.mark.parametrize("tools", [
+    ["tools: Read, Write"], ["tools: Read, Edit, Bash"], ["tools: Read, MultiEdit"], ["tools: NotebookEdit"],
+    ["tools: read, write"], ['tools: "*"'], ["tools: all"], ["tools: Read, mcp__x__y"], ["tools: Read, Agent"],
+    ["tools: Read, Task"], ["tools: Read Write"], ["tools: Read Grep Write"], ["tools: [Read Edit]"],
+    ["tools: Read\tWrite"], ["tools: Bash(git log *) Write"],
+    ["tools: Read, Bash"], ["tools: Read, Grep, Glob, Bash"], ["tools: Read, Bash(git log *)"], ["tools: Read Bash(git log *) Grep"],
+    ["tools: Read, PowerShell"], ["tools: Read, pwsh"], ["tools: Read, Shell"], ["tools: Read, bash"], ["tools:", "  - Read", "  - Bash"],
+    ["tools: Read, Grep", "memory: project"], ["tools: Read, Grep", "memory: user"],
+    ["tools: Read, Grep", "memory: 'local'"], ["memory: project", "tools: Read, Grep"],
+    ["tools: [Read,", "Write]"], ["tools: [Read, Grep,", "  Grep]"],
+    ["tools: Read, Grep", "mcpServers:", "  - github"], ["mcpServers: [github]", "tools: Read, Grep"],
+    ["tools:", "  - Read", "  - Write"], ["tools:", "- Read", "- Edit"], ["tools: [Read, Write]"],
+    ["tools: Read, Write(src/**)"], ["tools: >", "  Read, Write"], ["tools: Read,", "  Write"],
+    None, ["tools:"], ["disallowedTools: Write, Edit"], ["model: sonnet"],
+])
+def test_human_denies_agents_that_can_write(human, tools):
+    agent_file(human / ".claude" / "agents", "reviewer", tools)
+    r = spawn(human, "reviewer")
+    assert r.returncode == 2, tools
+    assert NEXT in r.stderr and "no Edit, Write or shell tools" in r.stderr
+
+
+def test_human_denies_unusable_agent_names(reviewer):
+    agent_file(reviewer / "home" / ".claude" / "agents", "general-purpose", ["tools: Read"])
+    (reviewer / ".claude" / "evil.md").write_text("---\nname: evil\ntools: Read\n---\n")
+    for name in ("missing", "../evil", "../agents/reviewer", "a/b", "plug:agent", "superlite:implementer",
+                 "superlite:reviewer", "general-purpose", "", "rev iewer", "reviewer.md", "reviewer\\n"):
+        assert spawn(reviewer, name).returncode == 2, repr(name)
+    assert spawn(reviewer, "reviewer").returncode == 0
+    assert guard(reviewer, "Agent", {"prompt": "x"}, env=agent_env(reviewer)).returncode == 2
+
+
+def test_human_reads_only_the_frontmatter(human):
+    agents = human / ".claude" / "agents"
+    agent_file(agents, "body", None, body="tools: Read, Grep\n")
+    agent_file(agents, "clean", ["tools: Read"], body="tools: Write\nUse Edit and Write freely.\n")
+    (agents / "open.md").write_text("---\nname: open\ntools: Read\n" + "x: y\n" * 80)   # never closed
+    (agents / "plain.md").write_text("tools: Read\n")
+    for name, code in (("body", 2), ("clean", 0), ("open", 2), ("plain", 2)):
+        assert spawn(human, name).returncode == code, name
+
+
+def test_human_needs_the_file_to_carry_the_requested_name(human):
+    agents = human / ".claude" / "agents"
+    agent_file(agents, "ghost", ["tools: Read"], name_line=False)
+    (agents / "alias.md").write_text("---\nname: other\ntools: Read\n---\n")
+    agent_file(agents / "review", "deep", ["tools: Read"])   # subfolders of agents/ are not searched
+    for name in ("ghost", "alias", "deep"):
+        assert spawn(human, name).returncode == 2, name
+
+
+def test_human_denies_a_name_another_agent_file_could_claim(human):
+    # Claude Code keys an agent on name: and reads subfolders too, so any other file that may define it fails closed.
+    project, user = human / ".claude" / "agents", human / "home" / ".claude" / "agents"
+    agent_file(user, "reviewer", ["tools: Read"])
+    assert spawn(human, "reviewer").returncode == 0
+    for other in ("other.md", "sub/other.md", "sub/reviewer.md"):
+        for claim in ("reviewer", "Reviewer", '"reviewer"'):
+            path = project / other
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"---\nname: {claim}\ntools: Read, Write\n---\n")
+            assert spawn(human, "reviewer").returncode == 2, (other, claim)
+            path.unlink()
+            if path.parent != project:
+                path.parent.rmdir()
+    (user / "tools").mkdir()   # any subfolder could hold the name
+    assert spawn(human, "reviewer").returncode == 2
+    (user / "tools").rmdir()
+    agent_file(project, "scanner", ["tools: Read"])   # a different name does not matter
+    assert spawn(human, "reviewer").returncode == 0
+
+
+def test_human_project_agent_wins_over_user_agent(human):
+    project, user = human / ".claude" / "agents", human / "home" / ".claude" / "agents"
+    for mine, theirs, code in (("tools: Read, Write", "tools: Read", 2), ("tools: Read", "tools: Read, Write", 0)):
+        agent_file(project, "dual", [mine])
+        agent_file(user, "dual", [theirs])
+        assert spawn(human, "dual").returncode == code, mine
+
+
+def test_human_read_only_agents_still_meet_the_run_rules(tmp_path):
+    # The pass is for the gate only: the batch, question and tier rules of an active run still apply.
+    proj = make(tmp_path, "approved")
+    sd = proj / ".superlite"
+    (sd / "pool.json").write_text("{}")
+    (sd / "dispatch.json").write_text(json.dumps({"batches": [["T1", "T2"], ["T3"]]}))
+    (sd / "questions.json").write_text(json.dumps({"waiting": {"T2": {"agent": "a1"}}}))
+    (sd / "blocked.json").write_text(json.dumps({"blocked": {"T5": {"tier": "opus"}}}))
+    for name in ("implementer", "fixer-sonnet", "reviewer"):
+        agent_file(proj / ".claude" / "agents", name, ["tools: Read, Grep"])
+    for name, prompt, code, text in (("implementer", "Review T1", 2, "printed batches"),
+                                     ("fixer-sonnet", "Fix T2", 2, "answer the implementer"),
+                                     ("fixer-sonnet", "Fix BLOCKED T5", 2, "opus"),
+                                     ("reviewer", "Review T1", 0, "")):
+        r = spawn(proj, name, prompt=prompt)
+        assert r.returncode == code and text in r.stderr.lower(), (name, prompt)
 
 
 def test_subagents_untouched(human):
@@ -363,6 +516,10 @@ def test_cursor_coordinator_denied_from_workspace_root(human, plugin_dir):
            "superlite-cli orchestrator")
     denied(cursor_guard(human, "Delete", {"file_path": str(human / ".superlite" / "human-replies.jsonl")}, plugin_dir),
            "superlite-cli orchestrator")
+
+
+def test_cursor_denies_read_only_agents_too(reviewer, plugin_dir):
+    denied(cursor_guard(reviewer, "Task", {"subagent_type": "reviewer", "prompt": "x"}, plugin_dir), NEXT)
 
 
 def test_cursor_research_and_reads_allowed(human, plugin_dir):

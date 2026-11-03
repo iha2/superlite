@@ -4,15 +4,20 @@
 #     .superlite/feature.json (changed only by `superlite-cli proto`) and .superlite/human-replies.jsonl (written
 #     only by hooks/prompt) are never written by the model.
 #  2. HUMAN-UNAPPROVED (.superlite/orchestrator.json has mode human and approved false): nothing is
-#     orchestrated until the human approves the review plan. Agent calls of superlite:* and
-#     general-purpose and superlite-cli dispatch/assign/wave0/checkpoint/finish/build_prime
-#     are denied. File writes are not: small inline work needs only the human's yes in chat, not a
-#     review plan.
+#     orchestrated until the human approves the review plan. Agent calls are denied, except Explore, Plan, the
+#     guide agents and (not in Cursor) an agent that cannot write files (see agent_read_only), and so are
+#     superlite-cli dispatch/assign/wave0/checkpoint/finish/build_prime. File writes are not: small inline
+#     work needs only the human's yes in chat, not a review plan.
 #     TRYOUT-PENDING (feature flow: mode human and .superlite/feature.json has status tryout) is the
 #     same denial, for the integration build, until `superlite-cli proto tryout --approve` records the try-out.
 #  3. Active run (.superlite/stable.json, prime.md or pool.json exists): project code is not written
-#     by the coordinator; allowed targets are docs/plans/**, SPEC*.md, docs/**/*.md and .superlite/**
-#     except .superlite/sandboxes/** (the feature prototype's worktree is project code too).
+#     by the coordinator; allowed targets are docs/plans/**, SPEC*.md, docs/**/*.md, .agents/**, spikes/**/*.md,
+#     a Markdown file at the project root (README.md) and .superlite/** except .superlite/sandboxes/** (the
+#     feature prototype's worktree is project code too). Other Markdown (skills/**/SKILL.md, agents/*.md) is
+#     product code in a plugin repo. In Bash a relative target is read from the project root, or from the folder
+#     of a `cd DIR` before it (DIR plain text: no $, ~, quotes or ..). After a cd the hook cannot follow (cd ..,
+#     cd -P, pushd, a cd in ( ) or { }), a relative target gets none of the new allow rules. A path with a . or
+#     .. component is project code.
 #  4. BATCH (active run + Agent/Task for an implementer): the prompt's assigned task ids must be
 #     exactly one batch from .superlite/dispatch.json (last `superlite-cli dispatch` print). Denial lists the
 #     printed batches. A shared-prime spawn that only asks for READY (task comes later) is not an
@@ -30,6 +35,97 @@ norm() {
   [[ $p =~ $re ]] && { lower "${BASH_REMATCH[1]}"; p="/$LOWER/${BASH_REMATCH[2]}"; }
   while [[ $p == */ && $p != / ]]; do p="${p%/}"; done
   NORM="$p"
+}
+
+# tool_items VALUE: counts the tool names in a tools: value or list line into TOOLS. Fails for a tool that can
+# write files, run a shell (Bash and its kin can write anywhere, and subagent calls skip this hook, so a shell
+# could also run `superlite-cli orchestrator approve`) or start an agent that can, and for a value it cannot read (a block
+# scalar, a [ with no ] on the line). Names split at commas and at whitespace outside parentheses, as in Claude
+# Code: `Read Write` is two tools.
+tool_items() {
+  local v="$1" base bad=0
+  v="${v%%#*}"
+  case "$v" in *\[*) case "$v" in *\]*) ;; *) bad=1 ;; esac ;; esac
+  v="${v//\[/}"; v="${v//\]/}"; v="${v//\"/}"; v="${v//\'/}"
+  case "$v" in '>'*|'|'*) bad=1 ;; esac
+  shopt -s nocasematch
+  while [ -n "$v" ]; do
+    v="${v#"${v%%[![:space:],-]*}"}"   # separators and list dashes before a name
+    base="${v%%[[:space:],(]*}"; v="${v#"$base"}"
+    case "$v" in '('*) case "$v" in *\)*) v="${v#*)}" ;; *) v="" ;; esac ;; esac
+    case "$base" in
+      '') ;;
+      edit|write|multiedit|notebookedit|agent|task|bash|powershell|pwsh|shell|sh|zsh|cmd|terminal|all|'*'|mcp__*) bad=1 ;;
+      *) TOOLS=$((TOOLS+1)) ;;
+    esac
+  done
+  shopt -u nocasematch
+  return "$bad"
+}
+
+# agent_unique NAME FILE: succeeds when no other agent file of the same or a higher rank can define NAME. Claude
+# Code keys an agent on its name: and also reads subfolders of agents/, so a subfolder, or another top-level file
+# whose frontmatter says name: NAME, fails it.
+agent_unique() {
+  local n="$1" f="$2" d g line i
+  for d in "$proj/.claude/agents" "${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/agents"; do
+    d="${d//\\//}"
+    for g in "$d"/*; do
+      [ -d "$g" ] && return 1
+      case "$g" in "$f") continue ;; *.md) ;; *) continue ;; esac
+      i=0
+      while [ "$i" -lt 60 ] && { IFS= read -r line || [ -n "$line" ]; }; do
+        i=$((i+1)); line="${line%$'\r'}"
+        [ "$i" -gt 1 ] && [ "$line" = --- ] && break
+        case "$line" in name:*)
+          line="${line#name:}"; line="${line%%#*}"; line="${line//[\"\' $'\t']/}"
+          shopt -s nocasematch
+          [[ $line == "$n" ]] && { shopt -u nocasematch; return 1; }
+          shopt -u nocasematch ;;
+        esac
+      done < "$g"
+    done
+    case "$f" in "$d"/*) break ;; esac   # folders after the one that holds FILE rank lower
+  done
+  return 0
+}
+
+# agent_read_only NAME: succeeds when agent NAME cannot write files. Its definition is .claude/agents/NAME.md in
+# the project, else ${CLAUDE_CONFIG_DIR:-~/.claude}/agents/NAME.md. The frontmatter must carry a matching name:
+# and a tools: list of at least one tool, none of them a writer (an agent without one inherits every tool). A
+# memory: other than none (it adds Write and Edit) and an mcpServers: key fail it too, as does anything else
+# that is not a plain name or that it cannot parse.
+agent_read_only() {
+  local n="$1" f="" d line key val i=0 intools=0 named=0 closed=0 bad=0
+  local re_name='^[A-Za-z0-9_-]+$' re_key='^([A-Za-z_-]+):[[:space:]]*(.*)$'
+  TOOLS=0
+  [[ $n =~ $re_name ]] || return 1
+  [ "$n" = general-purpose ] && return 1
+  for d in "$proj/.claude/agents" "${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/agents"; do
+    d="${d//\\//}"
+    [ -f "$d/$n.md" ] && { f="$d/$n.md"; break; }
+  done
+  [ -r "$f" ] || return 1
+  agent_unique "$n" "$f" || return 1
+  while [ "$i" -lt 60 ] && { IFS= read -r line || [ -n "$line" ]; }; do
+    i=$((i+1)); line="${line%$'\r'}"
+    if [ "$i" = 1 ]; then [ "$line" = --- ] || return 1; continue; fi
+    if [ "$line" = --- ]; then closed=1; break; fi
+    if [ "$intools" = 1 ]; then   # list items and continuation lines of a tools: value
+      case "$line" in ''|[[:space:]]*|-*|'#'*) tool_items "$line" || bad=1; continue ;; esac
+      intools=0
+    fi
+    [[ $line =~ $re_key ]] || continue
+    key="${BASH_REMATCH[1]}"; val="${BASH_REMATCH[2]}"
+    [ "$key" = tools ] || { val="${val%%#*}"; val="${val//[\"\' ]/}"; }
+    case "$key" in
+      name) [ "$val" = "$n" ] && named=1 ;;
+      tools) intools=1; tool_items "$val" || bad=1 ;;
+      memory) case "$val" in ''|none) ;; *) bad=1 ;; esac ;;
+      mcpServers) bad=1 ;;
+    esac
+  done < "$f"
+  [ "$closed" = 1 ] && [ "$named" = 1 ] && [ "$bad" = 0 ] && [ "$TOOLS" -gt 0 ]
 }
 
 guard_edits() {
@@ -69,7 +165,8 @@ if [ "$tool" = Agent ] || [ "$tool" = Task ]; then
   case "$st" in Explore|explore|Plan|claude-code-guide|cursor-guide) ;;
   *)
     if [ "$gated" = 1 ]; then
-      hit="Agent ${st:-general-purpose}"; gatehit=1
+      # An agent that cannot write files cannot build. Cursor keeps its agents elsewhere: it keeps the denial.
+      if [ "$cursor" = 1 ] || ! agent_read_only "$st"; then hit="Agent ${st:-general-purpose}"; gatehit=1; fi
     elif [ "$active" = 1 ]; then
       jstr prompt; pr="$REPLY"
       [ -n "$pr" ] || { jstr description; pr="$REPLY"; }
@@ -182,25 +279,74 @@ fi
 norm "$proj"; projn="$NORM"; lower "$projn"; projl="$LOWER"
 
 prot=0
+qph=$'\x04'   # the unknown part of a quoted word (from its first $, backtick or glob char); no real path holds this byte
+qsp=$'\x05'   # a space inside a quoted string, so that it stays one word
 # project_code PATH: succeeds when writing PATH is denied (sets prot=1 for protected files).
 project_code() {
-  local p rel pl
-  norm "$1"; p="$NORM"; p="${p%\"}"; p="${p#\"}"; p="${p%\'}"; p="${p#\'}"
+  local p rel pl lost=0
+  norm "$1"; p="${NORM//$qsp/ }"; p="${p%\"}"; p="${p#\"}"; p="${p%\'}"; p="${p#\'}"
+  case "$p" in *'$'*|*"$qph"*)   # unknown folder: a protected file is protected wherever it is
+    lower "$p"
+    case "$LOWER" in
+      *.superlite/human-replies.jsonl|*.superlite/orchestrator.json|*.superlite/feature.json) prot=1; return 0 ;;
+      *"$qph"*/human-replies.jsonl|*"$qph"*/orchestrator.json|*"$qph"*/feature.json) [ "$active" = 1 ] && { prot=1; return 0; } ;;   # "$P/.superlite"/orchestrator.json
+    esac ;;
+  esac
+  case "$p" in *"$qph"*) p="${p%%"$qph"*}"; [ -n "$p" ] && p="${p}x" ;; esac   # judge the text before the unknown part
   case "$p" in ''|*'$'*|'~'*|/dev/*|-*) return 1 ;; esac
   case "$p" in
     /*) lower "$p"; pl="$LOWER"
         case "$pl" in "$projl"/*) rel="${p:$((${#projn}+1))}" ;; *) return 1 ;; esac ;;
-    *) rel="${p#./}" ;;
+    *) rel="${p#./}"; [ "$cdbase" = "$qph" ] && lost=1 ;;   # lost: a cd the hook could not follow
   esac
   case "$rel" in ''|.|..|../*) return 1 ;; esac
   lower "$rel"; pl="$LOWER"
   case "$pl" in .superlite/human-replies.jsonl|.superlite/orchestrator.json|.superlite/feature.json) prot=1; return 0 ;; esac
+  case "$pl" in ./*|*/./*|*/.|*/..|*/../*)   # a . or .. component: the real file is not worked out, so fail closed
+    case "$pl" in *.superlite*/human-replies.jsonl|*.superlite*/orchestrator.json|*.superlite*/feature.json) prot=1; return 0 ;; esac
+    [ "$active" = 1 ] && return 0
+    return 1 ;;
+  esac
   [ "$active" = 1 ] || return 1
   case "$rel" in
     .superlite/sandboxes/*) return 0 ;;
     docs/plans/*|docs/*.md|SPEC*.md|*/SPEC*.md|.superlite/*) return 1 ;;
+    .agents/*|spikes/*.md) [ "$lost" = 1 ] || return 1 ;;
+    */*) return 0 ;;
+    *.md) [ "$lost" = 1 ] || return 1 ;;   # a Markdown file at the project root (README.md); nested ones can be product code (SKILL.md)
   esac
   return 0
+}
+
+# set_cdbase DIR: the folder a `cd DIR` leads to, into cdbase ("" = the project root). A DIR it cannot read (and
+# every cd after it) sets cdbase to qph: the folder is unknown, so a relative target gets no new allow rule.
+cdbase=""
+re_cd='(^|[^[:alnum:]_.-])cd[[:space:]]'
+set_cdbase() {
+  local d
+  [ "$cdbase" = "$qph" ] && return 0
+  norm "$1"; d="${NORM//$qsp/ }"
+  case "$d" in ''|*'$'*|*'~'*|*'`'*|*'('*|*'"'*|*"'"*|*"$qph"*|*..*|-*|*/./*|*/.|./.|././*) cdbase="$qph"; return 0 ;; esac
+  case "$d" in
+    .) ;;
+    /*) cdbase="$d" ;;
+    *) cdbase="${cdbase:-$projn}/${d#./}" ;;
+  esac
+  [ -z "$cdbase" ] || [ -d "$cdbase" ] || cdbase="$qph"   # a failed cd leaves the shell where it was
+}
+
+# project_code_at PATH: project_code, with a relative PATH taken from cdbase when a cd set one.
+project_code_at() {
+  local t="$1"
+  if [ -n "$cdbase" ] && [ "$cdbase" != "$qph" ]; then
+    norm "$t"; t="$NORM"; t="${t%\"}"; t="${t#\"}"; t="${t%\'}"; t="${t#\'}"
+    case "$t" in
+      ''|*"$qph"*|*'$'*|'~'*|/*|-*) ;;
+      *..*) lower "$cdbase/"; case "$LOWER" in "$projl"/*) return 0 ;; esac ;;   # a .. below the project cannot be read
+      *) t="$cdbase/${t#./}" ;;
+    esac
+  fi
+  project_code "$t"
 }
 
 if [ -z "$hit" ] && [ "$tool" != Bash ] && [ "$tool" != PowerShell ]; then
@@ -241,12 +387,26 @@ elif [ -z "$hit" ]; then
     # Drop heredoc bodies and quoted strings, then split into simple commands.
     sq="'"; dq='"'
     re_here="<<-?[[:space:]]*[$sq$dq]?([A-Za-z_][A-Za-z_0-9]*)"
-    # Quoted strings become Q in one pass: the line is split at each " and each ' (split_at), and a small state
+    qrisk='[$`*?[]'; qops=$'[ \t\n><|;&()]'
+    # qflush: a quoted string ends and its text is in qtxt. A string with a $, a backtick or a glob char names an
+    # unknown path: its text up to that char, then qph. Any other string keeps its text without the quotes (so
+    # `sr""c/a.py` is src/a.py again), a space or operator char mapped to qsp so that it stays one word.
+    qflush() {
+      local b
+      if [[ $qtxt == *$qrisk* ]]; then
+        b="${qtxt%%$qrisk*}$qph"
+        shopt -s nocasematch   # (a builtin: no fork per string)
+        case "$qtxt" in *.superlite/orchestrator.json|*.superlite/feature.json|*.superlite/human-replies.jsonl) b="$qtxt" ;; esac   # project_code looks for these
+        shopt -u nocasematch
+        acc="$acc${b//$qops/$qsp}"
+      else acc="$acc${qtxt//$qops/$qsp}"; fi
+    }
+    # Quoted strings are cut out in one pass: the line is split at each " and each ' (split_at), and a small state
     # machine (qmode 0 outside, 1 in "...", 2 in '...') walks the pieces. The state carries over a newline, so a
     # string that spans lines is one string. (A regex per string is quadratic on long lines; so is appending to
     # one string or indexing an array, in bash 3.2: each line is printed from inside $( ) instead.)
     stripped=$(
-      skip=0; tag=""; qmode=0; qprev=""; acc=""
+      skip=0; tag=""; qmode=0; qprev=""; acc=""; qtxt=""
       while IFS= read -r line; do
         if [ "$skip" = 1 ]; then
           t="${line#"${line%%[![:space:]]*}"}"; t="${t%"${t##*[![:space:]]}"}"
@@ -262,28 +422,37 @@ elif [ -z "$hit" ]; then
             di=$((di + 1))
             if [ "$di" -gt 1 ]; then   # a " came before this piece
               case "$qmode" in   # (the leading parentheses keep bash 3.2 parsing a case inside $( ) )
-                (0) qmode=1; qprev="" ;;
+                (0) qmode=1; qprev=""; qtxt="" ;;
                 (1) bs="${qprev##*[!\\]}"; qprev=""   # an odd run of backslashes escapes the quote
-                    [ $(( ${#bs} % 2 )) = 1 ] || { acc="${acc}Q"; qmode=0; } ;;
+                    if [ $(( ${#bs} % 2 )) = 1 ]; then qtxt="$qtxt$dq"; else qflush; qmode=0; fi ;;
+                (2) qtxt="$qtxt$dq" ;;
               esac
             fi
             [ "$di" = "$nd" ] && part="${part%x}"   # the sentinel x of split_at
-            if [ "$qmode" = 1 ]; then qprev="$part"; continue; fi   # inside "..." an ' is just text
+            if [ "$qmode" = 1 ]; then   # inside "..." an ' is just text
+              qprev="$part"
+              if [ "${#part}" -gt 200 ]; then qtxt="$qtxt "; else qtxt="$qtxt$part"; fi   # (a long string is no plain word)
+              continue
+            fi
             if [[ $part != *$sq* ]]; then
               [ "$qmode" = 0 ] && acc="$acc$part"
+              [ "$qmode" = 2 ] && qtxt="$qtxt$part"
               continue
             fi
             split_at "$sq" "$part"; ns=${#SPLIT[@]}; si=0
             for tok in "${SPLIT[@]}"; do
               si=$((si + 1))
               if [ "$si" -gt 1 ]; then
-                case "$qmode" in (0) qmode=2 ;; (2) acc="${acc}Q"; qmode=0 ;; esac
+                case "$qmode" in (0) qmode=2; qtxt="" ;; (2) qflush; qmode=0 ;; esac
               fi
               [ "$si" = "$ns" ] && tok="${tok%x}"
               [ "$qmode" = 0 ] && acc="$acc$tok"
+              if [ "$qmode" = 2 ]; then
+                if [ "${#tok}" -gt 200 ]; then qtxt="$qtxt "; else qtxt="$qtxt$tok"; fi
+              fi
             done
           done
-          [ "$qmode" = 0 ] || continue   # a quote is still open: the line goes on with the next one
+          [ "$qmode" = 0 ] || { qtxt="$qtxt$nl"; continue; }   # a quote is still open: the line goes on with the next one
         fi
         line="$acc"; acc=""
         pair_to_nl line '&'; pair_to_nl line '|'
@@ -292,28 +461,40 @@ elif [ -z "$hit" ]; then
       done <<< "$cmd"
     )
     re_redir='[0-9]?>>?[[:space:]]*([^[:space:]<>&|;()]+)(.*)$'
+    cdbase=""   # set by `cd DIR` segments: the base of the relative targets after them
     while IFS= read -r seg; do
       case "$seg" in *'$CLI'*|*'${CLI}'*|*swarm/scripts*) continue ;; esac
       rest="$seg"
       while [[ $rest =~ $re_redir ]]; do
         t="${BASH_REMATCH[1]}"; rest="${BASH_REMATCH[2]}"
-        project_code "$t" && { hit="> $t"; break; }
+        project_code_at "$t" && { hit="> $t"; break; }
       done
       [ -n "$hit" ] && break
       set -f; set -- $seg; set +f
       while [ $# -gt 0 ]; do case "$1" in *=*|sudo|command|env|time) shift ;; *) break ;; esac; done
       [ $# -gt 0 ] || continue
       c="${1##*/}"; c="${c%.exe}"; shift
+      [ "$c" != cd ] && [[ $seg =~ $re_cd ]] && cdbase="$qph"   # (cd DIR in a subshell or a block: the base is unknown)
       args=(); for a in "$@"; do case "$a" in -*|*'>'*|*'<'*) ;; *) args+=("$a") ;; esac; done   # redirects are not operands
       n=${#args[@]}; last=""; [ "$n" -gt 0 ] && last="${args[n-1]}"
       case "$c" in
         patch) [ "$enforce" = 1 ] && hit="patch" ;;
         git) [ "$1" = apply ] && [ "$enforce" = 1 ] && hit="git apply" ;;
-        sed) case " $* " in *' -i'*|*' --in-place'*) [ -n "$last" ] && project_code "$last" && hit="sed -i $last" ;; esac ;;
-        perl) case " $* " in *' -pi'*|*' -i'*|*' -ni'*) [ -n "$last" ] && project_code "$last" && hit="perl -i $last" ;; esac ;;
-        tee) for a in "${args[@]}"; do project_code "$a" && { hit="tee $a"; break; }; done ;;
-        rm|mv) for a in "${args[@]}"; do project_code "$a" && { hit="$c $a"; break; }; done ;;
-        cp) [ "$n" -gt 1 ] && project_code "$last" && hit="cp $last" ;;
+        sed) case " $* " in *' -i'*|*' --in-place'*) [ -n "$last" ] && project_code_at "$last" && hit="sed -i $last" ;; esac ;;
+        perl) case " $* " in *' -pi'*|*' -i'*|*' -ni'*) [ -n "$last" ] && project_code_at "$last" && hit="perl -i $last" ;; esac ;;
+        tee) for a in "${args[@]}"; do project_code_at "$a" && { hit="tee $a"; break; }; done ;;
+        rm|mv) for a in "${args[@]}"; do project_code_at "$a" && { hit="$c $a"; break; }; done ;;
+        cp) case " $* " in
+              *' -t'*|*' --target-directory'*|*' -'[!-]*t' '*)   # cp -t DIR files: the last word is not the target, so every word counts
+                for a in "$@"; do
+                  case "$a" in *'>'*|*'<'*) continue ;; esac
+                  a="${a#--target-directory=}"; case "$a" in -t?*) a="${a#-t}" ;; esac
+                  project_code_at "$a" && { hit="cp $a"; break; }
+                done ;;
+              *) [ "$n" -gt 1 ] && project_code_at "$last" && hit="cp $last" ;;
+            esac ;;
+        cd) if [ $# = 1 ] && [[ $lc != *cdpath* ]]; then set_cdbase "$1"; else cdbase="$qph"; fi ;;
+        pushd|popd) cdbase="$qph" ;;
       esac
       [ -n "$hit" ] && break
     done <<< "$stripped"
@@ -322,7 +503,7 @@ fi
 
 [ -n "$hit" ] || return 0
 
-hit="${hit:0:120}"; hit="${hit//[\"\\$'\n\r\t']/}"
+hit="${hit:0:120}"; hit="${hit//$qsp/ }"; hit="${hit//$qph/\$}"; hit="${hit//[\"\\$'\n\r\t']/}"
 printf '{"kind":"rule-block","agent":"coordinator","tool":"%s","target":"%s"}\n' "$tool" "$hit" \
   >> "$sd/incidents.jsonl" 2>/dev/null
 
@@ -330,9 +511,9 @@ nl=$'\n'
 if [ "$prot" = 1 ]; then
   msg='Blocked: .superlite/orchestrator.json, .superlite/feature.json and .superlite/human-replies.jsonl are never written directly. Change the orchestrator state only with `superlite-cli orchestrator ...` (for example `superlite-cli orchestrator approve --review <path>`) and the prototype state only with `superlite-cli proto ...`; human-replies.jsonl is written only by the hook that records the human'"'"'s replies.'
 elif [ "$human" = 1 ]; then
-  msg='Human orchestrator: no build is orchestrated until the human approves the plan. Write the review plan docs/plans/<date>-<topic>.review.md (see skills/drafting/review-plan.md), show its path with a five-line summary, ask the human to reply approve, end your turn, then run superlite-cli orchestrator approve --review <path>. Small inline work without a plan needs only the human'"'"'s yes in chat.'
+  msg='Human orchestrator: no build is orchestrated until the human approves the plan. Write the review plan docs/plans/<date>-<topic>.review.md (see skills/drafting/review-plan.md), show its path with a five-line summary, ask the human to reply approve, end your turn, then run superlite-cli orchestrator approve --review <path>. Small inline work without a plan needs only the human'"'"'s yes in chat. Agents with no Edit, Write or shell tools (read-only reviewers and scanners) may run.'
 elif [ "$tryout" = 1 ] && [ "$gatehit" = 1 ]; then
-  msg='Feature flow: the integration build waits for the human'"'"'s try-out of the prototype. Show how to try it (`superlite-cli proto tryout`), ask the human to reply "it works" or list changes, end your turn, then run `superlite-cli proto tryout --approve`. Changes go back to the prototype: `superlite-cli proto start --topic <topic>` reopens it for a fix round.'
+  msg='Feature flow: the integration build waits for the human'"'"'s try-out of the prototype. Show how to try it (`superlite-cli proto tryout`), ask the human to reply "it works" or list changes, end your turn, then run `superlite-cli proto tryout --approve`. Changes go back to the prototype: `superlite-cli proto start --topic <topic>` reopens it for a fix round. Agents with no Edit, Write or shell tools (read-only reviewers and scanners) may run.'
 elif [ "$batchhit" = 1 ]; then
   msg="Blocked: implementer tasks must match one batch from the last superlite-cli dispatch. Printed batches: ${BATCH_PRINTED}. Launch exactly one of those batches, not ${hit#batch }."
 elif [ "${qhit:-0}" = 1 ]; then
@@ -343,7 +524,7 @@ else
   msg='Blocked: the superlite coordinator must not write project code. Dispatch it instead:'"$nl"
   msg+='- Fix: give a fixer a finding id F-<Tn>-<n> and the note path .superlite/fixes/<id>.md, tiered per skills/swarm/fixing.md: known cause, one module -> fixer-sonnet; cross-module -> fixer-sonnet-high; unknown cause -> fixer-opus.'"$nl"
   msg+='- Wave 0 skeleton/stub/config files belong to an implementer-haiku task.'"$nl"
-  msg+='- New code belongs to an implementer task. You may write only docs/plans/**, SPEC*.md, docs/**/*.md and .superlite/**.'
+  msg+='- New code belongs to an implementer task. You may write only docs/plans/**, SPEC*.md, docs/**/*.md, .agents/**, spikes/**/*.md, a root *.md file and .superlite/**.'
 fi
 printf '%s\n' "$msg" >&2
 if [ "$cursor" = 1 ]; then
