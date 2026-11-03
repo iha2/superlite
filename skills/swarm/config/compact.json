@@ -1,0 +1,13 @@
+{
+  "claude-code": {"command": "/compact", "confidence": "docs"},
+  "cursor": {"command": "/summarize", "confidence": "forum"},
+  "codex": {"command": "/compact", "confidence": "docs"},
+  "gemini": {"command": "/compress", "confidence": "docs"},
+  "opencode": {"command": "/compact", "confidence": "docs"},
+  "pi": {"command": "/compact", "confidence": "docs"},
+  "kimi": {"command": "/compact", "confidence": "docs"},
+  "hermes": {"command": "/compress", "confidence": "docs"},
+  "devin": {"command": "", "confidence": "none"},
+  "antigravity": {"command": "", "confidence": "none"},
+  "muse": {"command": "", "confidence": "none"}
+}

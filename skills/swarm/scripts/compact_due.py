@@ -9,15 +9,58 @@ else the earliest launch t from metrics.jsonl (else 0). Stdlib only.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import project_config  # noqa: E402
 import state  # noqa: E402
 
-__all__ = ["is_due", "nudge_line"]
+__all__ = ["is_due", "nudge_line", "limit", "token_nudge"]
 
 _DEFAULT_WINDOW_S = 1800.0  # 30 min
+_DEFAULT_TOKENS = 150000
+
+
+def _positive(value, source: str) -> int:
+    if isinstance(value, bool):
+        raise ValueError(f"compact_tokens from {source} must be a positive integer")
+    try:
+        n = int(value) if isinstance(value, (int, str)) else None
+    except ValueError:
+        n = None
+    if n is None or n <= 0:
+        raise ValueError(f"compact_tokens from {source} must be a positive integer: {value!r}")
+    return n
+
+
+def limit(root: str) -> int:
+    """Token limit: env SUPERLITE_COMPACT_TOKENS, else superlite.json compact_tokens, else 150000."""
+    env = os.environ.get("SUPERLITE_COMPACT_TOKENS")
+    if env is not None and env.strip():
+        return _positive(env.strip(), "SUPERLITE_COMPACT_TOKENS")
+    data = project_config.load(root)
+    if "compact_tokens" in data:
+        return _positive(data["compact_tokens"], "superlite.json")
+    return _DEFAULT_TOKENS
+
+
+def _k(n: int) -> str:
+    return f"{round(n / 1000)}k"
+
+
+def token_nudge(tokens: int, limit: int, command: str, request: int = 1) -> str:
+    """Nudge text for a token-count trigger; request > 1 means a compact is still pending."""
+    if request > 1:
+        return (
+            f"Compact still pending (request {request}, {_k(tokens)} tokens, limit {_k(limit)}): "
+            f"run {command} now before anything else."
+        )
+    return (
+        f"Context is {_k(tokens)} tokens (limit {_k(limit)}): run {command} now, "
+        f"then re-read {state.DIR_NAME}/progress.md and continue."
+    )
 
 
 def _launch_t(sl: Path) -> float:  # O(L)

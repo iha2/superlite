@@ -1,10 +1,14 @@
 # Sourced by hooks/prompt: when a superlite session is due for compact, put the host-neutral nudge line in
 # NUDGE. Empty when SUPERLITE_NO_AUTOCOMPACT=1, when there is no run folder, or when not due.
-# Needs $py (set by hooks/prompt). One Python call (compact_due).
+# Needs $py, $is_cursor (set by hooks/prompt). One Python call (compact_check: live token count from the
+# hook's transcript_path, else the old time window).
 
 compact_nudge() {
   NUDGE=""
   [ "${SUPERLITE_NO_AUTOCOMPACT:-}" = "1" ] && return 0
   [ -d "$sd" ] || return 0
-  NUDGE="$("$py" "$root/skills/swarm/scripts/compact_due.py" "$sd" 2>/dev/null)" || NUDGE=""
+  local tp host="claude-code"
+  jstr transcript_path; tp="${REPLY//\\\\/\\}"
+  [ "$is_cursor" = 1 ] && host="cursor"
+  NUDGE="$("$py" "$root/skills/swarm/scripts/compact_check.py" "$sd" --transcript "$tp" --host "$host" 2>/dev/null)" || NUDGE=""
 }
