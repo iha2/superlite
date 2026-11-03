@@ -123,14 +123,14 @@ def reviewer(human):
 @pytest.mark.parametrize("state", ["human", "tryout"])
 def test_human_allows_read_only_project_agent(tmp_path, state):
     proj = make(tmp_path, state)
-    agent_file(proj / ".claude" / "agents", "reviewer", ["tools: Read, Grep, Glob, Bash"])
+    agent_file(proj / ".claude" / "agents", "reviewer", ["tools: Read, Grep, Glob"])
     for tool in ("Agent", "Task"):
         r = spawn(proj, "reviewer", tool)
         assert r.returncode == 0 and r.stderr == "", (tool, r.stderr)
 
 
 def test_human_allows_read_only_user_agent(human, tmp_path_factory):
-    agent_file(human / "home" / ".claude" / "agents", "scanner", ["tools:", "  - Read", "  - Grep", "  - Bash"])
+    agent_file(human / "home" / ".claude" / "agents", "scanner", ["tools:", "  - Read", "  - Grep", "  - Glob"])
     assert spawn(human, "scanner").returncode == 0
     cfg = tmp_path_factory.mktemp("config")   # CLAUDE_CONFIG_DIR replaces ~/.claude
     agent_file(cfg / "agents", "auditor", ["tools: [Read, Grep]"])
@@ -141,9 +141,8 @@ def test_human_allows_read_only_user_agent(human, tmp_path_factory):
 @pytest.mark.parametrize("tools", [
     ["tools: read, grep, glob"], ['tools: "Read, Grep"'], ["tools: [Read, 'Grep']"], ["tools:", "- Read", "- Grep"],
     ["tools: Read, Grep   # no writes here"], ["tools: Read, Grep", "disallowedTools: Write"],
-    ["tools:", "  - Read", "# a comment", "  - Grep", "model: sonnet"], ["tools: Read, Bash(git log *)"],
+    ["tools:", "  - Read", "# a comment", "  - Grep", "model: sonnet"],
     ["tools: Read Grep Glob"], ["tools: Read, Grep", "memory: none"], ["tools: [Read Grep]", "memory:"],
-    ["tools: Read Bash(git log *) Grep"],
 ])
 def test_human_reads_tools_in_every_yaml_form(human, tools):
     agent_file(human / ".claude" / "agents", "reviewer", tools)
@@ -155,6 +154,8 @@ def test_human_reads_tools_in_every_yaml_form(human, tools):
     ["tools: read, write"], ['tools: "*"'], ["tools: all"], ["tools: Read, mcp__x__y"], ["tools: Read, Agent"],
     ["tools: Read, Task"], ["tools: Read Write"], ["tools: Read Grep Write"], ["tools: [Read Edit]"],
     ["tools: Read\tWrite"], ["tools: Bash(git log *) Write"],
+    ["tools: Read, Bash"], ["tools: Read, Grep, Glob, Bash"], ["tools: Read, Bash(git log *)"], ["tools: Read Bash(git log *) Grep"],
+    ["tools: Read, PowerShell"], ["tools: Read, pwsh"], ["tools: Read, Shell"], ["tools: Read, bash"], ["tools:", "  - Read", "  - Bash"],
     ["tools: Read, Grep", "memory: project"], ["tools: Read, Grep", "memory: user"],
     ["tools: Read, Grep", "memory: 'local'"], ["memory: project", "tools: Read, Grep"],
     ["tools: [Read,", "Write]"], ["tools: [Read, Grep,", "  Grep]"],
@@ -167,7 +168,7 @@ def test_human_denies_agents_that_can_write(human, tools):
     agent_file(human / ".claude" / "agents", "reviewer", tools)
     r = spawn(human, "reviewer")
     assert r.returncode == 2, tools
-    assert NEXT in r.stderr and "no Edit or Write tools" in r.stderr
+    assert NEXT in r.stderr and "no Edit, Write or shell tools" in r.stderr
 
 
 def test_human_denies_unusable_agent_names(reviewer):

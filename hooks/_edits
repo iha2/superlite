@@ -33,7 +33,8 @@ norm() {
 }
 
 # tool_items VALUE: counts the tool names in a tools: value or list line into TOOLS. Fails for a tool that can
-# write files or start an agent that can (subagent calls skip this hook), and for a value it cannot read (a block
+# write files, run a shell (Bash and its kin can write anywhere, and subagent calls skip this hook, so a shell
+# could also run `superlite-cli orchestrator approve`) or start an agent that can, and for a value it cannot read (a block
 # scalar, a [ with no ] on the line). Names split at commas and at whitespace outside parentheses, as in Claude
 # Code: `Read Write` is two tools.
 tool_items() {
@@ -49,7 +50,7 @@ tool_items() {
     case "$v" in '('*) case "$v" in *\)*) v="${v#*)}" ;; *) v="" ;; esac ;; esac
     case "$base" in
       '') ;;
-      edit|write|multiedit|notebookedit|agent|task|all|'*'|mcp__*) bad=1 ;;
+      edit|write|multiedit|notebookedit|agent|task|bash|powershell|pwsh|shell|sh|zsh|cmd|terminal|all|'*'|mcp__*) bad=1 ;;
       *) TOOLS=$((TOOLS+1)) ;;
     esac
   done
@@ -421,9 +422,9 @@ nl=$'\n'
 if [ "$prot" = 1 ]; then
   msg='Blocked: .superlite/orchestrator.json, .superlite/feature.json and .superlite/human-replies.jsonl are never written directly. Change the orchestrator state only with `superlite-cli orchestrator ...` (for example `superlite-cli orchestrator approve --review <path>`) and the prototype state only with `superlite-cli proto ...`; human-replies.jsonl is written only by the hook that records the human'"'"'s replies.'
 elif [ "$human" = 1 ]; then
-  msg='Human orchestrator: no build is orchestrated until the human approves the plan. Write the review plan docs/plans/<date>-<topic>.review.md (see skills/drafting/review-plan.md), show its path with a five-line summary, ask the human to reply approve, end your turn, then run superlite-cli orchestrator approve --review <path>. Small inline work without a plan needs only the human'"'"'s yes in chat. Agents with no Edit or Write tools (read-only reviewers and scanners) may run.'
+  msg='Human orchestrator: no build is orchestrated until the human approves the plan. Write the review plan docs/plans/<date>-<topic>.review.md (see skills/drafting/review-plan.md), show its path with a five-line summary, ask the human to reply approve, end your turn, then run superlite-cli orchestrator approve --review <path>. Small inline work without a plan needs only the human'"'"'s yes in chat. Agents with no Edit, Write or shell tools (read-only reviewers and scanners) may run.'
 elif [ "$tryout" = 1 ] && [ "$gatehit" = 1 ]; then
-  msg='Feature flow: the integration build waits for the human'"'"'s try-out of the prototype. Show how to try it (`superlite-cli proto tryout`), ask the human to reply "it works" or list changes, end your turn, then run `superlite-cli proto tryout --approve`. Changes go back to the prototype: `superlite-cli proto start --topic <topic>` reopens it for a fix round. Agents with no Edit or Write tools (read-only reviewers and scanners) may run.'
+  msg='Feature flow: the integration build waits for the human'"'"'s try-out of the prototype. Show how to try it (`superlite-cli proto tryout`), ask the human to reply "it works" or list changes, end your turn, then run `superlite-cli proto tryout --approve`. Changes go back to the prototype: `superlite-cli proto start --topic <topic>` reopens it for a fix round. Agents with no Edit, Write or shell tools (read-only reviewers and scanners) may run.'
 elif [ "$batchhit" = 1 ]; then
   msg="Blocked: implementer tasks must match one batch from the last superlite-cli dispatch. Printed batches: ${BATCH_PRINTED}. Launch exactly one of those batches, not ${hit#batch }."
 elif [ "${qhit:-0}" = 1 ]; then
