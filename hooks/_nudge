@@ -8,7 +8,7 @@ compact_nudge() {
   [ "${SUPERLITE_NO_AUTOCOMPACT:-}" = "1" ] && return 0
   [ -d "$sd" ] || return 0
   local tp host="claude-code"
-  jstr transcript_path; tp="${REPLY//\\\\/\\}"
+  jstr transcript_path; tp="$REPLY"
   [ "$is_cursor" = 1 ] && host="cursor"
   NUDGE="$("$py" "$root/skills/swarm/scripts/compact_check.py" "$sd" --transcript "$tp" --host "$host" 2>/dev/null)" || NUDGE=""
 }

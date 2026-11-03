@@ -3,8 +3,9 @@
     context_tokens.current_context(path) -> int
     context_tokens.last_compact_boundary(path) -> dict | None
 
-Context size = last non-sidechain assistant message: input + cache_read + cache_creation
-tokens. Unreadable files and corrupt lines never raise. Stdlib only.
+Context size = last non-sidechain assistant message after the latest compact marker (boundary or
+summary line): input + cache_read + cache_creation tokens. 0 when there is no such message (also right
+after a compact, before the next assistant reply). Unreadable files and corrupt lines never raise. Stdlib only.
 """
 from __future__ import annotations
 
@@ -46,9 +47,17 @@ def _num(v) -> int:
     return v if isinstance(v, int) and not isinstance(v, bool) else 0
 
 
+def _is_marker(e: dict) -> bool:
+    return bool(e.get("isCompactSummary")) or (
+        e.get("type") == "system" and e.get("subtype") == "compact_boundary")
+
+
 def current_context(path: str) -> int:
     total = 0
     for _, e in _lines(path):
+        if _is_marker(e):
+            total = 0  # usage before a compact no longer describes the context
+            continue
         if e.get("type") != "assistant" or e.get("isSidechain"):
             continue
         msg = e.get("message")

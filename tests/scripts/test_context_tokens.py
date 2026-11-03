@@ -66,3 +66,10 @@ def test_no_boundary_is_none(tmp_path):
 def test_summary_line_without_boundary_gives_pre_tokens_zero(tmp_path):
     lines = ["{}", json.dumps({"type": "user", "isCompactSummary": True})]
     assert ct.last_compact_boundary(_w(tmp_path, lines)) == {"line": 2, "pre_tokens": 0, "trigger": ""}
+
+
+def test_usage_before_compact_marker_ignored(tmp_path):
+    summary = json.dumps({"type": "user", "isCompactSummary": True})
+    assert ct.current_context(_w(tmp_path, [_asst(1, 1, 160000), _boundary(), summary])) == 0
+    assert ct.current_context(_w(tmp_path, [_asst(1, 1, 160000), summary])) == 0
+    assert ct.current_context(_w(tmp_path, [_asst(1, 1, 160000), _boundary(), summary, _asst(5, 5, 1990)])) == 2000

@@ -82,6 +82,55 @@ def test_confirms_compact(tmp_path):
     assert "compact_done" in (sl / "compact.jsonl").read_text(encoding="utf-8")
 
 
+def test_confirms_compact_after_boundary_and_summary_only_waits(tmp_path):
+    sl = _sl(tmp_path)
+    t = _transcript(tmp_path, 160000)
+    _prompt(tmp_path, t)
+    with open(t, "a", encoding="utf-8") as f:
+        f.write(json.dumps({"type": "system", "subtype": "compact_boundary",
+                            "compactMetadata": {"trigger": "manual", "preTokens": 160000}}) + "\n")
+        f.write(json.dumps({"type": "user", "isCompactSummary": True}) + "\n")
+    assert _prompt(tmp_path, t) == ""  # no stale count, no new request
+    assert "compact_done" not in (sl / "compact.jsonl").read_text(encoding="utf-8")
+    with open(t, "a", encoding="utf-8") as f:
+        f.write(_asst(2000))
+    assert _prompt(tmp_path, t) == ""
+    done = [json.loads(x) for x in (sl / "compact.jsonl").read_text(encoding="utf-8").splitlines()
+            if "compact_done" in x]
+    assert len(done) == 1 and done[0]["after"] == 2000
+
+
+def test_user_only_transcript_stays_silent_not_timer(tmp_path):
+    _sl(tmp_path, stale=True)
+    t = tmp_path / "t.jsonl"
+    t.write_text(json.dumps({"type": "user", "message": {"content": "hi"}}) + "\n", encoding="utf-8")
+    assert _prompt(tmp_path, t) == ""
+
+
+def test_unreadable_transcript_path_falls_back_to_timer(tmp_path):
+    _sl(tmp_path, stale=True)
+    assert "compact" in _ctx(_prompt(tmp_path, tmp_path / "nope.jsonl")).lower()
+
+
+def test_transcript_path_with_escapes_is_decoded(tmp_path):
+    _sl(tmp_path)
+    d = tmp_path / 'we"ird\\é dir'
+    d.mkdir()
+    t = _transcript(d, 160000)
+    assert "160k" in _ctx(_prompt(tmp_path, t))
+
+
+def test_sessions_sharing_superlite_keep_separate_counts(tmp_path):
+    _sl(tmp_path)
+    a = tmp_path / "a.jsonl"
+    b = tmp_path / "b.jsonl"
+    a.write_text(_asst(160000), encoding="utf-8")
+    b.write_text(_asst(160000), encoding="utf-8")
+    _prompt(tmp_path, a)
+    assert "request 2" in _ctx(_prompt(tmp_path, a))
+    assert "request" not in _ctx(_prompt(tmp_path, b))
+
+
 def test_missing_transcript_falls_back_to_timer(tmp_path):
     _sl(tmp_path, stale=True)
     assert "compact" in _ctx(_prompt(tmp_path)).lower()

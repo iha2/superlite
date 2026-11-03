@@ -63,7 +63,7 @@ def test_reconcile_none(tmp_path, ct):
 
 
 def test_reconcile_pending(tmp_path, ct):
-    compact_log.record_nudge(str(tmp_path), 160000, 150000, 1.0, boundary_line=3)
+    compact_log.record_nudge(str(tmp_path), 160000, 150000, 1.0, boundary_line=3, transcript="t.jsonl")
     ct.boundary = {"line": 3, "pre_tokens": 1, "trigger": "auto"}
     assert compact_log.reconcile(str(tmp_path), "t.jsonl", 5.0) == "pending"
     ct.boundary = None
@@ -71,7 +71,7 @@ def test_reconcile_pending(tmp_path, ct):
 
 
 def test_reconcile_done_logs_before_after(tmp_path, ct):
-    compact_log.record_nudge(str(tmp_path), 160000, 150000, 1.0, boundary_line=3)
+    compact_log.record_nudge(str(tmp_path), 160000, 150000, 1.0, boundary_line=3, transcript="t.jsonl")
     ct.boundary = {"line": 7, "pre_tokens": 162000, "trigger": "auto"}
     ct.tokens = 2000
     assert compact_log.reconcile(str(tmp_path), "t.jsonl", 5.0) == "done"
@@ -81,11 +81,12 @@ def test_reconcile_done_logs_before_after(tmp_path, ct):
 
 
 def test_count_resets_after_done(tmp_path, ct):
-    compact_log.record_nudge(str(tmp_path), 160000, 150000, 1.0)
-    compact_log.record_nudge(str(tmp_path), 160000, 150000, 2.0)
+    compact_log.record_nudge(str(tmp_path), 160000, 150000, 1.0, transcript="t")
+    compact_log.record_nudge(str(tmp_path), 160000, 150000, 2.0, transcript="t")
     ct.boundary = {"line": 9, "pre_tokens": 1, "trigger": "manual"}
+    ct.tokens = 2000
     assert compact_log.reconcile(str(tmp_path), "t", 3.0) == "done"
-    assert compact_log.record_nudge(str(tmp_path), 160000, 150000, 4.0) == 1
+    assert compact_log.record_nudge(str(tmp_path), 160000, 150000, 4.0, transcript="t") == 1
 
 
 def test_unwritable_dir_never_raises(tmp_path, ct):
@@ -106,3 +107,34 @@ def test_missing_dir_and_corrupt_state(tmp_path, ct):
     assert compact_log.record_nudge(str(sl), 1, 1, 1.0) == 1
     (sl / "compact_state.json").write_text("{not json\xe9", encoding="utf-8")
     assert compact_log.record_nudge(str(sl), 1, 1, 2.0) == 1
+
+
+def test_state_is_scoped_per_transcript(tmp_path, ct):
+    sl = str(tmp_path)
+    assert compact_log.record_nudge(sl, 160000, 150000, 1.0, transcript="a") == 1
+    assert compact_log.record_nudge(sl, 160000, 150000, 2.0, transcript="a") == 2
+    assert compact_log.record_nudge(sl, 160000, 150000, 3.0, transcript="b") == 1
+    assert compact_log.record_nudge(sl, 160000, 150000, 4.0, transcript="a") == 3
+    assert [e for e in events(tmp_path) if e["ev"] == "compact_missed"][0]["transcript"] == "a"
+    assert len([e for e in events(tmp_path) if e["ev"] == "compact_missed"]) == 1
+
+
+def test_boundary_compared_only_within_same_transcript(tmp_path, ct):
+    sl = str(tmp_path)
+    compact_log.record_nudge(sl, 160000, 150000, 1.0, boundary_line=50, transcript="a")
+    compact_log.record_nudge(sl, 160000, 150000, 1.0, boundary_line=2, transcript="b")
+    ct.boundary = {"line": 10, "pre_tokens": 1, "trigger": "auto"}
+    ct.tokens = 2000
+    assert compact_log.reconcile(sl, "a", 5.0) == "pending"  # line 10 <= a's 50
+    assert compact_log.reconcile(sl, "b", 5.0) == "done"
+    assert compact_log.reconcile(sl, "a", 6.0) == "pending"  # b's done left a's state alone
+
+
+def test_reconcile_waits_for_post_compact_measurement(tmp_path, ct):
+    compact_log.record_nudge(str(tmp_path), 160000, 150000, 1.0, boundary_line=3, transcript="t")
+    ct.boundary = {"line": 7, "pre_tokens": 162000, "trigger": "auto"}
+    ct.tokens = 0
+    assert compact_log.reconcile(str(tmp_path), "t", 5.0) == "pending"
+    assert not [e for e in events(tmp_path) if e["ev"] == "compact_done"]
+    ct.tokens = 2000
+    assert compact_log.reconcile(str(tmp_path), "t", 6.0) == "done"
