@@ -6,7 +6,7 @@ Instructions drift. Scripts and hooks do not. These gates run on every build:
 |---|---|---|
 | **The coordinator cannot write code** | Every change goes to a fix-only or implementer agent, by tier; the block message says which | `pre-tool` hook |
 | **You approve before anything is orchestrated** | In human mode nothing is linted, dispatched or sent to an agent until a real typed reply approves the review plan. Any clear approval counts (yes, go ahead, looks good, or similar) | `pre-tool`, `prompt`, `superlite-cli orchestrator approve --review` |
-| **No unsafe kills** | No `pkill` or `taskkill /IM`; only PIDs the run started | `pre-tool` hook |
+| **No unsafe kills** | No `pkill` or `taskkill /IM`; only PIDs the run started (a `pkill -f` on one project port or path is allowed) | `pre-tool` hook |
 | **Tests never block the coordinator** | A raw `pytest`, `npm test`, `go test` and so on is rewritten into a background `superlite-cli run_tests` | `pre-tool` hook |
 | **No hidden waits on tests** | A test run inside an `until`/`while` loop or with its output sent to `/dev/null` is denied; wait with `superlite-cli run_tests --wait`, which reports a SUSPECT HANG | `pre-tool` hook, hang probe |
 | **A plan must lint before work starts** | Stable tasks dispatch at once; others wait with a reason. Size band, frozen interfaces, and chain rulings that must carry the id lint printed | `lint --stable` |

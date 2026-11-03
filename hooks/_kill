@@ -1,10 +1,96 @@
 # Sourced by hooks/pre-tool: block commands that kill processes by name or pattern (taskkill /IM or /FI, pkill,
 # killall, Stop-Process -Name, Get-Process | Stop-Process, kill -9 -1). Killing by PID is allowed.
 # Exit 2 blocks the command (message on stderr); returning means allow.
+# Two cases pass although the command has a kill word: the word can only be text (`grep pkill notes.md`), or the
+# command is one `pkill -f` that names a single project server or a path in the project.
+
+# kill_text_only CMD TOOL: succeeds when the kill word in CMD (JSON quotes decoded) can only be text. Every command
+# word (the first word of each ; & | newline segment) must be a read-only text tool, and nothing may run a program:
+# no substitution, here-document, or tool option or value that names one. `echo pkill x | bash` is not text.
+kill_text_only() {
+  local cmd="$1" tool="$2" seg segs out IFS dq='"' sq="'" re_q re_arg re_asg re_kw='(pkill|killall|taskkill|stop-process|kill)'
+  # \u can hide a separator; these options name a program for the tool to run.
+  case "$cmd" in *'$('*|*'`'*|*'<('*|*'>('*|*'<<'*|*"\$'"*|*'$"'*|*'\u'*) return 1 ;; esac
+  case "$cmd" in *' --pre'*|*' --pager'*|*' --compress'*|*' --hostname'*) return 1 ;; esac
+  [ "$tool" = Bash ] || case "$cmd" in *'{'*) return 1 ;; esac   # PowerShell runs { } blocks
+  # A kill word after a backslash or as a value (PAGER=pkill man, less +!pkill, LESSOPEN="|pkill %s" less) may be run
+  # by the tool.
+  re_arg="(\\\\|[=!+][\"']?)$re_kw"
+  re_asg="[A-Za-z_][A-Za-z0-9_]*\\+?=($dq[^$dq]*|$sq[^$sq]*|[^[:space:]$dq$sq]*)$re_kw"
+  [[ $cmd =~ $re_arg || $cmd =~ $re_asg ]] && return 1
+  amp_placeholders cmd
+  # Bash: a quoted string becomes one word Q, so "a|b" is no pipe. With a # or a backslash before a quote the plain
+  # split below is used, which also cuts inside quotes (stricter).
+  if [ "$tool" = Bash ]; then
+    case "$cmd" in
+      *'#'*|*'\"'*|*"\\'"*) ;;
+      *)
+        re_q="^([^$dq$sq]*)($dq[^$dq]*$dq|$sq[^$sq]*$sq)(.*)\$"
+        out=""
+        while [[ $cmd =~ $re_q ]]; do out="${out}${BASH_REMATCH[1]}Q"; cmd="${BASH_REMATCH[3]}"; done
+        cmd="$out$cmd" ;;
+    esac
+  fi
+  case "$cmd" in *'('*|*')'*) return 1 ;; esac   # zsh runs *(e:'cmd':) and =(cmd), so a paren outside quotes is not text
+  IFS=$';&|\n'; set -f; segs=( $cmd ); set +f
+  for seg in "${segs[@]}"; do
+    IFS=$' \t'; set -f; set -- $seg; set +f
+    while [ $# -gt 0 ]; do case "$1" in [A-Za-z_]*=*) shift ;; *) break ;; esac; done
+    [ $# -gt 0 ] || continue
+    case "$1" in
+      grep|egrep|fgrep|rg|ag|ack|echo|printf|which|type|whatis|apropos|head|tail|cat|less|more|wc|sort|uniq|cut|tr|nl|column|jq|bat|ls|cd|pgrep|pwd|true) ;;
+      man) case " $* " in *' -'*) return 1 ;; esac ;;   # man -P runs a pager program
+      *) return 1 ;;
+    esac
+  done
+  return 0
+}
+
+# kill_own_pkill CMD RE_KILL: succeeds when CMD starts with one `pkill -f PATTERN` (one optional signal flag) that
+# can match only this project's processes, alone or followed by ; && || or a newline and a rest that RE_KILL does not
+# match. PATTERN is a regex run against every command line, so it must be a program word and a 4 or 5 digit port
+# (vite preview --port 4317; another command line with that program and port matches too) or a path below the
+# project root. Wildcards, alternation and dots-only segments are refused.
+kill_own_pkill() {
+  local sg='-([0-9]{1,2}|(SIG)?(TERM|INT|HUP|KILL|QUIT|USR[12]))' cmd="$1" pat rest n=0
+  local re_sep=$'^([^;&|\n]*)(;|&&|\\|\\||\n)(.*)$'
+  if [[ $cmd =~ $re_sep ]]; then
+    rest="${BASH_REMATCH[3]}"; cmd="${BASH_REMATCH[1]}"
+    [[ $rest =~ $2 ]] && return 1
+  fi
+  shopt -u nocasematch   # from here on only lower case pkill counts
+  local re_head="^[[:space:]]*pkill[[:space:]]+(-f[[:space:]]+($sg[[:space:]]+)?|$sg[[:space:]]+-f[[:space:]]+)"
+  local re_meta='[]\[;&|<>$`(){}*?^~!#+]|[[:cntrl:]]'
+  local re_dots='\.\.|(^|[/[:space:]])\.([/[:space:]]|$)' re_root='^(/[^/]+){3,}$'
+  local re_prog='^[A-Za-z][A-Za-z0-9._-]*[[:space:]]+'
+  local re_p1="$re_prog"'(.*[[:space:]])?--port[ =]([1-9][0-9]{3,4})([[:space:]]|$)'
+  local re_p2="$re_prog"'(.*[[:space:]])?(localhost|127\.0\.0\.1|0\.0\.0\.0):([1-9][0-9]{3,4})$'
+  [[ $cmd =~ $re_meta ]] && return 1
+  [[ $cmd =~ $re_head ]] || return 1
+  pat="${cmd:${#BASH_REMATCH[0]}}"
+  pat="${pat%"${pat##*[![:space:]]}"}"
+  case "$pat" in
+    \"*\"|\'*\') pat="${pat:1:${#pat}-2}" ;;
+    *[[:space:]]*) return 1 ;;   # two bare words
+  esac
+  case "$pat" in ''|*\"*|*\'*) return 1 ;; esac
+  [[ $pat =~ $re_dots ]] && return 1
+  # A program word, then --port N anywhere or host:N as the last word. N is 1024 to 65535.
+  if [[ $pat =~ $re_p1 ]]; then n="${BASH_REMATCH[2]}"
+  elif [[ $pat =~ $re_p2 ]]; then n="${BASH_REMATCH[3]}"; fi
+  [ "$n" -ge 1024 ] && [ "$n" -le 65535 ] && return 0
+  [[ $proj =~ $re_root ]] || return 1
+  case "${pat%/}" in   # these folders hold every session's worktree, so they are not one process
+    "$proj"/.superlite|"$proj"/.superlite/worktrees|"$proj"/.claude|"$proj"/.claude/worktrees) return 1 ;;
+  esac
+  case "$pat" in "$proj"/[!/]*) return 0 ;; esac
+  return 1
+}
 
 guard_kill() {
-  local re_tool='"tool_name"[[:space:]]*:[[:space:]]*"(Bash|PowerShell|Shell)"' cmd
+  local re_tool='"tool_name"[[:space:]]*:[[:space:]]*"(Bash|PowerShell|Shell)"' cmd tool
   [[ $input =~ $re_tool ]] || return 0
+  tool="${BASH_REMATCH[1]}"
 
   # The command string, still JSON-escaped.
   jstr command; cmd="$REPLY"
@@ -30,7 +116,15 @@ guard_kill() {
   fi
   local re_kill="(^|$w)taskkill($w.*)?[[:space:]]//?fi($w|\$)|(^|$w)kill[[:space:]]+(-s[[:space:]]+(kill|9)|-(kill|sigkill|9))[[:space:]]+-1([^0-9]|\$)|(^|$w)taskkill($w.*)?[[:space:]]//?im($w|\$)|(^|$w)(pkill|killall)($w|\$)|(^|$w)stop-process($w.*)?[[:space:]]-name($w|\$)|(^|$w)kill[[:space:]]+-9[[:space:]]+-1([^0-9]|\$)"
   if [ "$gp_pipe" = 1 ] || [[ $cmd =~ $re_kill ]]; then
-    echo "Blocked: this command kills processes by name or pattern, which can stop other sessions' processes. Kill only the PIDs you started (kill <PID>, taskkill /PID <PID>, Stop-Process -Id <PID>)." >&2
+    # The two exceptions read the command with its JSON quotes as plain ones. A long command keeps the old rule.
+    if [ "$gp_pipe" = 0 ] && [ "${#cmd}" -lt "$BIG" ]; then
+      local q="${cmd//\\\"/\"}"
+      if kill_text_only "$q" "$tool" || kill_own_pkill "$q" "$re_kill"; then
+        shopt -u nocasematch
+        return 0
+      fi
+    fi
+    echo "Blocked: this command kills processes by name or pattern, which can stop other sessions' processes. Kill only the PIDs you started (kill <PID>, taskkill /PID <PID>, Stop-Process -Id <PID>). To find the PID, run pgrep -f <pattern>, check it is yours, then kill <PID>." >&2
     exit 2
   fi
   shopt -u nocasematch
