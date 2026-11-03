@@ -281,10 +281,20 @@ def test_other_tools_ignored(proj):
     assert run(proj, "Read", {"file_path": str(proj / "a.py")}).returncode == 0
 
 
+def test_monitor_command_is_checked_like_bash(proj):
+    def monitor(cmd):
+        return run(proj, "Monitor", {"command": cmd, "description": "d", "timeout_ms": 1000})
+    assert monitor("echo x > src/a.py").returncode == 2
+    r = monitor("echo x >> .superlite/human-replies.jsonl")
+    assert r.returncode == 2 and "never written directly" in r.stderr
+    assert monitor("tail -f .superlite/run.log | grep --line-buffered ERROR").returncode == 0
+    assert run(proj, "Monitor", {"ws": {"url": "wss://example.com"}, "description": "d"}).returncode == 0
+
+
 def test_hooks_json_registers_hook():
     data = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))
     (e,) = data["hooks"]["PreToolUse"]
-    assert e["matcher"] == "Edit|Write|NotebookEdit|Bash|PowerShell|Agent"
+    assert e["matcher"] == "Edit|Write|NotebookEdit|Bash|PowerShell|Monitor|Agent"
     assert [h["command"] for h in e["hooks"]] == ['bash "${CLAUDE_PLUGIN_ROOT}/hooks/pre-tool"']
 
 

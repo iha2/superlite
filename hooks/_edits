@@ -22,6 +22,7 @@
 #     exactly one batch from .superlite/dispatch.json (last `superlite-cli dispatch` print). Denial lists the
 #     printed batches. A shared-prime spawn that only asks for READY (task comes later) is not an
 #     assignment. An empty prompt (no task ids) is denied. T0 is a batch when dispatch printed it.
+# Monitor runs its command in the same shell as Bash, so its command is checked as Bash.
 # Bash/PowerShell write detection is best-effort; when unsure, allow. Sessions without a .superlite
 # directory are never touched. Exit 2 blocks (message on stderr; Cursor also gets
 # {"permission":"deny",...} on stdout); returning means allow.
@@ -38,7 +39,7 @@ norm() {
 }
 
 # tool_items VALUE: counts the tool names in a tools: value or list line into TOOLS. Fails for a tool that can
-# write files, run a shell (Bash and its kin can write anywhere, and subagent calls skip this hook, so a shell
+# write files, run a shell (Bash, Monitor and their kin can write anywhere, and subagent calls skip this hook, so a shell
 # could also run `superlite-cli orchestrator approve`) or start an agent that can, and for a value it cannot read (a block
 # scalar, a [ with no ] on the line). Names split at commas and at whitespace outside parentheses, as in Claude
 # Code: `Read Write` is two tools.
@@ -55,7 +56,7 @@ tool_items() {
     case "$v" in '('*) case "$v" in *\)*) v="${v#*)}" ;; *) v="" ;; esac ;; esac
     case "$base" in
       '') ;;
-      edit|write|multiedit|notebookedit|agent|task|bash|powershell|pwsh|shell|sh|zsh|cmd|terminal|all|'*'|mcp__*) bad=1 ;;
+      edit|write|multiedit|notebookedit|agent|task|bash|powershell|pwsh|shell|sh|zsh|cmd|terminal|monitor|all|'*'|mcp__*) bad=1 ;;
       *) TOOLS=$((TOOLS+1)) ;;
     esac
   done
@@ -134,8 +135,8 @@ re_agent='"(agent_id|parent_tool_call_id)"[[:space:]]*:[[:space:]]*"[^"]'
 re_tool='"tool_name"[[:space:]]*:[[:space:]]*"([A-Za-z]+)"'
 [[ $input =~ $re_tool ]] || return 0
 tool="${BASH_REMATCH[1]}"
-case "$tool" in Edit|Write|NotebookEdit|MultiEdit|Delete|Bash|PowerShell|Shell|Agent|Task) ;; *) return 0 ;; esac
-[ "$tool" = Shell ] && tool=Bash
+case "$tool" in Edit|Write|NotebookEdit|MultiEdit|Delete|Bash|PowerShell|Shell|Monitor|Agent|Task) ;; *) return 0 ;; esac
+case "$tool" in Shell|Monitor) tool=Bash ;; esac
 re_cursor='"hook_event_name"[[:space:]]*:[[:space:]]*"preToolUse"'
 cursor=0; [[ $input =~ $re_cursor ]] && cursor=1
 
