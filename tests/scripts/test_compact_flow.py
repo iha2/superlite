@@ -114,7 +114,7 @@ def test_unreadable_transcript_path_falls_back_to_timer(tmp_path):
 
 def test_transcript_path_with_escapes_is_decoded(tmp_path):
     _sl(tmp_path)
-    d = tmp_path / 'we"ird\\é dir'
+    d = tmp_path / ('weird é dir' if os.name == "nt" else 'we"ird\\é dir')
     d.mkdir()
     t = _transcript(d, 160000)
     assert "160k" in _ctx(_prompt(tmp_path, t))

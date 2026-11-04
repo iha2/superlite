@@ -40,13 +40,14 @@ def _readable(path: str) -> bool:
 def run(sl_dir: str, transcript: str, host: str, now: float) -> str:
     if not _readable(transcript):
         return compact_due.nudge_line() if compact_due.is_due(sl_dir, now) else ""
-    compact_log.reconcile(sl_dir, transcript, now)
-    tokens = context_tokens.current_context(transcript)
+    snapshot = context_tokens.snapshot(transcript)
+    compact_log.reconcile(sl_dir, transcript, now, snapshot)
+    tokens = snapshot["tokens"]
     root = os.path.dirname(os.path.abspath(sl_dir))
     limit = compact_due.limit(root)
     if tokens < limit:
         return ""  # readable transcript: the live count (even none yet) is authoritative
-    b = context_tokens.last_compact_boundary(transcript)
+    b = snapshot["boundary"]
     req = compact_log.record_nudge(sl_dir, tokens, limit, now,
                                    boundary_line=int(b["line"]) if b else 0, transcript=transcript)
     return compact_due.token_nudge(tokens, limit, compact_host.command(host), req)

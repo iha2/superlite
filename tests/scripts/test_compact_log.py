@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,9 @@ class FakeCT:
 
     def current_context(self, path):
         return self.tokens
+
+    def snapshot(self, path):
+        return {"boundary": self.boundary, "tokens": self.tokens}
 
 
 @pytest.fixture
@@ -138,3 +142,15 @@ def test_reconcile_waits_for_post_compact_measurement(tmp_path, ct):
     assert not [e for e in events(tmp_path) if e["ev"] == "compact_done"]
     ct.tokens = 2000
     assert compact_log.reconcile(str(tmp_path), "t", 6.0) == "done"
+
+
+def test_concurrent_nudges_preserve_state_and_valid_json(tmp_path, ct):
+    sl = str(tmp_path)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        counts = list(pool.map(
+            lambda i: compact_log.record_nudge(sl, 160000, 150000, float(i), transcript="t"),
+            range(40)))
+    assert max(counts) == 40
+    state = json.loads((tmp_path / "compact_state.json").read_text(encoding="utf-8"))
+    assert state["sessions"]["t"]["count"] == 40
+    assert len([e for e in events(tmp_path) if e["ev"] == "compact_nudge"]) == 40

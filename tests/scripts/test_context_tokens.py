@@ -73,3 +73,13 @@ def test_usage_before_compact_marker_ignored(tmp_path):
     assert ct.current_context(_w(tmp_path, [_asst(1, 1, 160000), _boundary(), summary])) == 0
     assert ct.current_context(_w(tmp_path, [_asst(1, 1, 160000), summary])) == 0
     assert ct.current_context(_w(tmp_path, [_asst(1, 1, 160000), _boundary(), summary, _asst(5, 5, 1990)])) == 2000
+
+
+def test_snapshot_reads_usage_and_boundary_together(tmp_path, monkeypatch):
+    path = _w(tmp_path, [_asst(1, 1, 160000), _boundary(), _asst(5, 5, 1990)])
+    parsed = []
+    parse = ct._parse
+    monkeypatch.setattr(ct, "_parse", lambda raw: (parsed.append(raw), parse(raw))[1])
+    assert ct.snapshot(path) == {
+        "tokens": 2000, "boundary": {"line": 2, "pre_tokens": 162000, "trigger": "auto"}}
+    assert len(parsed) == 3
