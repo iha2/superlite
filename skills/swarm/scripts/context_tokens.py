@@ -35,6 +35,35 @@ def _is_marker(e: dict) -> bool:
         e.get("type") == "system" and e.get("subtype") == "compact_boundary")
 
 
+def _consume_line(raw: str, n: int, total: int, boundary: dict | None) -> tuple[int, dict | None]:
+    e = _parse(raw)
+    if e is None:
+        return total, boundary
+    is_marker = _is_marker(e)
+    if is_marker:
+        total = 0
+    if e.get("type") == "system" and e.get("subtype") == "compact_boundary":
+        meta = e.get("compactMetadata")
+        meta = meta if isinstance(meta, dict) else {}
+        trig = meta.get("trigger")
+        boundary = {"line": n, "pre_tokens": _num(meta.get("preTokens")),
+                    "trigger": trig if isinstance(trig, str) else ""}
+    elif e.get("isCompactSummary"):
+        if boundary and boundary["trigger"] and n - boundary["line"] <= 1:
+            return total, boundary
+        boundary = {"line": n, "pre_tokens": 0, "trigger": ""}
+    if is_marker:
+        return total, boundary
+    if e.get("type") != "assistant" or e.get("isSidechain"):
+        return total, boundary
+    msg = e.get("message")
+    usage = msg.get("usage") if isinstance(msg, dict) else None
+    if isinstance(usage, dict):
+        total = (_num(usage.get("input_tokens")) + _num(usage.get("cache_read_input_tokens"))
+                 + _num(usage.get("cache_creation_input_tokens")))
+    return total, boundary
+
+
 def snapshot(path: str) -> dict:
     """Read usage and the latest compact boundary in one streaming pass."""
     total = 0
@@ -42,31 +71,7 @@ def snapshot(path: str) -> dict:
     try:
         with open(path, encoding="utf-8", errors="replace") as fh:
             for n, raw in enumerate(fh, 1):
-                e = _parse(raw)
-                if e is None:
-                    continue
-                is_marker = _is_marker(e)
-                if is_marker:
-                    total = 0
-                if e.get("type") == "system" and e.get("subtype") == "compact_boundary":
-                    meta = e.get("compactMetadata")
-                    meta = meta if isinstance(meta, dict) else {}
-                    trig = meta.get("trigger")
-                    boundary = {"line": n, "pre_tokens": _num(meta.get("preTokens")),
-                                "trigger": trig if isinstance(trig, str) else ""}
-                elif e.get("isCompactSummary"):
-                    if boundary and boundary["trigger"] and n - boundary["line"] <= 1:
-                        continue
-                    boundary = {"line": n, "pre_tokens": 0, "trigger": ""}
-                if is_marker:
-                    continue
-                if e.get("type") != "assistant" or e.get("isSidechain"):
-                    continue
-                msg = e.get("message")
-                usage = msg.get("usage") if isinstance(msg, dict) else None
-                if isinstance(usage, dict):
-                    total = (_num(usage.get("input_tokens")) + _num(usage.get("cache_read_input_tokens"))
-                             + _num(usage.get("cache_creation_input_tokens")))
+                total, boundary = _consume_line(raw, n, total, boundary)
     except OSError:
         return {"tokens": 0, "boundary": None}
     return {"tokens": total, "boundary": boundary}
