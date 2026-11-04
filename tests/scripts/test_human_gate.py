@@ -73,6 +73,8 @@ def test_human_allows_review_plan_and_state_files(human):
 def test_human_denies_bash_builds(human, cmd):
     r = bash(human, cmd)
     assert r.returncode == 2, cmd
+    r = guard(human, "Monitor", {"command": cmd, "description": "d", "timeout_ms": 1000})
+    assert r.returncode == 2 and NEXT in r.stderr, cmd
     assert NEXT in r.stderr
 
 
@@ -156,6 +158,7 @@ def test_human_reads_tools_in_every_yaml_form(human, tools):
     ["tools: Read\tWrite"], ["tools: Bash(git log *) Write"],
     ["tools: Read, Bash"], ["tools: Read, Grep, Glob, Bash"], ["tools: Read, Bash(git log *)"], ["tools: Read Bash(git log *) Grep"],
     ["tools: Read, PowerShell"], ["tools: Read, pwsh"], ["tools: Read, Shell"], ["tools: Read, bash"], ["tools:", "  - Read", "  - Bash"],
+    ["tools: Read, Grep, Monitor"], ["tools: Read monitor"],
     ["tools: Read, Grep", "memory: project"], ["tools: Read, Grep", "memory: user"],
     ["tools: Read, Grep", "memory: 'local'"], ["memory: project", "tools: Read, Grep"],
     ["tools: [Read,", "Write]"], ["tools: [Read, Grep,", "  Grep]"],
