@@ -14,7 +14,7 @@ Target kind: a slash command / flow plus one CLI tool and one skill. No UI.
 2. It writes a research plan `docs/plans/<date>-<topic>.research.md` (scope, sub-questions, critical questions, source-tier rules, search strategy). Human mode: the user approves it before any research agents run.
 3. Parallel research agents each take one sub-question and write only to a ledger (sources, claims, evidence grade), never to the report.
 4. A contradiction pass compares claims across agents and sources, records each conflict and its root cause (different definition, date, population, method, source quality, error), and resolves it or flags it open.
-5. Output, next to the other plan kinds in `docs/plans/`: `<date>-<topic>.research.md` (the report at the chosen level), `<date>-<topic>.sources.md` (source ledger), `<date>-<topic>.contradictions.md`.
+5. Output, next to the other plan kinds in `docs/plans/`: `<date>-<topic>.research.md` (the research plan), `<date>-<topic>.findings.md` (the report at the chosen level), `<date>-<topic>.sources.md` (source ledger), `<date>-<topic>.contradictions.md`. The report is not named `<date>-<topic>.md`, which is the machine-plan name.
 6. Re-render: `/superlite:research --level vp` re-renders the report from the stored ledger at another level without re-researching.
 7. Download: at the end it lists each downloadable file (name, source, size) and fetches only after the user says yes, into `docs/plans/<date>-<topic>.sources/`. Paywalled or unreachable items stay link-only.
 

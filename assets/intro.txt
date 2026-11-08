@@ -31,6 +31,7 @@
    /superlite:feature <change>  existing code /superlite:ai      hands off
    /superlite:debug <bug>  root cause first   /superlite:approve [plan]  go
    /superlite:small <change>  inline, quick
+   /superlite:research <topic>  sourced report
 
   DURING A BUILD                            AFTER
    /superlite:status   where it stands        /superlite:review [branch]

@@ -81,6 +81,14 @@ def test_flow_debug(repo):
     assert (repo.root / "src" / "fix.py").is_file() and (repo.root / "tests" / "test_regress.py").is_file()
 
 
+def test_flow_research(repo):
+    ensure(repo, "research")
+    repo.write("docs/research/notes.md", "# Notes\n\nfindings\n")
+    scenario.end_flow(repo, "research")
+    repo.assert_closed_clean("research")
+    assert (repo.root / "docs" / "research" / "notes.md").is_file()
+
+
 def test_flow_review(repo):
     repo.git("checkout", "-q", "-b", "feature-x")
     repo.write("x.txt", "x\n")

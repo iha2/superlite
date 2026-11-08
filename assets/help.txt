@@ -27,6 +27,10 @@
              /superlite:small rename build to render everywhere
    review    Review and harden an existing branch; reviewers fix findings.
              /superlite:review my-branch
+   research  Investigate a topic with parallel agents. A sourced ledger holds
+             the claims; the report is written at your level (Director, VP,
+             Researcher or Simple). /superlite:research state of the art in
+             vector search
 
  ------------------------------------------------------------------------------
  WHO DECIDES
@@ -90,6 +94,8 @@
    /superlite:tail [dir]            The same run as a terminal feed, for
                                     where the agent map mod is not installed.
    /superlite:review [branch]       Review and harden an existing branch.
+   /superlite:research <topic>      Research mode: sourced ledger, then a
+                                    report at the level you pick.
    /superlite:report [plan] [full]  Build reports: summary, full, history.
    /superlite:finish                Verify, then offer merge or PR options.
    /superlite:setup                 First-run check: toolchain, test command,

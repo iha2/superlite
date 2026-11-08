@@ -6,7 +6,7 @@ The README covers what superlite is, the results, and how to install and use it.
 |---|---|
 | [How a run works](how-a-run-works.md) | The flow from request to a finished, measured build |
 | [Sessions](sessions.md) | Host worktree + session branches, switch rules (stash/park/REDIRECT), parallel worktrees, session HUD (mermaid) |
-| [Skills and agents](skills-and-agents.md) | The skills, and the seven agents with their model and effort |
+| [Skills and agents](skills-and-agents.md) | The skills, and the eight agents with their model and effort |
 | [Hooks](hooks.md) | What each hook blocks, rewrites or records, and when it is active |
 | [Tools](tools.md) | Every `superlite-cli` tool, one honest line each |
 | [Config](config.md) | `models.json`, `predictor.json`, `routing.json`, `gitignore.json`, `testprobe.json` |
@@ -15,6 +15,7 @@ The README covers what superlite is, the results, and how to install and use it.
 | [Example review plan](example-review-plan.md) | What a human orchestrator is shown before approving a build |
 | [MVP flow](mvp-flow.md) | Design of MVP mode: feature plan, clickable prototype, then the normal build |
 | [Feature flow](feature-flow.md) | Feature mode on existing code: research, a validated plan, a prototype you try in its own worktree, then the integration build; and how superlite suggests a flow |
+| [Research flow](research-flow.md) | Research mode: the level-free ledger, parallel researchers, and the report at four levels with a parity check |
 | [Benchmark report](benchmark-report.md) | The full comparison table and observations |
 | [Current architecture](specs/2026-10-19-superlite-architecture-current.md) | The whole system on one page, with the model for each role and what is still being built |
 | [superlite vs superpowers](specs/2026-10-19-superlite-vs-superpowers.md) | Detailed comparison with diagrams and the benchmark numbers |

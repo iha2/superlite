@@ -1,0 +1,89 @@
+{
+  "topic": "battery storage cost trends",
+  "tiers": [
+    "A",
+    "B",
+    "C"
+  ],
+  "sources": [
+    {
+      "id": "S1",
+      "url": "https://example.org/papers/storage-cost-2026",
+      "date": "2026-09-15",
+      "grade": "A",
+      "kind": "paper"
+    },
+    {
+      "id": "S2",
+      "url": "https://example.org/reports/grid-outlook",
+      "date": "2024-03-02",
+      "grade": "B",
+      "kind": "report",
+      "file_url": "https://example.org/reports/grid-outlook.pdf",
+      "size": "2400000"
+    },
+    {
+      "id": "S3",
+      "url": "https://example.org/blog/home-battery-prices",
+      "date": "2023-06-20",
+      "grade": "C",
+      "kind": "blog"
+    }
+  ],
+  "claims": [
+    {
+      "id": "C1",
+      "text": "Utility-scale lithium-ion storage cost fell to 120 USD per kWh in 2025.",
+      "sources": [
+        "S1"
+      ]
+    },
+    {
+      "id": "C2",
+      "text": "Utility-scale storage cost was about 150 USD per kWh in 2025.",
+      "sources": [
+        "S2"
+      ]
+    },
+    {
+      "id": "C3",
+      "text": "Global installed storage capacity reached 180 GWh in 2025.",
+      "sources": [
+        "S1",
+        "S2"
+      ]
+    },
+    {
+      "id": "C4",
+      "text": "Home batteries cost around 900 USD per kWh installed.",
+      "sources": [
+        "S3"
+      ]
+    },
+    {
+      "id": "C5",
+      "text": "Cycle life of current cells exceeds 6000 cycles.",
+      "sources": [
+        "S1"
+      ]
+    }
+  ],
+  "contradictions": [
+    {
+      "claims": [
+        "C1",
+        "C2"
+      ],
+      "cause": "S1 measures 2025 contract prices, S2 uses 2023 survey data adjusted to 2025.",
+      "status": "resolved"
+    },
+    {
+      "claims": [
+        "C3",
+        "C4"
+      ],
+      "cause": "Different scope: C3 counts all segments, C4 only residential installs; not yet reconciled.",
+      "status": "open"
+    }
+  ]
+}

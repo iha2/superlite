@@ -4,11 +4,12 @@
     suggest_flow.py --text "<request>" [--root .] [--state "empty folder"|"existing code"|"run in progress"] [--json]
 
 Prints one line: `suggest: <flow> - <reason> | also fits: <flow>, <flow>`. Flows: regular, mvp, feature, debug, small,
-review, and resume / status for a run in progress. The project state is computed like hooks/session-start: run in
+review, research, and resume / status for a run in progress. The project state is computed like hooks/session-start: run in
 progress when `.superlite/orchestrator.json` and `docs/plans/` exist, existing code when there is a `.git` or any entry,
 else empty folder. Signals, in order: 1. project state (empty folder: mvp or regular; run in progress: resume or status
 first), 2. words (bug words: debug; change words: feature; new-app words: mvp or regular; rename/typo/bump: small;
-review words: review), 3. size (one file or one function named: small; screens, data and services together: feature on
+review words: review; research words: research when no change word, build word or
+bug word competes), 3. size (one file or one function named: small; screens, data and services together: feature on
 existing code, regular when new). The model only confirms or overrides the suggestion with a one-line reason.
 Stdlib only, no language assumed.
 """
@@ -22,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import session_hud  # noqa: E402
 import state  # noqa: E402
 
-FLOWS = ("regular", "mvp", "feature", "debug", "small", "review", "resume", "status")
+FLOWS = ("regular", "mvp", "feature", "debug", "small", "review", "research", "resume", "status")
 EMPTY, EXISTING, RUNNING = "empty folder", "existing code", "run in progress"
 
 # whole-word phrases per flow; the first hit names the reason
@@ -31,6 +32,8 @@ WORDS = {
               "exception", "traceback", "stack trace", "regression", "doesn't work", "does not work", "not working",
               "wrong output", "hangs", "flaky"),
     "review": ("review", "audit", "harden", "code review", "check my branch", "look over"),
+    "research": ("research", "investigate", "survey", "literature", "compare", "sources", "state of the art",
+                 "findings", "evidence"),
     "small": ("rename", "typo", "typos", "bump", "one-line", "one line", "tweak", "reword", "fix the wording"),
     "mvp": ("mvp", "prototype", "proof of concept", "poc", "smallest version", "quick version", "first version",
             "minimal version"),
@@ -113,7 +116,11 @@ def suggest(text: str, state: str) -> dict:  # O(w*k)
         why = f"the request says {_q(h['resume'])}" if h["resume"] else "finish or resume the open run before starting another"
         return pick("resume", why, "status", other)
 
+    inquiry = bool(h["research"]) and not (h["feature"] or h["new"] or h["mvp"] or h["small"])  # asks, builds nothing
+
     if state == EMPTY:  # nothing to debug, review or change yet
+        if inquiry:
+            return pick("research", f"the request asks to investigate ({_q(h['research'])})", "mvp", "regular")
         if h["mvp"]:
             return pick("mvp", f"the request says {_q(h['mvp'])}", "regular")
         if h["small"] or (one_spot and not wide and not h["new"]):
@@ -131,6 +138,8 @@ def suggest(text: str, state: str) -> dict:  # O(w*k)
         return pick("debug", f"the request reports a fault ({_q(h['debug'])})", "small" if one_spot else "feature", "regular")
     if h["review"] and not h["feature"]:
         return pick("review", f"the request asks to {_q(h['review'])} what exists", "debug", "feature")
+    if inquiry:
+        return pick("research", f"the request asks to investigate ({_q(h['research'])})", "feature", "review")
     if h["mvp"] or (h["new"] and any(w in t.lower() for w in ("new app", "from scratch", "beside", "separate", "new project"))):
         return pick("mvp" if h["mvp"] else "regular", "a new app beside the existing code"
                     + (f" ({_q(h['mvp'])})" if h["mvp"] else ""), "regular", "mvp", "feature")
