@@ -229,3 +229,110 @@ def test_fetch_size_limit(monkeypatch, tmp_path):
     with pytest.raises(ValueError):
         research.fetch("http://h/a", tmp_path / "a")
     assert not (tmp_path / "a").exists()
+
+
+def _fresh(tmp_path):
+    base = ["--root", str(tmp_path), "--slug", "c"]
+    research.main(["init", *base])
+    research.main(["source", *base, "--id", "S1", "--url", "u", "--date", "d", "--grade", "A"])
+    return base, tmp_path / ".superlite" / "research" / "c" / "ledger.json"
+
+
+def test_concurrent_claims_both_survive(tmp_path):
+    import threading
+    base, led = _fresh(tmp_path)
+    n = 8
+    barrier = threading.Barrier(n)
+    codes = []
+
+    def add(i):
+        barrier.wait()
+        codes.append(research.main(["claim", *base, "--id", f"C{i}", "--text", f"n is {i}",
+                                    "--source", "S1"]))
+
+    threads = [threading.Thread(target=add, args=(i,)) for i in range(n)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert codes == [0] * n
+    assert sorted(c["id"] for c in load(led)["claims"]) == sorted(f"C{i}" for i in range(n))
+
+
+def test_concurrent_claims_in_processes(tmp_path):
+    base, led = _fresh(tmp_path)
+    procs = [subprocess.Popen([sys.executable, str(SCRIPT), "claim", *base, "--id", f"P{i}",
+                               "--text", f"n is {i}", "--source", "S1"]) for i in range(6)]
+    assert [p.wait() for p in procs] == [0] * 6
+    assert len(load(led)["claims"]) == 6
+
+
+def test_parity_same_basename_keeps_every_input(tmp_path, capsys):
+    (tmp_path / "director").mkdir()
+    (tmp_path / "vp").mkdir()
+    good = tmp_path / "vp" / "report.md"
+    good.write_text(research_render.render(load(FIXTURE), "vp"))
+    bad = tmp_path / "director" / "report.md"
+    bad.write_text(research_render.render(load(FIXTURE), "director").replace("C1", "C-"))
+    args = ["lint", "--ledger", str(FIXTURE), "--parity"]
+    assert research.main([*args, str(bad), str(good)]) == 1
+    assert "director" in capsys.readouterr().out
+    assert research.main([*args, str(good), str(bad)]) == 1
+
+
+def _claims(base):
+    for cid in ("C1", "C2"):
+        research.main(["claim", *base, "--id", cid, "--text", f"n is {cid}", "--source", "S1"])
+
+
+def test_contradiction_resolve_updates_in_place(tmp_path):
+    base, led = _fresh(tmp_path)
+    _claims(base)
+    assert research.main(["contradiction", *base, "--claim", "C1", "--claim", "C2",
+                          "--cause", "units"]) == 0
+    assert load(led)["contradictions"][0]["id"] == "K1"
+    assert research.main(["contradiction", *base, "--id", "K1", "--status", "resolved",
+                          "--cause", "different year"]) == 0
+    ks = load(led)["contradictions"]
+    assert len(ks) == 1
+    assert (ks[0]["status"], ks[0]["cause"], ks[0]["claims"]) == ("resolved", "different year",
+                                                                  ["C1", "C2"])
+    assert lint(led) == 0
+    assert research.main(["contradiction", *base, "--claim", "C1", "--claim", "C2",
+                          "--cause", "again"]) == 0
+    assert [k["id"] for k in load(led)["contradictions"]] == ["K1", "K2"]
+
+
+def test_contradiction_duplicate_id_exits_1(tmp_path):
+    base, led = _fresh(tmp_path)
+    _claims(base)
+    args = ["contradiction", *base, "--id", "X", "--claim", "C1", "--claim", "C2", "--cause", "c"]
+    assert research.main(args) == 0
+    assert research.main(args) == 1
+    assert len(load(led)["contradictions"]) == 1
+    data = load(led)
+    data["contradictions"].append(dict(data["contradictions"][0]))
+    led.write_text(json.dumps(data))
+    assert lint(led) == 1
+    assert research.main(["contradiction", *base, "--id", "X", "--cause", "z"]) == 1
+
+
+def test_contradiction_ids_assigned_on_fixture(tmp_path):
+    led = ledger_at(tmp_path)
+    assert research.main(["contradiction", "--ledger", str(led), "--id", "K2",
+                          "--status", "resolved", "--cause", "done"]) == 0
+    ks = load(led)["contradictions"]
+    assert [k["id"] for k in ks] == ["K1", "K2"] and ks[1]["cause"] == "done"
+    assert lint(led) == 0
+
+
+def test_render_parts_list_every_record(capsys):
+    data = load(FIXTURE)
+    args = ["render", "--ledger", str(FIXTURE), "--part"]
+    assert research.main([*args, "sources"]) == 0
+    out = capsys.readouterr().out
+    assert all(f"[{s['id']}]" in out for s in data["sources"])
+    assert research.main([*args, "contradictions"]) == 0
+    out = capsys.readouterr().out
+    assert all(k["cause"] in out for k in data["contradictions"])
+    assert "open" in out and "resolved" in out
+    assert research.main([*args, "report"]) == 1
+    assert research.main([*args, "report", "--level", "simple"]) == 0

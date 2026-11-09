@@ -11,13 +11,16 @@ import json
 import sys
 import urllib.parse
 import urllib.request
+from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import base  # noqa: E402
 import research_render  # noqa: E402
 import state  # noqa: E402
 
 STATUSES = ("resolved", "open")
+PARTS = ("report", "sources", "contradictions")
 
 
 def ledger_path(args):
@@ -32,9 +35,24 @@ def load(path):
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
-def save(path, data):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+class Fail(Exception):
+    """A refused mutation: printed as `research: <msg>`, exit 1, nothing written."""
+
+
+def ensure_ids(data):
+    """Give every contradiction without an id the next free K<n> (in order). Returns data."""
+    items = data.setdefault("contradictions", [])
+    used = {k.get("id") for k in items if k.get("id")}
+    n = 0
+    for k in items:
+        if k.get("id"):
+            continue
+        n += 1
+        while f"K{n}" in used:
+            n += 1
+        k["id"] = f"K{n}"
+        used.add(k["id"])
+    return data
 
 
 def lint_ledger(data):
@@ -61,8 +79,11 @@ def lint_ledger(data):
         for sid in srcs:
             if sid not in source_ids:
                 problems.append(f"claim {cid}: unknown source id {sid}")
+    seen = Counter(k.get("id") for k in data.get("contradictions", []) if k.get("id"))
     for i, k in enumerate(data.get("contradictions", []), 1):
-        label = f"contradiction #{i}"
+        label = f"contradiction {k.get('id') or '#' + str(i)}"
+        if k.get("id") and seen[k["id"]] > 1:
+            problems.append(f"{label}: duplicate id")
         if not (k.get("cause") or "").strip():
             problems.append(f"{label}: missing cause")
         if k.get("status") not in STATUSES:
@@ -83,33 +104,48 @@ def _need(args):
     return path, load(path)
 
 
-def _add(args, key, entry, check=None):
-    path, data = _need(args)
-    if data is None:
+def _mutate(args, fn, create=False):
+    """Run fn(data) on the ledger under base.locked_update: read, check, change and atomic write in one lock."""
+    path = ledger_path(args)
+    if not create and not path.is_file():
+        print(f"research: no ledger at {path}", file=sys.stderr)
         return 1
-    if "id" in entry and any(e.get("id") == entry["id"] for e in data[key]):
-        print(f"research: duplicate id {entry['id']}", file=sys.stderr)
+
+    def apply(data):
+        if create and path.exists():
+            raise Fail(f"ledger exists at {path}")
+        if not create and not data:
+            raise Fail(f"cannot read ledger at {path}")
+        return fn(data) or data
+
+    try:
+        base.locked_update(path, apply)
+    except Fail as e:
+        print(f"research: {e}", file=sys.stderr)
         return 1
-    if check:
-        err = check(data)
-        if err:
-            print(f"research: {err}", file=sys.stderr)
-            return 1
-    data[key].append(entry)
-    save(path, data)
     return 0
+
+
+def _add(args, key, entry, check=None):
+    def fn(data):
+        items = data.setdefault(key, [])
+        if "id" in entry and any(e.get("id") == entry["id"] for e in items):
+            raise Fail(f"duplicate id {entry['id']}")
+        err = check(data) if check else None
+        if err:
+            raise Fail(err)
+        items.append(entry)
+
+    return _mutate(args, fn)
 
 
 def cmd_init(args):
-    path = ledger_path(args)
-    if path.exists():
-        print(f"research: ledger exists at {path}", file=sys.stderr)
-        return 1
     tiers = [t.strip() for t in (args.tiers or "").split(",") if t.strip()]
-    save(path, {"topic": args.topic, "tiers": tiers, "sources": [],
-                "claims": [], "contradictions": []})
-    print(path)
-    return 0
+    ok = _mutate(args, lambda _: {"topic": args.topic, "tiers": tiers, "sources": [],
+                                  "claims": [], "contradictions": []}, create=True)
+    if ok == 0:
+        print(ledger_path(args))
+    return ok
 
 
 def cmd_source(args):
@@ -136,10 +172,36 @@ def cmd_claim(args):
                                  "sources": args.source or []})
 
 
+def _contradict(args, data):
+    items = ensure_ids(data)["contradictions"]
+    if not args.id:
+        ids = {k["id"] for k in items}
+        n = len(items) + 1
+        while f"K{n}" in ids:
+            n += 1
+        items.append({"id": f"K{n}", "claims": args.claim or [], "cause": args.cause or "",
+                      "status": args.status or "open"})
+        return
+    same = [k for k in items if k["id"] == args.id]
+    if len(same) > 1:
+        raise Fail(f"duplicate id {args.id}")
+    if not same:
+        items.append({"id": args.id, "claims": args.claim or [], "cause": args.cause or "",
+                      "status": args.status or "open"})
+        return
+    old = dict(same[0])
+    if args.claim:
+        same[0]["claims"] = args.claim
+    if args.cause is not None:
+        same[0]["cause"] = args.cause
+    if args.status:
+        same[0]["status"] = args.status
+    if same[0] == old:
+        raise Fail(f"duplicate id {args.id}")
+
+
 def cmd_contradiction(args):
-    return _add(args, "contradictions", {"claims": args.claim or [],
-                                         "cause": args.cause,
-                                         "status": args.status})
+    return _mutate(args, lambda data: _contradict(args, data))
 
 
 def cmd_lint(args):
@@ -148,7 +210,7 @@ def cmd_lint(args):
         data = load(path)
         problems = lint_ledger(data)
         if args.parity:
-            texts = {Path(f).name: Path(f).read_text(encoding="utf-8")
+            texts = {str(Path(f).resolve()): Path(f).read_text(encoding="utf-8")
                      for f in args.parity}
             problems += research_render.parity(texts, data)
     except (OSError, ValueError) as e:
@@ -167,10 +229,18 @@ def cmd_render(args):
     if data is None:
         return 1
     try:
-        sys.stdout.write(research_render.render(data, args.level))
+        if args.part == "sources":
+            out = research_render.render_sources(data)
+        elif args.part == "contradictions":
+            out = research_render.render_contradictions(data)
+        elif not args.level:
+            raise ValueError("--level required for --part report")
+        else:
+            out = research_render.render(data, args.level)
     except ValueError as e:
         print(f"research: {e}", file=sys.stderr)
         return 1
+    sys.stdout.write(out)
     return 0
 
 
@@ -272,13 +342,15 @@ def build_parser():
     p.add_argument("--text", required=True)
     p.add_argument("--source", action="append")
     p = add("contradiction", cmd_contradiction)
+    p.add_argument("--id", help="K1, K2... auto-assigned; an existing id updates that record")
     p.add_argument("--claim", action="append")
-    p.add_argument("--cause", default="")
-    p.add_argument("--status", choices=STATUSES, default="open")
+    p.add_argument("--cause")
+    p.add_argument("--status", choices=STATUSES)
     p = add("lint", cmd_lint)
     p.add_argument("--parity", nargs="+", metavar="FILE")
     p = add("render", cmd_render)
-    p.add_argument("--level", required=True)
+    p.add_argument("--level")
+    p.add_argument("--part", choices=PARTS, default="report")
     add("downloads", cmd_downloads)
     p = add("download", cmd_download)
     p.add_argument("--yes", action="store_true")

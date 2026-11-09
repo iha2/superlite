@@ -27,12 +27,36 @@ def test_body_rules():
         assert w in t, w
 
 
-def test_guard_allows_researcher_only(tmp_path):
-    p = make(tmp_path, "human")
-    for st in ("superlite:researcher", "researcher"):
-        assert guard(p, "Agent", {"subagent_type": st, "prompt": "x"}).returncode == 0, st
-    for st in ("general-purpose", "superlite:implementer", "superlite:fixer-opus", "researcherX", "evil:researcher", "superlite:researcherX", "Researcher", ""):
-        assert guard(p, "Agent", {"subagent_type": st, "prompt": "x"}).returncode == 2, st
+RESEARCHERS = ("superlite:researcher", "researcher")
+NEAR = ("general-purpose", "superlite:implementer", "superlite:fixer-opus", "researcherX", "evil:researcher",
+        "superlite:researcherX", "Researcher", "")
+
+
+def call(p, st):
+    return guard(p, "Agent", {"subagent_type": st, "prompt": "x"}).returncode
+
+
+def test_researcher_denied_when_gated(tmp_path):
+    # It has Write and Bash, so it is not read-only: the approval gate and the try-out gate cover it.
+    for state in ("human", "tryout"):
+        d = tmp_path / state
+        d.mkdir()
+        p = make(d, state)
+        for st in RESEARCHERS + NEAR:
+            assert call(p, st) == 2, (state, st)
+
+
+def test_researcher_allowed_when_approved_or_ai(tmp_path):
+    for state in ("approved", "ai"):
+        d = tmp_path / state
+        d.mkdir()
+        p = make(d, state)
+        (p / ".superlite" / "stable.json").write_text("{}")   # active run
+        (p / ".superlite" / "dispatch.json").write_text('{"batches": [["T1"]]}')
+        for st in RESEARCHERS:
+            assert call(p, st) == 0, (state, st)
+        for st in ("general-purpose", "superlite:implementer", ""):
+            assert call(p, st) == 2, (state, st)
 
 
 def test_tools_exclude_edit():

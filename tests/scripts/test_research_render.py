@@ -77,14 +77,16 @@ def test_empty_ledger_renders_and_agrees():
 
 def test_parity_flags_dropped_claim_id():
     t = texts()
-    t["vp"] = t["vp"].replace("C1", "")
-    assert "vp: missing claim/source id C1" in rr.parity(t)
+    t["vp"] = t["vp"].replace("[C1]", "[C-]")
+    bad = rr.parity(t)
+    assert "vp: missing claim C1" in bad and "vp: extra claim C-" in bad
 
 
 def test_parity_flags_changed_number():
     t = texts()
     t["simple"] = t["simple"].replace("900", "800")
-    assert any("900" in m and m.startswith("simple") for m in rr.parity(t))
+    assert any("C4" in m and m.startswith("simple: differs") for m in rr.parity(t))
+    assert any("C4" in m and m.startswith("simple: differs") for m in rr.parity(t, LEDGER))
 
 
 def test_parity_flags_changed_cause_of_resolved_and_open():
@@ -102,12 +104,75 @@ def test_parity_flags_missing_marker():
 
 
 def test_parity_against_ledger_flags_item_missing_everywhere():
-    t = {lv: x.replace("S2", "").replace("150", "") for lv, x in texts().items()}
+    t = {lv: x.replace(LEDGER["contradictions"][0]["cause"], "gone") for lv, x in texts().items()}
     assert rr.parity(t) == []  # the levels agree with each other
-    bad = rr.parity(t, LEDGER)
-    assert "vp: missing claim/source id S2" in bad and "vp: missing number 150" in bad
-    dropped = {lv: x.replace(LEDGER["contradictions"][0]["cause"], "") for lv, x in texts().items()}
-    assert any("contradiction" in m for m in rr.parity(dropped, LEDGER))
+    assert any("missing contradiction" in m for m in rr.parity(t, LEDGER))
+    no_s2 = {lv: "\n".join(ln for ln in x.splitlines() if not ln.startswith("- [S2]")) for lv, x in texts().items()}
+    assert rr.parity(no_s2) == []
+    assert "vp: missing source S2" in rr.parity(no_s2, LEDGER)
+
+
+def test_swapped_quantities_between_claims_fail_parity():
+    t = texts()
+    t["vp"] = t["vp"].replace("120", "@").replace("150", "120").replace("@", "150")
+    assert rr.parity(t, LEDGER)
+    assert any("C1" in m for m in rr.parity(t, LEDGER)) and any("C2" in m for m in rr.parity(t, LEDGER))
+    assert any(m.startswith("vp") for m in rr.parity(t))
+
+
+def test_changed_citation_fails_parity():
+    t = texts()
+    t["simple"] = t["simple"].replace("(sources: S1)", "(sources: S2)", 1)
+    assert any("differs claim C1" in m and m.startswith("simple") for m in rr.parity(t, LEDGER))
+    assert any("differs claim C1" in m for m in rr.parity(t))
+
+
+def test_arbitrary_ids_render_and_pass_parity():
+    led = {
+        "topic": "t",
+        "sources": [{"id": "paper-1", "url": "u1", "date": "d", "grade": "g", "kind": "paper"},
+                    {"id": "paper-2", "url": "u2", "date": "d", "grade": "g", "kind": "report"}],
+        "claims": [{"id": "claim-1", "text": "Cost is 5 (rough).", "sources": ["paper-1", "paper-2"]},
+                   {"id": "claim-2", "text": "Cost is 6.", "sources": ["paper-2"]}],
+        "contradictions": [{"claims": ["claim-1", "claim-2"], "cause": "unit (kWh) differs", "status": "resolved"}],
+    }
+    t = texts(led)
+    assert all("[claim-1] Cost is 5 (rough). (sources: paper-1, paper-2)" in x for x in t.values())
+    assert rr.parity(t, led) == [] and rr.parity(t) == []
+    t["vp"] = t["vp"].replace("(sources: paper-1, paper-2)", "(sources: paper-1)")
+    assert rr.parity(t, led)
+
+
+def test_render_missing_resolved_contradiction_fails():
+    t = texts()
+    t["researcher"] = "\n".join(ln for ln in t["researcher"].splitlines() if "[resolved:" not in ln)
+    assert any(m.startswith("researcher: missing contradiction [resolved:C1,C2]") for m in rr.parity(t, LEDGER))
+    assert any(m.startswith("researcher: missing contradiction") for m in rr.parity(t))
+
+
+def test_render_with_extra_claim_fails():
+    t = texts()
+    t["director"] = t["director"].replace("\nSource:", "- [C9] An invented claim. (sources: S1)\n\nSource:")
+    assert "director: extra claim C9" in rr.parity(t, LEDGER)
+    assert "director: extra claim C9" in rr.parity(t)
+
+
+def test_render_sources_and_contradictions_list_every_record():
+    src = rr.render_sources(LEDGER)
+    for s in LEDGER["sources"]:
+        assert f"- [{s['id']}]" in src and s["url"] in src and s["date"] in src and s["grade"] in src
+    assert "file:///r/s1.pdf" in src and "2048 KB" in src
+    con = rr.render_contradictions(LEDGER)
+    for x in LEDGER["contradictions"]:
+        assert f"[{x['status']}:{','.join(x['claims'])}] {x['cause']}" in con
+    assert "(resolved)" in con and "(open)" in con
+    assert rr.render_sources(LEDGER) == src and "none" in rr.render_contradictions({})
+
+
+def test_bad_id_raises():
+    led = {"claims": [{"id": "a]b", "text": "x", "sources": []}]}
+    with pytest.raises(ValueError):
+        rr.render(led, "vp")
 
 
 def test_unknown_level_raises():

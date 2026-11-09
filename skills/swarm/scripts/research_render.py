@@ -1,10 +1,15 @@
 """Render a level-free research ledger at four audience levels, and check parity.
 
 Ledger JSON: topic, tiers (list), sources (id, url, date, grade, kind, file_url, size), claims (id, text, sources),
-contradictions (claims, cause, status resolved|open). Every level shows the same claim ids, citations, numbers and
-contradictions with their causes; only the headings and wording differ. Stdlib only.
+contradictions (claims, cause, status resolved|open). Every level prints one parseable line per record, in a stable
+form: `- [claim-id] text (sources: s1, s2)`, `- [source-id] {json of url, date, grade, kind, file_url, size}` and
+`- [status:claim-ids] cause (word)`. Only headings and the status word differ by level. parity() parses those lines and
+compares them record by record, keyed by id (a contradiction by status, claim ids and cause). Ids are any non-empty
+string without `]`. Stdlib only.
 """
+import json
 import re
+from collections import Counter
 
 LEVELS = ("director", "vp", "researcher", "simple")
 HEADS = {
@@ -19,17 +24,56 @@ STATUS_WORD = {
     "researcher": {"open": "open", "resolved": "resolved"},
     "simple": {"open": "not yet reconciled", "resolved": "now explained"},
 }
-NUM = re.compile(r"(?<![\w.])\d+(?:,\d{3})*(?:\.\d+)?")
-ID = re.compile(r"\b[CS]\d+\b")
-CONTRA = re.compile(r"^- \[(open|resolved):([^\]]*)\] (.*)$", re.MULTILINE)
+SRC_FIELDS = ("url", "date", "grade", "kind", "file_url", "size")
+CLAIM = re.compile(r"^- \[([^\]]+)\] (.*) \(sources: (.*)\)$")
+SOURCE = re.compile(r"^- \[([^\]]+)\] (\{.*\})$")
+CONTRA = re.compile(r"^- \[(open|resolved):([^\]]*)\] (.*) \([^()]*\)$")
+SECTIONS = {f"{h[i]}:": kind for h in HEADS.values() for i, kind in ((1, "claim"), (2, "contradiction"), (3, "source"))}
 
 
 def _s(v):
-    return "" if v is None else str(v)
+    """A value as one line of text: None is empty, runs of whitespace collapse to one space."""
+    return " ".join(("" if v is None else str(v)).split())
+
+
+def _id(v):
+    v = _s(v)
+    if not v or "]" in v:
+        raise ValueError(f"bad id (empty or holds ]): {v!r}")
+    return v
 
 
 def _contradictions(ledger):
     return [x for x in ledger.get("contradictions", []) if x.get("status") in ("open", "resolved")]
+
+
+def _claim_line(c):
+    return f"- [{_id(c['id'])}] {_s(c['text'])} (sources: {', '.join(_s(x) for x in c.get('sources', []))})"
+
+
+def _source_line(s):
+    payload = {k: _s(s.get(k)) for k in SRC_FIELDS}
+    return f"- [{_id(s['id'])}] {json.dumps(payload, ensure_ascii=False)}"
+
+
+def _contra_line(x, word):
+    return f"- [{x['status']}:{','.join(_s(c) for c in x['claims'])}] {_s(x['cause'])} ({word})"
+
+
+def _lines(items, line):
+    return [line(i) for i in items] or ["- none"]
+
+
+def render_sources(ledger):
+    """Every source record, one line each, in the stable record form (level-free)."""
+    return "\n".join([f"{HEADS['researcher'][3]}:", *_lines(ledger.get("sources", []), _source_line)]) + "\n"
+
+
+def render_contradictions(ledger):
+    """Every contradiction record, resolved and open, with cause and status (level-free)."""
+    words = STATUS_WORD["researcher"]
+    lines = _lines(_contradictions(ledger), lambda x: _contra_line(x, words[x["status"]]))
+    return "\n".join([f"{HEADS['researcher'][2]}:", *lines]) + "\n"
 
 
 def render(ledger, level):
@@ -37,79 +81,84 @@ def render(ledger, level):
         raise ValueError(f"unknown level: {level}")
     head, claims_h, contra_h, src_h, tier_h = HEADS[level]
     words = STATUS_WORD[level]
-    src = ledger.get("sources", [])
     out = [f"{head}: {_s(ledger.get('topic'))}", ""]
     tiers = ledger.get("tiers") or []
     if tiers:
         out += [f"{tier_h}: " + ", ".join(_s(t) for t in tiers), ""]
-    out.append(f"{claims_h}:")
-    for c in ledger.get("claims", []):
-        out.append(f"- [{c['id']}] {c['text']} ({src_h} {', '.join(c.get('sources', []))})")
-    out += ["", f"{src_h}:"]
-    for s in src:
-        extra = "".join(f", {k} {_s(s.get(k))}" for k in ("file_url", "size") if s.get(k) not in (None, ""))
-        if level == "researcher":
-            out.append(f"- {s['id']} {_s(s.get('url'))} {_s(s.get('date'))} grade {_s(s.get('grade'))} "
-                       f"{_s(s.get('kind'))}{extra}")
-        else:
-            out.append(f"- {s['id']}: {_s(s.get('url'))} ({_s(s.get('date'))}, grade {_s(s.get('grade'))}, "
-                       f"{_s(s.get('kind'))}{extra})")
-    out += ["", f"{contra_h}:"]
-    xs = _contradictions(ledger)
-    for x in xs:
-        out.append(f"- [{x['status']}:{','.join(x['claims'])}] {x['cause']} ({words[x['status']]})")
-    if not xs:
-        out.append("- none")
+    out += [f"{claims_h}:", *_lines(ledger.get("claims", []), _claim_line), ""]
+    out += [f"{src_h}:", *_lines(ledger.get("sources", []), _source_line), ""]
+    out += [f"{contra_h}:", *_lines(_contradictions(ledger), lambda x: _contra_line(x, words[x["status"]]))]
     return "\n".join(out) + "\n"
 
 
-def _contra_facts(text):
-    return {(st, tuple(ids.replace(" ", "").split(",")), re.sub(r"\s*\((?:[^()]*)\)$", "", cause).strip())
-            for st, ids, cause in CONTRA.findall(text)}
+def _record(kind, line):
+    """(key, value) for one record line of the given section kind, or None when it is not a record."""
+    if kind == "claim":
+        m = CLAIM.match(line)
+        return m and (("claim", m[1]), (m[2], tuple(m[3].split(", ")) if m[3] else ()))
+    if kind == "source":
+        m = SOURCE.match(line)
+        return m and (("source", m[1]), _source_value(m[2]))
+    m = CONTRA.match(line)
+    return m and (("contradiction", (m[1], tuple(m[2].split(",")), m[3])), ())
 
 
-def _facts(text):
-    return {"ids": set(ID.findall(text)), "numbers": set(NUM.findall(text)), "contradictions": _contra_facts(text)}
+def _source_value(raw):
+    try:
+        d = json.loads(raw)
+    except ValueError:
+        return ("unparseable", raw)
+    return tuple(_s(d.get(k)) for k in SRC_FIELDS) if isinstance(d, dict) else ("unparseable", raw)
 
 
-def _ledger_facts(ledger):
-    fields = [_s(ledger.get("topic"))] + [_s(t) for t in ledger.get("tiers") or []]
-    fields += [c["text"] for c in ledger.get("claims", [])]
-    for s in ledger.get("sources", []):
-        fields += [_s(s.get(k)) for k in ("url", "date", "grade", "kind", "file_url", "size")]
-    ids = {c["id"] for c in ledger.get("claims", [])} | {s["id"] for s in ledger.get("sources", [])}
-    contra = {(x["status"], tuple(x["claims"]), x["cause"].strip()) for x in _contradictions(ledger)}
-    return {"ids": ids, "numbers": set(NUM.findall("\n".join(fields))), "contradictions": contra}
+def _text_records(text):
+    """{key: [values]} for every record line of a render, found by section heading."""
+    out, kind = {}, None
+    for line in text.splitlines():
+        kind = SECTIONS.get(line.strip(), kind)
+        rec = _record(kind, line.rstrip()) if kind else None
+        if rec:
+            out.setdefault(rec[0], []).append(rec[1])
+    return out
+
+
+def _consensus(all_records):
+    """The records at least half the texts hold, each with the value list most of those texts give it."""
+    seen = {}
+    for recs in all_records.values():
+        for key, vals in recs.items():
+            seen.setdefault(key, []).append(tuple(sorted(vals, key=str)))
+    half = len(all_records) / 2
+    return {key: list(Counter(v).most_common(1)[0][0]) for key, v in seen.items() if len(v) >= half}
+
+
+def _label(key):
+    kind, k = key
+    return f"{kind} [{k[0]}:{','.join(k[1])}] {k[2]}" if kind == "contradiction" else f"{kind} {k}"
+
+
+def _problem(name, key, want, have):
+    w, h = Counter(want or []), Counter(have or [])
+    if w == h:
+        return None
+    if not h:
+        return f"{name}: missing {_label(key)}"
+    if not w:
+        return f"{name}: extra {_label(key)}"
+    return f"{name}: differs {_label(key)}: expected {sorted(w.elements(), key=str)}, got {sorted(h.elements(), key=str)}"
 
 
 def parity(texts, ledger=None):
     """texts: dict level->text (or list of texts). Returns mismatch strings.
 
-    Each text must carry every id, number and contradiction (status, claims, cause) found in any other text; with a
-    ledger it must also carry every one the ledger holds, so an item dropped from all levels is flagged too."""
+    Parses the record lines of each text and compares them per record. With a ledger the records the ledger renders
+    are the truth: a missing record, a record whose values differ, and an extra record are each flagged. Without one
+    each text is compared with the records most texts agree on."""
     items = list(texts.items()) if isinstance(texts, dict) else [(f"#{i}", t) for i, t in enumerate(texts)]
-    facts = {k: _facts(t) for k, t in items}
-    names = (("ids", "claim/source id"), ("numbers", "number"), ("contradictions", "contradiction"))
-    want = {n: set().union(*(v[n] for v in facts.values())) if facts else set() for n, _ in names}
-    if ledger is not None:
-        for n, v in _ledger_facts(ledger).items():
-            want[n] |= v
+    records = {name: _text_records(t) for name, t in items}
+    want = _text_records(render(ledger, "researcher")) if ledger is not None else _consensus(records)
     out = []
-    for k, f in facts.items():
-        out.extend(_missing(k, f, want, names))
+    for name, recs in records.items():
+        keys = sorted(set(want) | set(recs), key=str)
+        out += [p for p in (_problem(name, k, want.get(k), recs.get(k)) for k in keys) if p]
     return out
-
-
-def _fmt_missing(name, m):
-    if name != "contradictions":
-        return m
-    st, ids, cause = m
-    return f"[{st}:{','.join(ids)}] {cause}"
-
-
-def _missing(k, f, want, names):
-    return [
-        f"{k}: missing {label} {_fmt_missing(name, m)}"
-        for name, label in names
-        for m in sorted(want[name] - f[name], key=str)
-    ]

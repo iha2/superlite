@@ -163,7 +163,7 @@ batchhit=0
 if [ "$tool" = Agent ] || [ "$tool" = Task ]; then
   jstr subagent_type
   st="$REPLY"
-  case "$st" in Explore|explore|Plan|claude-code-guide|cursor-guide|researcher|superlite:researcher) ;;
+  case "$st" in Explore|explore|Plan|claude-code-guide|cursor-guide) ;;
   *)
     if [ "$gated" = 1 ]; then
       # An agent that cannot write files cannot build. Cursor keeps its agents elsewhere: it keeps the denial.
