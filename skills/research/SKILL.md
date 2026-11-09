@@ -7,11 +7,11 @@ description: Use when the user wants a topic researched with sources, a sourced 
 
 Gather evidence in parallel, keep it in a level-free ledger, and render the report from the ledger. Truth and depth never change with the level; only the wording does. Keep every claim tied to a source id. Never touch `skills/using-superlite`.
 
-CLI: `bash <skill-dir>/../swarm/scripts/superlite-cli research` (subcommands `init`, `source`, `claim`, `contradiction`, `lint`, `render`, `downloads`, `download`). Every call carries `--slug <slug>` (the session slug, the same short a-z, 0-9, `-` slug as the plan file topic) or `--ledger <path>`; without one it exits with an error. Plans and reports live in `docs/plans/`. Below, `research` means that CLI call and `S` is the slug.
+CLI: `bash <skill-dir>/../swarm/scripts/superlite-cli research` (subcommands `init`, `source`, `claim`, `contradiction`, `lint`, `render`, `downloads`, `download`). Every call carries `--slug <slug>` (the session slug, the `slug=` field of the first `SESSION` line that `session ensure` printed, not the slug first requested; it is also the `<topic>` in the plan file names) or `--ledger <path>`; without one it exits with an error. Plans and reports live in `docs/plans/`. Below, `research` means that CLI call and `S` is the slug.
 
 ## Steps
 
-1. **Ask.** Get the topic and the language level: Director, VP, Researcher or Simple. Ask the user to define the evidence tiers (for example `A,B,C`, best first); the tiers are theirs, not a fixed scale. Run `research init --slug S --topic "<topic>" --tiers <A,B,C>`.
+1. **Ask.** Use the session slug you were handed as S. Get the topic and the language level: Director, VP, Researcher or Simple. Ask the user to define the evidence tiers (for example `A,B,C`, best first); the tiers are theirs, not a fixed scale. Run `research init --slug S --topic "<topic>" --tiers <A,B,C>`.
 2. **Plan.** Write `docs/plans/<date>-<topic>.research.md`: scope, sub-questions, search strategy, evidence tiers. The most recent well-referenced paper is the highest evidence; a newer source of a higher grade supersedes an older one.
 3. **Critical questions.** Ask the human every open question in ONE batch. In AI mode answer them yourself as `Ruling: <decision> (because <reason>)` lines in the plan.
 4. **Approve.** Human mode: wait for the human's approval, then run `bash <skill-dir>/../swarm/scripts/superlite-cli orchestrator approve --review docs/plans/<date>-<topic>.research.md`. AI mode: skip.

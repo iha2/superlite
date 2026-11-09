@@ -3,9 +3,10 @@
 
 Subcommands: init, source, claim, contradiction, lint, render, downloads,
 download, list. Ledger lives at <root>/<run folder>/research/<slug>/ledger.json with
-keys topic, tiers, sources, claims, contradictions. A slug with no live ledger is
-looked up in the parked session stores (read-only). No audience wording is
-stored. Stdlib only.
+keys topic, tiers, sources, claims, contradictions. A slug with no live ledger here is
+looked up in the other registered session worktrees, then the parked session stores;
+those ledgers are read-only, however selected (--slug or --ledger). No audience
+wording is stored. Stdlib only.
 """
 import argparse
 import json
@@ -17,6 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import base  # noqa: E402
+import ident  # noqa: E402
 import research_render  # noqa: E402
 import session_registry  # noqa: E402
 import state  # noqa: E402
@@ -25,8 +27,12 @@ STATUSES = ("resolved", "open")
 PARTS = ("report", "sources", "contradictions")
 
 
+def _live_dir(root):
+    return Path(root) / state.DIR_NAME / "research"
+
+
 def _live_path(root, slug):
-    return Path(root) / state.DIR_NAME / "research" / slug / "ledger.json"
+    return _live_dir(root) / slug / "ledger.json"
 
 
 def parked_ledgers(root, slug=None):
@@ -51,20 +57,56 @@ def parked_ledgers(root, slug=None):
     return found
 
 
+def other_checkouts(root):
+    """[(session, worktree)] for the hub and every registered session worktree except this checkout. [] outside a
+    git repo or without a registry."""
+    try:
+        hub = session_registry.hub_root(Path(root))
+        reg = session_registry.read(hub)
+        here = session_registry.toplevel(Path(root))
+    except (base.GitError, OSError, ValueError):
+        return []
+    rows = [(reg.get("active") or "host", hub)]
+    rows += [(s["slug"], Path(s["worktree"])) for s in reg["sessions"] if s.get("worktree")]
+    seen, out = [here], []
+    for session, wt in rows:
+        if not any(ident.same_path(wt, p) for p in seen):
+            seen.append(wt)
+            out.append((session, wt))
+    return out
+
+
+def _foreign(root, slug=None):
+    """[(slug, label, path, refusal)] for every ledger that is not in this checkout, in lookup order: live in another
+    session worktree, then parked. `refusal` is why a mutation of it is refused."""
+    out = []
+    for session, wt in other_checkouts(root):
+        for led in sorted(_live_dir(wt).glob("*/ledger.json")):
+            if slug in (None, led.parent.name):
+                out.append((led.parent.name, f"live:{session}", led,
+                            f"ledger {led} belongs to session {session} in worktree {wt}; "
+                            f"change it from that worktree"))
+    for session, name, led in parked_ledgers(root, slug):
+        out.append((name, f"parked:{session}", led,
+                    f"ledger {led} is parked in session {session}; "
+                    f"switch to it first: superlite-cli session use --slug {session}"))
+    return out
+
+
 def locate(args):
-    """(path, session): the live ledger of --slug, else a parked one (session = its store's name), else the live
-    path with session None. --ledger is used as given."""
+    """(path, refusal): the ledger of --slug (live here, else live in another session worktree, else parked), or the
+    explicit --ledger path. `refusal` is None for a ledger of this checkout, else why it is read-only."""
     if getattr(args, "ledger", None):
-        return Path(args.ledger), None
+        path = Path(args.ledger)
+        hit = next((e for e in _foreign(args.root) if ident.same_path(e[2], path)), None)
+        return path, hit[3] if hit else None
     if not args.slug:
         raise SystemExit("research: --slug or --ledger required")
     live = _live_path(args.root, args.slug)
     if live.is_file():
         return live, None
-    parked = parked_ledgers(args.root, args.slug)
-    if parked:
-        return parked[0][2], parked[0][0]
-    return live, None
+    hit = next(iter(_foreign(args.root, args.slug)), None)
+    return (hit[2], hit[3]) if hit else (live, None)
 
 
 def ledger_path(args):
@@ -146,10 +188,9 @@ def _need(args):
 
 def _mutate(args, fn, create=False):
     """Run fn(data) on the ledger under base.locked_update: read, check, change and atomic write in one lock."""
-    path, session = locate(args)
-    if session:
-        print(f"research: ledger {path} is parked in session {session}; "
-              f"switch to it first: superlite-cli session use --slug {session}", file=sys.stderr)
+    path, refusal = locate(args)
+    if refusal:
+        print(f"research: {refusal}", file=sys.stderr)
         return 1
     if not create and not path.is_file():
         print(f"research: no ledger at {path}", file=sys.stderr)
@@ -334,10 +375,9 @@ def cmd_download(args):
         print("research: download needs --yes; run downloads to list files",
               file=sys.stderr)
         return 1
-    path, session = locate(args)
-    if session:
-        print(f"research: ledger {path} is parked in session {session}; "
-              f"switch to it first: superlite-cli session use --slug {session}", file=sys.stderr)
+    path, refusal = locate(args)
+    if refusal:
+        print(f"research: {refusal}", file=sys.stderr)
         return 1
     path, data = _need(args)
     if data is None:
@@ -364,11 +404,10 @@ def cmd_download(args):
 
 
 def cmd_list(args):
-    live = Path(args.root) / state.DIR_NAME / "research"
-    for led in sorted(live.glob("*/ledger.json")):
+    for led in sorted(_live_dir(args.root).glob("*/ledger.json")):
         print(f"{led.parent.name} live {led}")
-    for session, slug, led in parked_ledgers(args.root):
-        print(f"{slug} parked:{session} {led}")
+    for slug, label, led, _ in _foreign(args.root):
+        print(f"{slug} {label} {led}")
     return 0
 
 

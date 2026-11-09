@@ -5,6 +5,11 @@ ledger and a report at the language level you pick.
 
 ## The ten steps
 
+The slug is the `slug=` field of the first `SESSION` line that
+`superlite-cli session ensure` prints (a repeated topic may get `battery-2`,
+not `battery`). It is the `<topic>` in the file names and the `--slug` of
+every research call.
+
 1. Ask: topic, level (Director, VP, Researcher, Simple), evidence tiers.
 2. Plan: scope, sub-questions, search strategy, tiers, in
    `docs/plans/<date>-<topic>.research.md`.

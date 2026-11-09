@@ -408,3 +408,69 @@ def test_unknown_slug_exits_1(tmp_path, capsys):
     _park(repo)
     for cmd in (["render", "--level", "vp"], ["lint"], ["downloads"], ["claim", "--id", "C1", "--text", "x"]):
         assert research.main([cmd[0], "--root", str(repo), "--slug", "nope", *cmd[1:]]) == 1
+
+
+# ---- explicit --ledger paths and ledgers of other registered session worktrees
+
+def _store_ledger(repo, session="s1", slug="old"):
+    _park(repo, session=session, slug=slug)
+    return repo / ".superlite" / "session-store" / session / "research" / slug / "ledger.json"
+
+
+def test_explicit_parked_path_is_read_only(monkeypatch, tmp_path, capsys):
+    repo = _repo(tmp_path)
+    led = _store_ledger(repo)
+    before = led.read_text()
+    monkeypatch.setattr(research, "fetch", lambda *a: pytest.fail("fetched a parked ledger"))
+    capsys.readouterr()
+    assert research.main(["claim", "--root", str(repo), "--ledger", str(led), "--id", "C9", "--text", "x"]) == 1
+    assert "session use" in capsys.readouterr().err
+    assert research.main(["download", "--root", str(repo), "--ledger", str(led), "--yes"]) == 1
+    assert research.main(["lint", "--root", str(repo), "--ledger", str(led)]) == 0
+    assert led.read_text() == before
+
+
+def _two_checkouts(tmp_path):
+    """A repo with a commit and a second registered session worktree `s2`; returns (hub, worktree)."""
+    repo = tmp_path / "hub"
+    repo.mkdir()
+    for cmd in (["init", "-q", "-b", "main"], ["config", "user.email", "t@e.com"], ["config", "user.name", "t"],
+                ["commit", "-q", "--allow-empty", "-m", "init"]):
+        subprocess.run(["git", *cmd], cwd=repo, check=True)
+    wt = tmp_path / "wt-s2"
+    subprocess.run(["git", "worktree", "add", "-q", "-b", "s2", str(wt)], cwd=repo, check=True)
+    session_registry.update(repo, lambda reg: reg["sessions"].append(
+        {"slug": "s2", "branch": "s2", "worktree": str(wt), "status": "parallel"}))
+    return repo.resolve(), wt.resolve()
+
+
+def _ledger_in(checkout, slug, topic):
+    led = checkout / ".superlite" / "research" / slug / "ledger.json"
+    led.parent.mkdir(parents=True)
+    led.write_text(json.dumps({"topic": topic, "tiers": [], "sources": [], "claims": [], "contradictions": []}))
+    return led
+
+
+def test_ledger_in_other_session_worktree_is_listed_found_and_read_only(tmp_path, capsys):
+    hub, wt = _two_checkouts(tmp_path)
+    led = _ledger_in(wt, "far", "far topic")
+    capsys.readouterr()
+    assert research.main(["list", "--root", str(hub)]) == 0
+    assert f"far live:s2 {led}" in capsys.readouterr().out.splitlines()
+    assert research.main(["render", "--root", str(hub), "--slug", "far", "--part", "sources"]) == 0
+    before = led.read_text()
+    assert research.main(["claim", "--root", str(hub), "--slug", "far", "--id", "C1", "--text", "x"]) == 1
+    err = capsys.readouterr().err
+    assert "s2" in err and str(wt) in err
+    assert research.main(["claim", "--root", str(hub), "--ledger", str(led), "--id", "C1", "--text", "x"]) == 1
+    assert led.read_text() == before
+
+
+def test_live_ledger_here_wins_over_same_slug_in_other_worktree(tmp_path, capsys):
+    hub, wt = _two_checkouts(tmp_path)
+    _ledger_in(wt, "dup", "elsewhere")
+    here = _ledger_in(hub, "dup", "here")
+    capsys.readouterr()
+    assert research.main(["claim", "--root", str(hub), "--slug", "dup", "--id", "C1", "--text", "x"]) == 0
+    assert load(here)["claims"][0]["id"] == "C1"
+    assert load(wt / ".superlite" / "research" / "dup" / "ledger.json")["claims"] == []

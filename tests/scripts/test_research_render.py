@@ -295,3 +295,19 @@ def test_prose_is_template_only_no_topic_words():
            "sources": [{"id": "a", "date": "2020-01-01", "grade": "g", "kind": "k"}], "tiers": ["g"]}
     for text in texts(led).values():
         assert all("zebra" not in ln for ln in prose(text))
+
+
+def test_unset_tiers_prose_does_not_claim_sources_are_ungraded():
+    led = copy.deepcopy(LEDGER)
+    led["tiers"] = []
+    with_tiers, without = texts(), texts(led)
+    for lv in rr.LEVELS:
+        recs = records(without[lv])
+        src = [ln for ln in recs if any(_s_id in ln for _s_id in ("S1", "S2"))]
+        assert src and all(s["grade"] in " ".join(recs) for s in led["sources"])
+        assert records(without[lv]) == records(with_tiers[lv])
+        changed = set(prose(without[lv])) ^ set(prose(with_tiers[lv]))
+        assert len(changed) <= 4
+        assert not any(ln in changed for ln in records(without[lv]))
+    assert set(prose(without["researcher"])) != set(prose(with_tiers["researcher"]))
+    assert rr.parity(without, led) == rr.parity(with_tiers, LEDGER)

@@ -162,7 +162,8 @@ def _researcher(f):
     rows = [f"  {_ref(s)}" for s in f["sources"]] or ["  none"]
     one = [f"{k} ({', '.join(v)})" for k, v in f["single"].items()]
     causes = [f"  {x['status']} {','.join(_s(c) for c in x['claims'])}: {_s(x['cause'])}" for x in f["open"] + f["resolved"]]
-    return ["Method and evidence quality:", "Tiers, highest first: " + (" > ".join(f["tiers"]) or "none set"),
+    return ["Method and evidence quality:", ("Tiers, highest first: " + " > ".join(f["tiers"]) if f["tiers"] else
+             "No evidence-tier ordering has been set, so grades are shown as recorded and are not ranked against each other."),
             "Sources, id (kind, grade, date):", *rows, f"Claims resting on a single source: {_list(one)}.",
             "Contradiction causes as recorded:", *(causes or ["  none"])]
 
@@ -170,7 +171,7 @@ def _researcher(f):
 def _simple(f):
     tiers = ", ".join(f["tiers"])
     grade = f"A grade says how much weight a source gets; from most to least weight: {tiers}." if tiers else \
-        "No grades were set for the sources."
+        "No order of grades has been set, so the grades are shown as recorded and none counts for more than another."
     ids = _open_ids(f)
     short = f"In short: {_counts(f)}; " + (f"{_n(len(f['open']), 'disagreement')} not yet settled." if ids else "no disagreement is left.")
     gap = ['"Sources disagree" means two statements about the same thing do not match.']
