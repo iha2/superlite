@@ -1,0 +1,1 @@
+{ "name": "session-manager", "version": "0.2.0", "description": "A pane of superlite sessions: worktree and base relationships, scratch stores, and switching the agent between them.", "types": "./types/index.d.ts" }
