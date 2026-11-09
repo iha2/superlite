@@ -12,7 +12,7 @@ Today `/superlite:start` asks the user to pick a mode. Instead, superlite propos
   `suggest: feature - existing code, the request changes how the export page works | also fits: small, regular`
 - Signals, in order:
   1. Project state. Empty folder: MVP or Regular. Run in progress: Resume or Status first.
-  2. Words. "fails", "bug", "error", "broken", a stack trace: Debug. "add", "change", "extend", "support", naming a part of the existing app: Feature. "build", "new app", "from scratch": MVP or Regular. "rename", "typo", "bump": Small.
+  2. Words. "fails", "bug", "error", "broken", a stack trace: Debug. "add", "change", "extend", "support", naming a part of the existing app: Feature. "build", "new app", "from scratch": MVP or Regular. "rename", "typo", "bump": Small. "research", "investigate", "survey", "sources", with no change or build word: Research.
   3. Size. A request that names one file or one function is Small; one that spans screens, data and services is Feature (existing code) or Regular (new).
 - The start menu shows the suggestion first, marked recommended, with the other fits after it. A user who typed a `/superlite:` command or named a mode skips the suggestion.
 

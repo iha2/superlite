@@ -30,6 +30,7 @@ Each run starts its own session automatically (`superlite-cli session ensure`): 
 | **MVP, a new project** | "Build me a static site generator from this spec" | One batch of questions, a plan, then parallel tasks on Sonnet and Haiku, package reviews and one fresh final review |
 | **A feature on existing code** | "Add CSV export with column widths to the existing app" | Feature mode: it researches the code (Graphify on a large codebase, never installed without your yes), writes a feature plan you validate, builds a small prototype in its own worktree for you to try, then ports it into your code with frozen interfaces and seam checks. The report shows both builds |
 | **Debug** | "This test fails on leap days: find the root cause and fix it" | `diagnosis` finds the cause first; fixes go to fix-only agents by tier, each leaving a note, and escalate after two failed rounds |
+| **Research** | "Research the state of the art in vector search, for a VP" | Research mode: parallel researchers fill a sourced ledger, contradictions are listed with causes, and the report is written at your level (Director, VP, Researcher or Simple) with the same claims and citations at every level |
 | **A small change** | "Rename `build` to `render` everywhere" | Small work stays inline, with a reviewer always |
 | **Review and harden** | "Review this branch and fix what you find" | Package reviewers fix their own findings; the final reviewer reports findings with tiers and never edits |
 | **You approve first** | "Build X. I will approve the plan" | A human orchestrator: you get a plain-language review plan with diagrams; nothing runs until you say yes |
@@ -40,10 +41,11 @@ Each run starts its own session automatically (`superlite-cli session ensure`): 
 
 | Command | What it does |
 |---|---|
-| `/superlite:start [mode] [what]` | A menu: superlite suggests the mode for your request (regular, MVP, feature, debug, small, review), you confirm it and pick who orchestrates |
+| `/superlite:start [mode] [what]` | A menu: superlite suggests the mode for your request (regular, MVP, feature, debug, small, review, research), you confirm it and pick who orchestrates |
 | `/superlite:mvp <what>` | Plan the smallest working version on a clickable HTML prototype, then build it |
 | `/superlite:feature <change>` | Change existing code: a plan you validate, a prototype you try, then the integration with seam checks |
 | `/superlite:debug <bug>` | Root cause first, then a fix with a regression test |
+| `/superlite:research <topic>` | Research a topic with parallel agents: a sourced ledger, then a report at your level |
 | `/superlite:small <change>` | A small change inline, without the planning flow |
 | `/superlite:human`, `/superlite:ai`, `/superlite:approve` | Choose who orchestrates; approve the review plan |
 | `/superlite:status`, `/superlite:stop`, `/superlite:resume` | Watch, stop or resume a build |

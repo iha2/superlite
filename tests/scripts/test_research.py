@@ -1,0 +1,476 @@
+import json
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[2]
+SCRIPT = ROOT / "skills" / "swarm" / "scripts" / "research.py"
+FIXTURE = ROOT / "tests" / "fixtures" / "research" / "ledger.json"
+
+sys.path.insert(0, str(SCRIPT.parent))
+import research  # noqa: E402
+import research_render  # noqa: E402
+import session_registry  # noqa: E402
+
+
+def ledger_at(tmp_path, data=None):
+    p = tmp_path / "ledger.json"
+    if data is None:
+        shutil.copy(FIXTURE, p)
+    else:
+        p.write_text(json.dumps(data))
+    return p
+
+
+def load(p):
+    return json.loads(Path(p).read_text())
+
+
+def lint(p):
+    return research.main(["lint", "--ledger", str(p)])
+
+
+def test_lint_fails_on_unknown_source_id_naming_claim(tmp_path, capsys):
+    data = load(FIXTURE)
+    data["claims"][0]["sources"] = ["S99"]
+    assert lint(ledger_at(tmp_path, data)) == 1
+    out = capsys.readouterr().out
+    assert "C1" in out and "S99" in out
+
+
+def test_lint_fails_on_claim_with_no_source(tmp_path, capsys):
+    data = load(FIXTURE)
+    data["claims"][1]["sources"] = []
+    assert lint(ledger_at(tmp_path, data)) == 1
+    assert "C2" in capsys.readouterr().out
+
+
+def test_lint_fails_on_contradiction_with_no_cause(tmp_path, capsys):
+    data = load(FIXTURE)
+    data["contradictions"][0]["cause"] = ""
+    assert lint(ledger_at(tmp_path, data)) == 1
+    assert "cause" in capsys.readouterr().out
+
+
+def test_lint_fails_on_bad_status_and_unknown_claim(tmp_path, capsys):
+    data = load(FIXTURE)
+    data["contradictions"][1]["status"] = "maybe"
+    data["contradictions"][0]["claims"] = ["C1", "C77"]
+    assert lint(ledger_at(tmp_path, data)) == 1
+    out = capsys.readouterr().out
+    assert "maybe" in out and "C77" in out
+
+
+def test_lint_passes_on_fixture():
+    assert lint(FIXTURE) == 0
+
+
+def test_fixture_shape():
+    data = load(FIXTURE)
+    assert len(data["sources"]) == 3
+    assert any(s["grade"] == "A" and s["kind"] == "paper"
+               and s["date"] >= "2026-01-01" for s in data["sources"])
+    assert any(s.get("file_url") and s.get("size") for s in data["sources"])
+    assert data["tiers"]
+    assert len(data["claims"]) == 5
+    assert all(any(ch.isdigit() for ch in c["text"]) for c in data["claims"])
+    st = sorted(c["status"] for c in data["contradictions"])
+    assert st == ["open", "resolved"]
+    assert all(c["cause"] for c in data["contradictions"])
+
+
+def test_fixture_is_level_free():
+    data = load(FIXTURE)
+    assert "level" not in json.dumps(data).lower()
+
+
+def test_cli_roundtrip(tmp_path):
+    base = ["--root", str(tmp_path), "--slug", "demo"]
+    assert research.main(["init", *base, "--topic", "t"]) == 0
+    led = tmp_path / ".superlite" / "research" / "demo" / "ledger.json"
+    assert led.is_file()
+    assert research.main(["source", *base, "--id", "S1", "--url", "http://x",
+                          "--date", "2026-01-01", "--grade", "A"]) == 0
+    assert research.main(["claim", *base, "--id", "C1", "--text", "n is 5",
+                          "--source", "S1"]) == 0
+    assert research.main(["claim", *base, "--id", "C2", "--text", "n is 6",
+                          "--source", "S1"]) == 0
+    assert lint(led) == 0
+    assert research.main(["contradiction", *base, "--claim", "C1",
+                          "--claim", "C2", "--cause", "units",
+                          "--status", "open"]) == 0
+    assert load(led)["contradictions"][0]["cause"] == "units"
+    assert lint(led) == 0
+
+
+def test_cli_claim_unknown_source_rejected_by_lint(tmp_path):
+    base = ["--root", str(tmp_path), "--slug", "d"]
+    research.main(["init", *base])
+    research.main(["claim", *base, "--id", "C1", "--text", "x 1",
+                   "--source", "S9"])
+    led = tmp_path / ".superlite" / "research" / "d" / "ledger.json"
+    assert lint(led) == 1
+
+
+def test_duplicate_id_rejected(tmp_path):
+    base = ["--root", str(tmp_path), "--slug", "d"]
+    research.main(["init", *base])
+    args = ["source", *base, "--id", "S1", "--url", "u", "--date",
+            "2026-01-01", "--grade", "A"]
+    assert research.main(args) == 0
+    assert research.main(args) == 1
+
+
+def test_script_runs_as_subprocess():
+    r = subprocess.run([sys.executable, str(SCRIPT), "lint", "--ledger",
+                        str(FIXTURE)], capture_output=True, text=True)
+    assert r.returncode == 0
+
+
+def test_init_tiers_and_grade_check(tmp_path):
+    base = ["--root", str(tmp_path), "--slug", "t"]
+    assert research.main(["init", *base, "--tiers", "gold,silver"]) == 0
+    led = tmp_path / ".superlite" / "research" / "t" / "ledger.json"
+    assert load(led)["tiers"] == ["gold", "silver"]
+    src = ["source", *base, "--id", "S1", "--url", "u", "--date", "2026-01-01"]
+    assert research.main([*src, "--grade", "E"]) == 1
+    assert research.main([*src, "--grade", "gold", "--file-url", "http://f/a.pdf",
+                          "--size", "10"]) == 0
+    assert load(led)["sources"][0]["file_url"] == "http://f/a.pdf"
+
+
+def test_no_tiers_allows_any_grade(tmp_path):
+    base = ["--root", str(tmp_path), "--slug", "t"]
+    research.main(["init", *base])
+    assert research.main(["source", *base, "--id", "S1", "--url", "u", "--date",
+                          "d", "--grade", "Z9"]) == 0
+    assert research.main(["source", *base, "--id", "S2", "--url", "u", "--date",
+                          "d", "--grade", " "]) == 1
+
+
+def test_render_prints_report(capsys):
+    assert research.main(["render", "--ledger", str(FIXTURE), "--level", "vp"]) == 0
+    out = capsys.readouterr().out
+    assert "C1" in out and "120" in out
+    assert research.main(["render", "--ledger", str(FIXTURE), "--level", "x"]) == 1
+
+
+def test_lint_parity(tmp_path, capsys):
+    good = tmp_path / "vp.md"
+    good.write_text(research_render.render(load(FIXTURE), "vp"))
+    bad = tmp_path / "simple.md"
+    bad.write_text(research_render.render(load(FIXTURE), "simple").replace("C1", "C-"))
+    args = ["lint", "--ledger", str(FIXTURE), "--parity"]
+    assert research.main([*args, str(good)]) == 0
+    capsys.readouterr()
+    assert research.main([*args, str(good), str(bad)]) == 1
+    assert "C1" in capsys.readouterr().out
+
+
+def test_downloads_lists_without_fetch(monkeypatch, capsys):
+    monkeypatch.setattr(research, "fetch", lambda *a: pytest.fail("fetched"))
+    assert research.main(["downloads", "--ledger", str(FIXTURE)]) == 0
+    out = capsys.readouterr().out
+    assert out.count("\n") == 1 and "S2" in out and "2400000" in out
+
+
+def test_download_requires_yes(monkeypatch, tmp_path):
+    monkeypatch.setattr(research, "fetch", lambda *a: pytest.fail("fetched"))
+    assert research.main(["download", "--ledger", str(FIXTURE),
+                          "--out", str(tmp_path / "o")]) == 1
+
+
+def test_download_yes_fetches_only_listed(monkeypatch, tmp_path):
+    got = []
+    monkeypatch.setattr(research, "fetch", lambda u, d: got.append((u, Path(d).name)))
+    assert research.main(["download", "--yes", "--ledger", str(FIXTURE),
+                          "--out", str(tmp_path / "o")]) == 0
+    assert got == [("https://example.org/reports/grid-outlook.pdf", "grid-outlook.pdf")]
+
+
+def _dl(tmp_path, file_urls):
+    data = load(FIXTURE)
+    data["sources"] = [dict(id=f"S{i}", url="u", date="d", grade="A", file_url=u)
+                       for i, u in enumerate(file_urls)]
+    return ledger_at(tmp_path, data)
+
+
+def test_download_rejects_non_http_scheme(monkeypatch, tmp_path):
+    monkeypatch.setattr(research, "fetch", lambda *a: pytest.fail("fetched"))
+    led = _dl(tmp_path, ["file:///etc/passwd"])
+    assert research.main(["download", "--yes", "--ledger", str(led),
+                          "--out", str(tmp_path / "o")]) == 1
+
+
+def test_fetch_rejects_scheme(tmp_path):
+    with pytest.raises(ValueError):
+        research.fetch("file:///etc/passwd", tmp_path / "x")
+
+
+def test_download_safe_names_and_duplicates(monkeypatch, tmp_path):
+    got = []
+    monkeypatch.setattr(research, "fetch", lambda u, d: got.append(Path(d)))
+    led = _dl(tmp_path, ["http://h/a/..", "http://h/"])
+    assert research.main(["download", "--yes", "--ledger", str(led),
+                          "--out", str(tmp_path / "o")]) == 0
+    assert all(p.parent == tmp_path / "o" and p.name not in ("..", "") for p in got)
+    dup = _dl(tmp_path, ["http://h/a.pdf", "http://i/a.pdf"])
+    assert research.main(["download", "--yes", "--ledger", str(dup),
+                          "--out", str(tmp_path / "o2")]) == 1
+
+
+def test_fetch_size_limit(monkeypatch, tmp_path):
+    import io
+    monkeypatch.setattr(research, "MAX_BYTES", 4)
+    monkeypatch.setattr(research.urllib.request, "urlopen",
+                        lambda url, timeout=0: io.BytesIO(b"123456789"))
+    with pytest.raises(ValueError):
+        research.fetch("http://h/a", tmp_path / "a")
+    assert not (tmp_path / "a").exists()
+
+
+def _fresh(tmp_path):
+    base = ["--root", str(tmp_path), "--slug", "c"]
+    research.main(["init", *base])
+    research.main(["source", *base, "--id", "S1", "--url", "u", "--date", "d", "--grade", "A"])
+    return base, tmp_path / ".superlite" / "research" / "c" / "ledger.json"
+
+
+def test_concurrent_claims_both_survive(tmp_path):
+    import threading
+    base, led = _fresh(tmp_path)
+    n = 8
+    barrier = threading.Barrier(n)
+    codes = []
+
+    def add(i):
+        barrier.wait()
+        codes.append(research.main(["claim", *base, "--id", f"C{i}", "--text", f"n is {i}",
+                                    "--source", "S1"]))
+
+    threads = [threading.Thread(target=add, args=(i,)) for i in range(n)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert codes == [0] * n
+    assert sorted(c["id"] for c in load(led)["claims"]) == sorted(f"C{i}" for i in range(n))
+
+
+def test_concurrent_claims_in_processes(tmp_path):
+    base, led = _fresh(tmp_path)
+    procs = [subprocess.Popen([sys.executable, str(SCRIPT), "claim", *base, "--id", f"P{i}",
+                               "--text", f"n is {i}", "--source", "S1"]) for i in range(6)]
+    assert [p.wait() for p in procs] == [0] * 6
+    assert len(load(led)["claims"]) == 6
+
+
+def test_parity_same_basename_keeps_every_input(tmp_path, capsys):
+    (tmp_path / "director").mkdir()
+    (tmp_path / "vp").mkdir()
+    good = tmp_path / "vp" / "report.md"
+    good.write_text(research_render.render(load(FIXTURE), "vp"))
+    bad = tmp_path / "director" / "report.md"
+    bad.write_text(research_render.render(load(FIXTURE), "director").replace("C1", "C-"))
+    args = ["lint", "--ledger", str(FIXTURE), "--parity"]
+    assert research.main([*args, str(bad), str(good)]) == 1
+    assert "director" in capsys.readouterr().out
+    assert research.main([*args, str(good), str(bad)]) == 1
+
+
+def _claims(base):
+    for cid in ("C1", "C2"):
+        research.main(["claim", *base, "--id", cid, "--text", f"n is {cid}", "--source", "S1"])
+
+
+def test_contradiction_resolve_updates_in_place(tmp_path):
+    base, led = _fresh(tmp_path)
+    _claims(base)
+    assert research.main(["contradiction", *base, "--claim", "C1", "--claim", "C2",
+                          "--cause", "units"]) == 0
+    assert load(led)["contradictions"][0]["id"] == "K1"
+    assert research.main(["contradiction", *base, "--id", "K1", "--status", "resolved",
+                          "--cause", "different year"]) == 0
+    ks = load(led)["contradictions"]
+    assert len(ks) == 1
+    assert (ks[0]["status"], ks[0]["cause"], ks[0]["claims"]) == ("resolved", "different year",
+                                                                  ["C1", "C2"])
+    assert lint(led) == 0
+    assert research.main(["contradiction", *base, "--claim", "C1", "--claim", "C2",
+                          "--cause", "again"]) == 0
+    assert [k["id"] for k in load(led)["contradictions"]] == ["K1", "K2"]
+
+
+def test_contradiction_duplicate_id_exits_1(tmp_path):
+    base, led = _fresh(tmp_path)
+    _claims(base)
+    args = ["contradiction", *base, "--id", "X", "--claim", "C1", "--claim", "C2", "--cause", "c"]
+    assert research.main(args) == 0
+    assert research.main(args) == 1
+    assert len(load(led)["contradictions"]) == 1
+    data = load(led)
+    data["contradictions"].append(dict(data["contradictions"][0]))
+    led.write_text(json.dumps(data))
+    assert lint(led) == 1
+    assert research.main(["contradiction", *base, "--id", "X", "--cause", "z"]) == 1
+
+
+def test_contradiction_ids_assigned_on_fixture(tmp_path):
+    led = ledger_at(tmp_path)
+    assert research.main(["contradiction", "--ledger", str(led), "--id", "K2",
+                          "--status", "resolved", "--cause", "done"]) == 0
+    ks = load(led)["contradictions"]
+    assert [k["id"] for k in ks] == ["K1", "K2"] and ks[1]["cause"] == "done"
+    assert lint(led) == 0
+
+
+def test_render_parts_list_every_record(capsys):
+    data = load(FIXTURE)
+    args = ["render", "--ledger", str(FIXTURE), "--part"]
+    assert research.main([*args, "sources"]) == 0
+    out = capsys.readouterr().out
+    assert all(f"[{s['id']}]" in out for s in data["sources"])
+    assert research.main([*args, "contradictions"]) == 0
+    out = capsys.readouterr().out
+    assert all(k["cause"] in out for k in data["contradictions"])
+    assert "open" in out and "resolved" in out
+    assert research.main([*args, "report"]) == 1
+    assert research.main([*args, "report", "--level", "simple"]) == 0
+
+
+# ---- parked ledgers (run state moved to session-store/<session>/ by a session switch)
+
+def _repo(tmp_path):
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    return tmp_path
+
+
+def _park(repo, session="s1", slug="old"):
+    """Build a ledger for `slug`, then park the run files the way session_registry does."""
+    base = ["--root", str(repo), "--slug", slug]
+    assert research.main(["init", *base, "--topic", "t"]) == 0
+    shutil.copy(FIXTURE, repo / ".superlite" / "research" / slug / "ledger.json")
+    live_sl = repo / ".superlite"
+    session_registry.park_run_state(live_sl, session_registry.store_path(repo, session))
+    return base
+
+
+def test_parked_ledger_renders_and_lints(tmp_path, capsys):
+    repo = _repo(tmp_path)
+    base = _park(repo)
+    assert not (repo / ".superlite" / "research").exists()
+    capsys.readouterr()
+    assert research.main(["render", *base, "--level", "vp", "--part", "report"]) == 0
+    assert capsys.readouterr().out.strip()
+    assert research.main(["lint", *base]) == 0
+
+
+def test_parked_ledger_refuses_mutations(tmp_path, capsys):
+    repo = _repo(tmp_path)
+    base = _park(repo, session="s1")
+    store_led = repo / ".superlite" / "session-store" / "s1" / "research" / "old" / "ledger.json"
+    before = store_led.read_text()
+    capsys.readouterr()
+    assert research.main(["claim", *base, "--id", "C9", "--text", "x"]) == 1
+    err = capsys.readouterr().err
+    assert "parked" in err and "session use" in err and "s1" in err
+    assert research.main(["init", *base]) == 1
+    assert research.main(["download", *base, "--yes"]) == 1
+    assert store_led.read_text() == before
+
+
+def test_list_shows_live_and_parked(tmp_path, capsys):
+    repo = _repo(tmp_path)
+    _park(repo, session="s1", slug="old")
+    assert research.main(["init", "--root", str(repo), "--slug", "new"]) == 0
+    capsys.readouterr()
+    assert research.main(["list", "--root", str(repo)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert any(ln.startswith("new live ") and ln.endswith("ledger.json") for ln in lines)
+    assert any(ln.startswith("old parked:s1 ") and ln.endswith("ledger.json") for ln in lines)
+
+
+def test_live_ledger_wins_over_parked_with_same_slug(tmp_path, capsys):
+    repo = _repo(tmp_path)
+    base = _park(repo, slug="dup")
+    live = repo / ".superlite" / "research" / "dup" / "ledger.json"
+    live.parent.mkdir(parents=True)
+    live.write_text(json.dumps({"topic": "live one", "tiers": [], "sources": [], "claims": [],
+                                "contradictions": []}))
+    capsys.readouterr()
+    assert research.main(["claim", *base, "--id", "C1", "--text", "x"]) == 0
+    assert load(live)["topic"] == "live one" and load(live)["claims"][0]["id"] == "C1"
+
+
+def test_unknown_slug_exits_1(tmp_path, capsys):
+    repo = _repo(tmp_path)
+    _park(repo)
+    for cmd in (["render", "--level", "vp"], ["lint"], ["downloads"], ["claim", "--id", "C1", "--text", "x"]):
+        assert research.main([cmd[0], "--root", str(repo), "--slug", "nope", *cmd[1:]]) == 1
+
+
+# ---- explicit --ledger paths and ledgers of other registered session worktrees
+
+def _store_ledger(repo, session="s1", slug="old"):
+    _park(repo, session=session, slug=slug)
+    return repo / ".superlite" / "session-store" / session / "research" / slug / "ledger.json"
+
+
+def test_explicit_parked_path_is_read_only(monkeypatch, tmp_path, capsys):
+    repo = _repo(tmp_path)
+    led = _store_ledger(repo)
+    before = led.read_text()
+    monkeypatch.setattr(research, "fetch", lambda *a: pytest.fail("fetched a parked ledger"))
+    capsys.readouterr()
+    assert research.main(["claim", "--root", str(repo), "--ledger", str(led), "--id", "C9", "--text", "x"]) == 1
+    assert "session use" in capsys.readouterr().err
+    assert research.main(["download", "--root", str(repo), "--ledger", str(led), "--yes"]) == 1
+    assert research.main(["lint", "--root", str(repo), "--ledger", str(led)]) == 0
+    assert led.read_text() == before
+
+
+def _two_checkouts(tmp_path):
+    """A repo with a commit and a second registered session worktree `s2`; returns (hub, worktree)."""
+    repo = tmp_path / "hub"
+    repo.mkdir()
+    for cmd in (["init", "-q", "-b", "main"], ["config", "user.email", "t@e.com"], ["config", "user.name", "t"],
+                ["commit", "-q", "--allow-empty", "-m", "init"]):
+        subprocess.run(["git", *cmd], cwd=repo, check=True)
+    wt = tmp_path / "wt-s2"
+    subprocess.run(["git", "worktree", "add", "-q", "-b", "s2", str(wt)], cwd=repo, check=True)
+    session_registry.update(repo, lambda reg: reg["sessions"].append(
+        {"slug": "s2", "branch": "s2", "worktree": str(wt), "status": "parallel"}))
+    return repo.resolve(), wt.resolve()
+
+
+def _ledger_in(checkout, slug, topic):
+    led = checkout / ".superlite" / "research" / slug / "ledger.json"
+    led.parent.mkdir(parents=True)
+    led.write_text(json.dumps({"topic": topic, "tiers": [], "sources": [], "claims": [], "contradictions": []}))
+    return led
+
+
+def test_ledger_in_other_session_worktree_is_listed_found_and_read_only(tmp_path, capsys):
+    hub, wt = _two_checkouts(tmp_path)
+    led = _ledger_in(wt, "far", "far topic")
+    capsys.readouterr()
+    assert research.main(["list", "--root", str(hub)]) == 0
+    assert f"far live:s2 {led}" in capsys.readouterr().out.splitlines()
+    assert research.main(["render", "--root", str(hub), "--slug", "far", "--part", "sources"]) == 0
+    before = led.read_text()
+    assert research.main(["claim", "--root", str(hub), "--slug", "far", "--id", "C1", "--text", "x"]) == 1
+    err = capsys.readouterr().err
+    assert "s2" in err and str(wt) in err
+    assert research.main(["claim", "--root", str(hub), "--ledger", str(led), "--id", "C1", "--text", "x"]) == 1
+    assert led.read_text() == before
+
+
+def test_live_ledger_here_wins_over_same_slug_in_other_worktree(tmp_path, capsys):
+    hub, wt = _two_checkouts(tmp_path)
+    _ledger_in(wt, "dup", "elsewhere")
+    here = _ledger_in(hub, "dup", "here")
+    capsys.readouterr()
+    assert research.main(["claim", "--root", str(hub), "--slug", "dup", "--id", "C1", "--text", "x"]) == 0
+    assert load(here)["claims"][0]["id"] == "C1"
+    assert load(wt / ".superlite" / "research" / "dup" / "ledger.json")["claims"] == []

@@ -31,6 +31,13 @@ E, X, R = sf.EMPTY, sf.EXISTING, sf.RUNNING
     ("a habit tracker", E, "mvp"),
     ("build a todo app with a login page and a database", E, "regular"),
     ("prototype a recipe planner", E, "mvp"),
+    ("research how solid-state batteries compare to lithium-ion", X, "research"),
+    ("research how solid-state batteries compare to lithium-ion", E, "research"),
+    ("survey the literature on caching strategies and cite sources", X, "research"),
+    ("investigate which sources agree on grid storage costs", E, "research"),
+    ("the research export fails with a KeyError", X, "debug"),  # debug keeps precedence
+    ("review the literature section of my branch", X, "review"),  # review keeps precedence
+    ("add a compare button to the report page", X, "feature"),
     ("where are we", R, "status"),
     ("resume the build", R, "resume"),
     ("add CSV export to the report page", R, "resume"),  # a run in progress comes first
@@ -68,3 +75,11 @@ def test_state_override_and_tech_names_are_not_files(tmp_path):
     assert cp.out.startswith("suggest: mvp - empty folder")
     assert sf.size("port the dashboard to next.js and react.js")["files"] == []
     assert sf.size("edit lib/x.rs")["files"] == ["lib/x.rs"]
+
+
+def test_research_is_a_flow_with_trigger_words():
+    assert "research" in sf.FLOWS and "research" in sf.WORDS
+    for w in ("research", "investigate", "survey", "literature", "compare", "sources"):
+        assert w in sf.WORDS["research"]
+    cp = run(SUGGEST, "--text", "research how solid-state batteries compare to lithium-ion", "--state", X)
+    assert cp.out.startswith("suggest: research - existing code, ")

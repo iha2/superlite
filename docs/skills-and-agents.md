@@ -10,6 +10,7 @@
 - `proof`
 - `shipping`
 - `mvp-prototype` (MVP mode: the clickable prototype and its feedback)
+- `research` (research mode: the ledger, parallel researchers, the report at the user's level)
 - `writing-specs` (only when `agent_specs` is on or the user asks for a spec: what done looks like and why, before the plan)
 
 Agents (`agents/`):
@@ -18,6 +19,7 @@ Agents (`agents/`):
 - `implementer-haiku` (haiku, high): builds one `Kind: mechanical` task (fully specified, small, fast tests) exactly as written; stops rather than guesses.
 - `package-reviewer` (sonnet, medium): reviews one checkpointed task or one package, then fixes its own findings with regression tests.
 - `final-reviewer` (opus, high): a fresh one-turn reviewer that reads only the review packet (Read, Grep, Glob). It returns findings, each with a fix tier, and never fixes.
+- `researcher` (sonnet, medium): gathers evidence for one sub-question and records sources and claims in the research ledger; never writes the report.
 - `fixer-sonnet` (sonnet, medium): tier 1, cause known (including a fully specified change), fix confined to one module.
 - `fixer-sonnet-high` (sonnet, high): tier 2, cause known but the fix spans modules or a seam, or a known probe class.
 - `fixer-opus` (opus, high): tier 3, cause unknown (it diagnoses), or a lower tier failed twice.

@@ -71,7 +71,7 @@ All registry writes take `.superlite/sessions.lock` and replace `sessions.json` 
 
 ## Auto-start
 
-Every flow (start, regular, mvp, feature, debug, small, review) runs `superlite-cli session ensure --slug <topic>` once the topic is known, before its first other `superlite-cli` call. Nobody types `superlite-cli session create`. Exit codes: 0 ok, 2 error, 3 `REDIRECT`, 4 `ASK`. `SUPERLITE_NO_AUTO_SESSION=1` prints `session: auto-start off` and changes nothing.
+Every flow (start, regular, mvp, feature, debug, small, review, research) runs `superlite-cli session ensure --slug <topic>` once the topic is known, before its first other `superlite-cli` call. Nobody types `superlite-cli session create`. Exit codes: 0 ok, 2 error, 3 `REDIRECT`, 4 `ASK`. `SUPERLITE_NO_AUTO_SESSION=1` prints `session: auto-start off` and changes nothing.
 
 | Where it runs | What `ensure` does |
 |---|---|
