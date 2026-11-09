@@ -2,8 +2,9 @@
 """Level-free research evidence ledger.
 
 Subcommands: init, source, claim, contradiction, lint, render, downloads,
-download. Ledger lives at <root>/<run folder>/research/<slug>/ledger.json with
-keys topic, tiers, sources, claims, contradictions. No audience wording is
+download, list. Ledger lives at <root>/<run folder>/research/<slug>/ledger.json with
+keys topic, tiers, sources, claims, contradictions. A slug with no live ledger is
+looked up in the parked session stores (read-only). No audience wording is
 stored. Stdlib only.
 """
 import argparse
@@ -17,18 +18,57 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import base  # noqa: E402
 import research_render  # noqa: E402
+import session_registry  # noqa: E402
 import state  # noqa: E402
 
 STATUSES = ("resolved", "open")
 PARTS = ("report", "sources", "contradictions")
 
 
-def ledger_path(args):
+def _live_path(root, slug):
+    return Path(root) / state.DIR_NAME / "research" / slug / "ledger.json"
+
+
+def parked_ledgers(root, slug=None):
+    """[(session, slug, path)] for every ledger in a parked session store of the repo hub, store of the session
+    named like `slug` first. Only slug's ledgers when slug is given."""
+    try:
+        hub = session_registry.hub_root(Path(root))
+    except base.GitError:
+        hub = Path(root).resolve()
+    stores = state.path(hub, session_registry.STORE)
+    if not stores.is_dir():
+        return []
+    names = sorted(p.name for p in stores.iterdir() if p.is_dir())
+    if slug in names:
+        names.remove(slug)
+        names.insert(0, slug)
+    found = []
+    for name in names:
+        for led in sorted((stores / name / "research").glob("*/ledger.json")):
+            if slug in (None, led.parent.name):
+                found.append((name, led.parent.name, led))
+    return found
+
+
+def locate(args):
+    """(path, session): the live ledger of --slug, else a parked one (session = its store's name), else the live
+    path with session None. --ledger is used as given."""
     if getattr(args, "ledger", None):
-        return Path(args.ledger)
+        return Path(args.ledger), None
     if not args.slug:
         raise SystemExit("research: --slug or --ledger required")
-    return Path(args.root) / state.DIR_NAME / "research" / args.slug / "ledger.json"
+    live = _live_path(args.root, args.slug)
+    if live.is_file():
+        return live, None
+    parked = parked_ledgers(args.root, args.slug)
+    if parked:
+        return parked[0][2], parked[0][0]
+    return live, None
+
+
+def ledger_path(args):
+    return locate(args)[0]
 
 
 def load(path):
@@ -106,7 +146,11 @@ def _need(args):
 
 def _mutate(args, fn, create=False):
     """Run fn(data) on the ledger under base.locked_update: read, check, change and atomic write in one lock."""
-    path = ledger_path(args)
+    path, session = locate(args)
+    if session:
+        print(f"research: ledger {path} is parked in session {session}; "
+              f"switch to it first: superlite-cli session use --slug {session}", file=sys.stderr)
+        return 1
     if not create and not path.is_file():
         print(f"research: no ledger at {path}", file=sys.stderr)
         return 1
@@ -290,6 +334,11 @@ def cmd_download(args):
         print("research: download needs --yes; run downloads to list files",
               file=sys.stderr)
         return 1
+    path, session = locate(args)
+    if session:
+        print(f"research: ledger {path} is parked in session {session}; "
+              f"switch to it first: superlite-cli session use --slug {session}", file=sys.stderr)
+        return 1
     path, data = _need(args)
     if data is None:
         return 1
@@ -311,6 +360,15 @@ def cmd_download(args):
             print(f"research: {name}: {e}", file=sys.stderr)
             return 1
         print(f"{name}\t{s['id']}\t{out / name}")
+    return 0
+
+
+def cmd_list(args):
+    live = Path(args.root) / state.DIR_NAME / "research"
+    for led in sorted(live.glob("*/ledger.json")):
+        print(f"{led.parent.name} live {led}")
+    for session, slug, led in parked_ledgers(args.root):
+        print(f"{slug} parked:{session} {led}")
     return 0
 
 
@@ -355,6 +413,7 @@ def build_parser():
     p = add("download", cmd_download)
     p.add_argument("--yes", action="store_true")
     p.add_argument("--out", default="downloads")
+    add("list", cmd_list)
     return ap
 
 

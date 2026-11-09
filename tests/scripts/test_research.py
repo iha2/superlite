@@ -13,6 +13,7 @@ FIXTURE = ROOT / "tests" / "fixtures" / "research" / "ledger.json"
 sys.path.insert(0, str(SCRIPT.parent))
 import research  # noqa: E402
 import research_render  # noqa: E402
+import session_registry  # noqa: E402
 
 
 def ledger_at(tmp_path, data=None):
@@ -336,3 +337,74 @@ def test_render_parts_list_every_record(capsys):
     assert "open" in out and "resolved" in out
     assert research.main([*args, "report"]) == 1
     assert research.main([*args, "report", "--level", "simple"]) == 0
+
+
+# ---- parked ledgers (run state moved to session-store/<session>/ by a session switch)
+
+def _repo(tmp_path):
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    return tmp_path
+
+
+def _park(repo, session="s1", slug="old"):
+    """Build a ledger for `slug`, then park the run files the way session_registry does."""
+    base = ["--root", str(repo), "--slug", slug]
+    assert research.main(["init", *base, "--topic", "t"]) == 0
+    shutil.copy(FIXTURE, repo / ".superlite" / "research" / slug / "ledger.json")
+    live_sl = repo / ".superlite"
+    session_registry.park_run_state(live_sl, session_registry.store_path(repo, session))
+    return base
+
+
+def test_parked_ledger_renders_and_lints(tmp_path, capsys):
+    repo = _repo(tmp_path)
+    base = _park(repo)
+    assert not (repo / ".superlite" / "research").exists()
+    capsys.readouterr()
+    assert research.main(["render", *base, "--level", "vp", "--part", "report"]) == 0
+    assert capsys.readouterr().out.strip()
+    assert research.main(["lint", *base]) == 0
+
+
+def test_parked_ledger_refuses_mutations(tmp_path, capsys):
+    repo = _repo(tmp_path)
+    base = _park(repo, session="s1")
+    store_led = repo / ".superlite" / "session-store" / "s1" / "research" / "old" / "ledger.json"
+    before = store_led.read_text()
+    capsys.readouterr()
+    assert research.main(["claim", *base, "--id", "C9", "--text", "x"]) == 1
+    err = capsys.readouterr().err
+    assert "parked" in err and "session use" in err and "s1" in err
+    assert research.main(["init", *base]) == 1
+    assert research.main(["download", *base, "--yes"]) == 1
+    assert store_led.read_text() == before
+
+
+def test_list_shows_live_and_parked(tmp_path, capsys):
+    repo = _repo(tmp_path)
+    _park(repo, session="s1", slug="old")
+    assert research.main(["init", "--root", str(repo), "--slug", "new"]) == 0
+    capsys.readouterr()
+    assert research.main(["list", "--root", str(repo)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert any(ln.startswith("new live ") and ln.endswith("ledger.json") for ln in lines)
+    assert any(ln.startswith("old parked:s1 ") and ln.endswith("ledger.json") for ln in lines)
+
+
+def test_live_ledger_wins_over_parked_with_same_slug(tmp_path, capsys):
+    repo = _repo(tmp_path)
+    base = _park(repo, slug="dup")
+    live = repo / ".superlite" / "research" / "dup" / "ledger.json"
+    live.parent.mkdir(parents=True)
+    live.write_text(json.dumps({"topic": "live one", "tiers": [], "sources": [], "claims": [],
+                                "contradictions": []}))
+    capsys.readouterr()
+    assert research.main(["claim", *base, "--id", "C1", "--text", "x"]) == 0
+    assert load(live)["topic"] == "live one" and load(live)["claims"][0]["id"] == "C1"
+
+
+def test_unknown_slug_exits_1(tmp_path, capsys):
+    repo = _repo(tmp_path)
+    _park(repo)
+    for cmd in (["render", "--level", "vp"], ["lint"], ["downloads"], ["claim", "--id", "C1", "--text", "x"]):
+        assert research.main([cmd[0], "--root", str(repo), "--slug", "nope", *cmd[1:]]) == 1

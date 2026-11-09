@@ -1,5 +1,6 @@
 """research_render: four levels of one level-free ledger, and the parity check against it."""
 import copy
+import re
 import sys
 
 import pytest
@@ -178,3 +179,119 @@ def test_bad_id_raises():
 def test_unknown_level_raises():
     with pytest.raises(ValueError):
         rr.render(LEDGER, "ceo")
+
+
+RECORD = re.compile(r"^- \[")
+HEAD_WORDS = {h for hs in rr.HEADS.values() for h in hs}
+
+
+def prose(text):
+    """Non-blank lines that are not records, not none-markers and not a plain heading of the record layout."""
+    return [ln for ln in text.splitlines()
+            if ln.strip() and not RECORD.match(ln) and ln != "- none" and ln.split(":")[0] not in HEAD_WORDS]
+
+
+def records(text):
+    return [ln for ln in text.splitlines() if RECORD.match(ln) and ln != "- none"]
+
+
+def test_prose_differs_per_level_with_three_distinct_lines():
+    t = texts()
+    for lv, text in t.items():
+        others = {ln for o, x in t.items() if o != lv for ln in prose(x)}
+        assert len([ln for ln in prose(text) if ln not in others]) >= 3, lv
+    for a in rr.LEVELS:
+        for b in rr.LEVELS:
+            assert a == b or set(prose(t[a])) != set(prose(t[b]))
+
+
+def test_record_lines_identical_across_levels():
+    t = texts()
+    base = records(t["researcher"])
+    assert len(base) == 8
+    for lv in rr.LEVELS:  # only the status word at the end of a contradiction differs
+        assert [ln.rsplit(" (", 1)[0] for ln in records(t[lv])] == [ln.rsplit(" (", 1)[0] for ln in base]
+        assert [ln for ln in records(t[lv]) if "[S" in ln or "[C" in ln] == [ln for ln in base if "[S" in ln or "[C" in ln]
+
+
+def test_prose_never_looks_like_a_record():
+    for text in texts().values():
+        for ln in text.splitlines():
+            if not ln.startswith("- "):
+                assert not ln.lstrip().startswith("- [")
+
+
+def test_level_prose_blocks_name_their_audience_content():
+    t = texts()
+    d, v, r, s = (t[lv] for lv in rr.LEVELS)
+    assert "Bottom line:" in d and "Decision risk:" in d and "S1 (paper, primary data, 2026-09-15)" in d
+    assert "claims C3, C4" in d and "method" not in d.lower()
+    assert "What this means:" in v and "Confidence:" in v
+    assert "Claims backed by one source: C1, C2, C4." in v and "Claims backed by several sources: C3." in v
+    assert "Method and evidence quality:" in r and "primary data > peer-reviewed > trade press" in r
+    assert "  S2 (report, trade press, 2024-03-02)" in r and "C1 (S1), C2 (S2), C4 (S2)" in r
+    assert "  open C3,C4: C3 counts all segments, C4 only homes." in r
+    assert "In short:" in s and "Claims C3 and C4 do not match yet. The recorded reason: C3 counts" in s
+    assert "A grade says how much weight a source gets" in s and '"Sources disagree" means' in s
+
+
+def test_rewriting_or_deleting_prose_keeps_parity_but_altering_a_record_does_not():
+    base = texts()
+    for lv in rr.LEVELS:
+        t = dict(base)
+        keep = [ln for ln in base[lv].splitlines() if ln not in prose(base[lv])]
+        t[lv] = "\n".join(keep) + "\n"  # prose deleted
+        assert rr.parity(t, LEDGER) == [] and rr.parity(t) == [], lv
+        t[lv] = "\n".join(f"{ln} (rewritten)" if ln in prose(base[lv]) else ln for ln in base[lv].splitlines())
+        assert rr.parity(t, LEDGER) == [] and rr.parity(t) == [], lv
+        t[lv] = base[lv].replace("[C3] Installed capacity reached 180 GWh.", "[C3] Installed capacity reached 190 GWh.")
+        assert any(m.startswith(f"{lv}: differs claim C3") for m in rr.parity(t, LEDGER)), lv
+        assert any(m.startswith(lv) for m in rr.parity(t)), lv
+
+
+def test_prose_cannot_smuggle_a_record_into_parity():
+    t = texts()
+    t["vp"] = t["vp"].replace("What this means:", "What this means:\n  - [C9] Invented. (sources: S1)")
+    assert rr.parity(t, LEDGER) == []
+
+
+def counts(led):
+    """Every number the prose may state: counts of ledger items, derived independently of the renderer."""
+    cites = [set(c["sources"]) for c in led.get("claims", [])]
+    cons = led.get("contradictions", [])
+    n_open = sum(x["status"] == "open" for x in cons)
+    n_top = sum(s["grade"] == led["tiers"][0] for s in led.get("sources", [])) if led.get("tiers") else 0
+    return {len(led.get("claims", [])), len(led.get("sources", [])), n_open, len(cons) - n_open,
+            sum(len(c) == 1 for c in cites), n_top}
+
+
+def test_prose_numbers_are_ledger_counts():
+    led = LEDGER
+    allowed = counts(led)
+    assert allowed == {4, 2, 1, 3}
+    fields = [led["topic"], *led["tiers"], *(x["cause"] for x in led["contradictions"])]
+    for s in led["sources"]:
+        fields += [s["id"], s["date"], s["kind"], s["grade"]]
+    fields += [c["id"] for c in led["claims"]]
+    for lv, text in texts().items():
+        for ln in prose(text):
+            for f in sorted(fields, key=len, reverse=True):
+                ln = ln.replace(f, " ")
+            assert {int(n) for n in re.findall(r"\d+", ln)} <= allowed, (lv, ln)
+
+
+def test_prose_counts_follow_the_ledger():
+    led = copy.deepcopy(LEDGER)
+    led["contradictions"][1]["status"] = "resolved"
+    t = texts(led)
+    assert "Open conflicts: 0." in t["director"] and "nothing is recorded as unresolved" in t["director"]
+    assert "0 conflicts still open and 2 resolved" in t["vp"] and "Confidence: moderate" in t["vp"]
+    assert "no disagreement is left" in t["simple"] and "do not match yet" not in t["simple"]
+    assert rr.parity(t, led) == []
+
+
+def test_prose_is_template_only_no_topic_words():
+    led = {"topic": "zebra migration", "claims": [{"id": "k1", "text": "x", "sources": ["a"]}],
+           "sources": [{"id": "a", "date": "2020-01-01", "grade": "g", "kind": "k"}], "tiers": ["g"]}
+    for text in texts(led).values():
+        assert all("zebra" not in ln for ln in prose(text))

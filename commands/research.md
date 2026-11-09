@@ -20,7 +20,7 @@ Then load `superlite:research` and follow it: plan, critical questions, approval
 ## Re-render
 
 With a `--level` flag, only re-render: no `session ensure` for a new run, no `research init`, no agent dispatch.
-1. List the existing ledgers with `ls .superlite/research/`. Use the slug given; otherwise, if more than one ledger exists, ask which; if one, use it.
-2. Run `superlite-cli research render --slug <slug> --level <level>` into `docs/plans/<date>-<topic>.findings.md`.
+1. List the ledgers with `superlite-cli research list` (lines `<slug> <live|parked:<session>> <path>`; parked ones belong to a closed or switched session). Resolve the slug given through it; otherwise, if more than one ledger is listed, ask which; if one, use it. Render and lint read a parked ledger as is; never mutate one (to change it, run `superlite-cli session use` for that session first).
+2. Run `superlite-cli research render --slug <slug> --level <level>` into `docs/plans/<date>-<topic>.findings.md`, written in the checkout that owns the report path (the checkout of the session that made the report, not necessarily the current one).
 3. Run `superlite-cli research lint --slug <slug> --parity docs/plans/<date>-<topic>.findings.md`.
 4. Report the file, the level and the lint result.

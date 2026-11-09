@@ -38,7 +38,11 @@ Director, VP, Researcher and Simple differ in wording only. Every level
 shows the same claim ids, citations, numbers and contradictions with
 causes. Changing level re-renders from the ledger (`research render
 --slug <slug> --level`, or `/superlite:research --level L [slug]`);
-nothing is re-researched.
+nothing is re-researched. After a session switch or close the ledger is
+parked in the session store: `research list` shows every ledger as
+`<slug> <live|parked:<session>> <path>`; render, lint and downloads read a
+parked one, while init, source, claim, contradiction and download refuse it
+until `superlite-cli session use` brings that session back.
 
 ## Output files
 
