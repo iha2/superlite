@@ -14,13 +14,18 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
+import session_archive as A  # noqa: E402
 import session_registry as R  # noqa: E402
+import session_wip as W  # noqa: E402
+import claude_create  # noqa: E402
+import host_harness as harness  # noqa: E402
 import state  # noqa: E402
+from worktree_home import harness_worktree, session_dir  # noqa: E402,F401  (harness_worktree re-exported)
 from journal import Journal, JournalError  # noqa: E402
 from session_registry import (
-    split_move, untracked_gate, untracked_files, paths_text,  # noqa: E402
+    split_move, untracked_gate,  # noqa: E402
     EXIT_REDIRECT, GitError, base_now, base_row, branch_exists, branch_for, branch_owner, current_branch,
-    default_base, drop_stashes, find_row, free_slug, git, hide_superlite, hub_root, in_progress, is_dirty,
+    default_base, drop_stashes, find_row, free_slug, git, hide_all, hub_root, in_progress, is_dirty,
     is_open, move_run_state, now_ms, owned_worktree, park_run_state, print_redirect, read, registry_lock,
     restore_run_state, row_at, row_base, run_entries, same, session_line, session_stashes, sessions_dir,
     set_run, stash_apply, stash_msg, stash_push, start_dir, store_path, toplevel, upsert_row, validate_slug,
@@ -70,7 +75,7 @@ def enter_session(root: Path, reg: dict, host: Path, row: dict, j: Journal | Non
     """Switch the host to row's branch, restore its run files and its stash; mark it active."""
     slug, branch = row["slug"], row["branch"]
     if not branch_exists(root, branch):
-        git("branch", branch, reg.get("base") or default_base(root), cwd=root)
+        git("branch", branch, row.get("base") or reg.get("base") or default_base(root), cwd=root)
     if current_branch(host) != branch:
         prev = git("rev-parse", "HEAD", cwd=host).stdout.strip()
         prev_branch = current_branch(host)
@@ -80,6 +85,8 @@ def enter_session(root: Path, reg: dict, host: Path, row: dict, j: Journal | Non
             j.undo(lambda: git(*back, cwd=host, check=False), "switch back")
     store = store_path(root, slug)
     restore_run_state(store, state.run_dir(host))
+    if j:  # restoring empties the store, so a later failure must park the run files again
+        j.undo(lambda: park_run_state(state.run_dir(host), store), "run files")
     for s in reg["sessions"]:
         if s.get("slug") != slug and same(s.get("worktree"), host) and s.get("status") == "active":
             s["status"] = "parked"
@@ -149,6 +156,14 @@ def cmd_ensure(a) -> int:  # O(tree)
 def _ensure(root: Path, here: Path, want: str, a) -> int:
     reg = read(root)
     host = root
+    gone = None if getattr(a, "branch", None) else archived_row(root, reg, want)
+    if gone and not same(here, host) and same(gone.get("worktree"), here):  # its own adopted worktree: in place
+        with Journal() as j:
+            return restore_archived(root, reg, host, gone, j)
+    if gone:  # a closed session: bring it back
+        from types import SimpleNamespace
+        import session_switch
+        return session_switch._use(root, want, SimpleNamespace(**{**vars(a), "continue_apply": False}))
     row = row_at(reg, here, host)
     exist = getattr(a, "branch", None)
     if exist:
@@ -158,7 +173,8 @@ def _ensure(root: Path, here: Path, want: str, a) -> int:
     if is_open(row) and (not exist or row.get("branch") == exist) and (
             row["slug"] == want or row.get("topic") == want or not same(here, host)):
         print(f"session: {row['slug']} already open here")
-        session_line(row.get("worktree") or here, row["slug"], row.get("branch") or branch_for(row["slug"]))
+        session_line(row.get("worktree") or here, row["slug"],
+                     row.get("branch") or ("HEAD" if row.get("detached") else branch_for(row["slug"])))
         return 0
     if row is None and not same(here, host) and not exist:
         return _register_linked(root, reg, here, want)
@@ -217,17 +233,22 @@ def _redirect_to_owner(root: Path, reg: dict, host: Path, owner: str, want: str,
 
 
 def _register_linked(root: Path, reg: dict, here: Path, want: str) -> int:
-    """An unregistered linked worktree asking for a session: register it where it is."""
+    """An unregistered linked worktree asking for a session: adopt it where it is. Git is never changed."""
     slug = free_slug(root, reg, want)
-    branch = current_branch(here)
+    cur = current_branch(here)
+    head = git("rev-parse", "HEAD", cwd=here).stdout.strip()
+    detached = cur == "HEAD"
+    branch = None if detached else claude_create.adopt_branch(here, slug, cur)
     upsert_row(reg, {"slug": slug, "branch": branch, "worktree": here.as_posix(),
                      "store": store_path(root, slug).as_posix(), "has_stash": False, "status": "parallel",
-                     "owned": False, "run": "open", "created_at": now_ms(), "topic": want,
-                     **base_now(root, reg)})
-    hide_superlite(root)
+                     "owned": False, "adopted_branch": True, "harness": harness_worktree(here, branch),
+                     "run": "open", "created_at": now_ms(), "topic": want,
+                     **({"detached": True, "head": head} if detached else {}),
+                     **base_row(root, reg, head if detached else branch)})
+    hide_all(root)
     write(root, reg)
-    print(f"session: registered {slug} where it is ({here.as_posix()}) on {branch}")
-    session_line(here, slug, branch)
+    print(f"session: registered {slug} where it is ({here.as_posix()}) on {branch or 'detached ' + head[:7]}")
+    session_line(here, slug, branch or "HEAD")
     return 0
 
 
@@ -236,7 +257,7 @@ def register_in_place(root: Path, reg: dict, host: Path, path: Path, want: str, 
     slug = free_slug(root, reg, want)
     if slug != want:
         print(f"session: slug {want} taken; using {slug}")
-    hide_superlite(root)
+    hide_all(root)
     at_host = same(path, host)
     reg["base"] = reg.get("base") or default_base(root)
     upsert_row(reg, {"slug": slug, "branch": exist, "worktree": path.as_posix(),
@@ -287,7 +308,10 @@ def _go_parallel(root: Path, reg: dict, host: Path, want: str, slug: str, exist:
     move = (not side and same(active_row.get("worktree"), host)
             and current_branch(host) not in ("HEAD", base))  # a session on the base branch stays: base lives here
     old_slug, old_branch = (active_row["slug"], current_branch(host)) if move else ("", "")
-    wt_old, wt = sessions_dir(root) / old_slug, sessions_dir(root) / slug
+    wt_old, wt = session_dir(root, old_slug), session_dir(root, slug)
+    rc = None if exist else claude_create.gate(root, slug, base, a)  # Claude cuts it when the hub is on the base
+    if rc is not None:
+        return rc
     note, keep = None, False
     if move:
         rc, note, keep = _move_gate(root, reg, host, old_slug, wt_old, base, a)
@@ -297,7 +321,7 @@ def _go_parallel(root: Path, reg: dict, host: Path, want: str, slug: str, exist:
         print(f"session: branch {exist} is checked out in {branch_owner(root, exist)}; nothing changed",
               file=sys.stderr)
         return 2
-    hide_superlite(root)
+    hide_all(root)
     with Journal() as j:
         if move:
             j.step("move the open session out of the main checkout")
@@ -345,11 +369,11 @@ def start_in_host(root: Path, reg: dict, host: Path, slug: str, base: str, mode:
     if in_progress(host):
         print("session: merge/rebase in progress; finish it before ensure", file=sys.stderr)
         return 2
-    hide_superlite(root)
-    reg["base"] = base
+    hide_all(root)
+    reg["base"] = reg.get("base") or base  # the registry base is set once; each row keeps its own
     live, held = state.run_dir(host), None
     row = {"slug": slug, "branch": branch, "worktree": host.as_posix(), "has_stash": False, "run": "open",
-           "created_at": now_ms(), **({"topic": topic} if topic else {}), **base_row(root, reg, existing),
+           "created_at": now_ms(), **({"topic": topic} if topic else {}), **base_row(root, {**reg, "base": base}, existing),
            **({"adopted_branch": True} if existing else {})}
     try:
         with Journal() as j:
@@ -400,6 +424,9 @@ def _create(root: Path, slug: str, a) -> int:
     if existing:
         print(f"session: {slug} already exists; run superlite-cli session use --slug {slug}", file=sys.stderr)
         return 2
+    here = toplevel(start_dir(a))
+    if a.worktree and harness.under_claude_code() and not same(here, host):  # the rerun inside Claude's worktree
+        return _register_linked(root, reg, here, slug)
     if branch_exists(root, branch):
         print(f"session: branch {branch} already exists; pick another --slug", file=sys.stderr)
         return 2
@@ -408,17 +435,18 @@ def _create(root: Path, slug: str, a) -> int:
         print(f"session: unknown --base {base}", file=sys.stderr)
         return 2
     if a.worktree:
-        return _create_parallel(root, reg, slug, branch, base)
+        rc = claude_create.gate(root, slug, base, a)
+        return rc if rc is not None else _create_parallel(root, reg, slug, branch, base)
     return _create_in_host(root, reg, host, slug, branch, base, a)
 
 
 def _create_parallel(root: Path, reg: dict, slug: str, branch: str, base: str) -> int:
-    wt = sessions_dir(root) / slug
+    wt = session_dir(root, slug)
     if wt.exists():
         print(f"session: worktree path already exists ({wt})", file=sys.stderr)
         return 2
-    reg["base"] = base
-    hide_superlite(root)
+    reg["base"] = reg.get("base") or base
+    hide_all(root)
     with Journal() as j:
         j.step("create the worktree")
         wt.parent.mkdir(parents=True, exist_ok=True)
@@ -430,7 +458,7 @@ def _create_parallel(root: Path, reg: dict, slug: str, branch: str, base: str) -
         upsert_row(reg, {"slug": slug, "branch": branch, "worktree": wt.as_posix(),
                          "store": store_path(root, slug).as_posix(), "has_stash": False,
                          "status": "parallel", "owned": True, "created_at": now_ms(), "run": "open",
-                         **base_now(root, reg)})
+                         **base_now(root, {**reg, "base": base})})
         write(root, reg)
     print(f"session: created parallel {slug} -> {wt.as_posix()} on {branch}")
     return 0
@@ -450,10 +478,10 @@ def _create_in_host(root: Path, reg: dict, host: Path, slug: str, branch: str, b
         print(f"session: host {host.as_posix()} has uncommitted changes outside any session; "
               f"commit or stash them first", file=sys.stderr)
         return 2
-    reg["base"] = base
-    hide_superlite(root)
+    reg["base"] = reg.get("base") or base
+    hide_all(root)
     row = {"slug": slug, "branch": branch, "worktree": host.as_posix(), "has_stash": False,
-           "created_at": now_ms(), "run": "open", **base_now(root, reg)}
+           "created_at": now_ms(), "run": "open", **base_now(root, {**reg, "base": base})}
     state.run_dir(host).mkdir(parents=True, exist_ok=True)
     with Journal() as j:
         if reg.get("active"):
@@ -482,114 +510,66 @@ def cmd_untracked(a) -> int:
     return 0
 
 
-# ---- close
+# ---- restore an archived session
 
-def cmd_close(a) -> int:  # O(tree)
-    slug = validate_slug(a.slug)
-    root = hub_root(start_dir(a))
-    with registry_lock(root):
-        return guarded("close", lambda: _close(root, slug, a))
-
-
-def _close(root: Path, slug: str, a) -> int:
-    reg = read(root)
-    row = find_row(reg, slug)
-    if not row:
-        print(f"session: no registered session {slug}", file=sys.stderr)
-        return 2
-    set_run(row, "finished")  # in memory until the registry is written
-    host = root
-    if reg.get("active") == slug and same(row.get("worktree"), host):
-        return _close_host(root, reg, row, slug, host, a)
-    if owned_worktree(root, row) and row.get("worktree") and Path(row["worktree"]).is_dir():
-        return _close_owned(root, reg, row, slug, a)
-    print(f"session: closed {slug}")
-    write(root, reg)
-    return 0
+def archived_row(root: Path, reg: dict, slug: str) -> dict | None:
+    """The row of a closed session from its manifest; None when the slug is registered or not archived."""
+    m = None if find_row(reg, slug) else A.read(root, slug)
+    return {k: v for k, v in m.items() if k not in ("closed_at", "wip_ref")} if m else None
 
 
-def _close_host(root: Path, reg: dict, row: dict, slug: str, host: Path, a) -> int:
-    if in_progress(host):
-        print("session: merge/rebase in progress; finish or abort it before close", file=sys.stderr)
-        return 2
-    base = row_base(root, reg, row)  # back to the base this session was cut from
-    owner = branch_owner(root, base) if base else None
-    if owner and not same(owner, host):  # base is checked out elsewhere: refuse before any change
-        print(f"session: {base} is checked out in {owner}; switch that worktree away from {base} "
-              f"before closing {slug}; nothing changed", file=sys.stderr)
-        return 2
-    stop, note, keep = untracked_gate(host, slug, getattr(a, "untracked", None) or reg.get("untracked"), base)
-    if stop is not None:
-        return stop
-    try:
-        with Journal() as j:
-            j.step("park the session")
-            park_active(root, reg, host, slug, keep_untracked=keep, j=j, write_reg=False)
-            if base and current_branch(host) != base:
-                j.step(f"switch {host.as_posix()} to {base}")
-                prev = current_branch(host)
-                git("switch", "-q", base, cwd=host)
-                j.undo(lambda: git("switch", "-q", prev, cwd=host, check=False), "switch back")
-            write(root, reg)
-    except JournalError as e:  # everything is undone; the session stays active and the registry is untouched
-        print(f"session: could not close {slug}: {e}; {slug} stays active", file=sys.stderr)
-        return 2
-    if note:
-        print(note)
-    print(f"session: closed {slug}; {host.as_posix()} is back on {base}")
-    return 0
-
-
-def _close_owned(root: Path, reg: dict, row: dict, slug: str, a) -> int:
-    wt = Path(row["worktree"])
-    if in_progress(wt):
-        print("session: merge/rebase in progress; finish or abort it before close", file=sys.stderr)
-        return 2
-    mode = getattr(a, "untracked", None) or reg.get("untracked")
-    files = untracked_files(wt)
-    if files and mode == "keep":  # untracked files stay: leave the worktree exactly as it is
-        row["status"] = "parallel"
-        write(root, reg)
-        print(f"session: kept {len(files)} untracked file(s) in place: {paths_text(files)}")
-        print(f"session: closed {slug}; worktree {wt.as_posix()} left in place")
-        return 0
-    note = None
-    if files:  # ask when unset; stash otherwise
-        stop, note, _ = untracked_gate(wt, slug, mode, row_base(root, reg, row))
-        if stop is not None:
-            return stop
-    store, live = store_path(root, slug), state.run_dir(wt)
-    had_run = bool(run_entries(live))
-    oid = None
-    try:
-        with Journal() as j:
-            j.step("stash the work")
-            oid = stash_push(wt, stash_msg(slug)) if is_dirty(wt) else None
-            if oid:
-                j.undo(_undo_stash(wt, oid), "stash")
-            j.step("park the run files")
-            park_run_state(live, store)
-            j.undo(lambda: restore_run_state(store, live), "run files")
-            j.step(f"remove {wt.as_posix()}")
-            git("worktree", "remove", str(wt), cwd=root)  # clean now, so no --force
-    except JournalError as e:  # put back; nothing is lost
-        print(f"session: could not remove {wt.as_posix()}: {e}; nothing changed", file=sys.stderr)
-        return 2
-    git("worktree", "prune", cwd=root, check=False)
-    row.update(worktree=None, status="parked", store=store.as_posix(), stash_message=stash_msg(slug),
-               stash_oid=oid, has_stash=bool(oid))
+def restore_archived(root: Path, reg: dict, host: Path, row: dict, j: Journal) -> int:
+    """Re-insert an archived row. A session that lived in an owned worktree gets that worktree back and a
+    REDIRECT; otherwise it is entered in the host. The manifest leaves the store with the run files."""
+    slug = row["slug"]
     branch = row.get("branch") or branch_for(slug)
-    if not a.keep_branch and not row.get("adopted_branch") and not oid and not had_run \
-            and branch_owner(root, branch) is None:
-        deleted = git("branch", "-d", branch, cwd=root, check=False)
-        if deleted.returncode == 0:
-            reg["sessions"] = [s for s in reg["sessions"] if s.get("slug") != slug]
+    wt_in = Path(row["worktree"]) if row.get("worktree") else None
+    if row.get("detached") and not (wt_in and wt_in.is_dir() and not same(wt_in, host)):
+        print(f"session: {slug} was a detached worktree that is gone; nothing to restore", file=sys.stderr)
+        return 2
+    manifest = store_path(root, slug) / "session.json"
+    text = manifest.read_text(encoding="utf-8") if manifest.is_file() else None
+    manifest.unlink(missing_ok=True)  # it is not a run file
+    if text is not None:
+        j.undo(lambda: (manifest.parent.mkdir(parents=True, exist_ok=True),
+                        manifest.write_text(text, encoding="utf-8", newline="\n")), "manifest")
+    wt0 = Path(row["worktree"]) if row.get("worktree") else None
+    if not row.get("owned") and row.get("adopted_branch") and wt0 and wt0.is_dir() and not same(wt0, host):
+        j.step("re-register in place")  # an adopted worktree still exists: no new checkout
+        restore_run_state(store_path(root, slug), state.run_dir(wt0))
+        upsert_row(reg, {**row, "status": "parallel", "run": "open", "has_stash": False,
+                         "store": store_path(root, slug).as_posix()})
+        write(root, reg)
+        print(f"session: registered {slug} where it is ({wt0.as_posix()})")
+        session_line(wt0, slug, row.get("branch") or "HEAD")
+        return 0
+    if row.get("owned") and row.get("worktree"):
+        wt = Path(row["worktree"])
+        j.step("recreate the worktree")
+        wt.parent.mkdir(parents=True, exist_ok=True)
+        if branch_exists(root, branch):
+            git("worktree", "add", "-q", str(wt), branch, cwd=root)
         else:
-            print(f"session: kept {branch}: {(deleted.stderr or deleted.stdout).strip()}", file=sys.stderr)
-    write(root, reg)
-    print(f"session: closed {slug}; removed its worktree")
-    if note:
-        print(note)
-    if oid or had_run:
-        print(f"session: parked its work (stash + run files); {slug} and its branch were kept")
-    return 0
+            git("worktree", "add", "-q", "-b", branch, str(wt),
+                row.get("base") or reg.get("base") or default_base(root), cwd=root)
+        j.undo(lambda: git("worktree", "remove", "--force", str(wt), cwd=root, check=False), "worktree")
+        restore_run_state(store_path(root, slug), state.run_dir(wt))
+        j.undo(lambda: park_run_state(state.run_dir(wt), store_path(root, slug)), "run files")
+        upsert_row(reg, {**row, "worktree": wt.as_posix(), "status": "parallel", "run": "open",
+                         "has_stash": False, "store": store_path(root, slug).as_posix()})
+        write(root, reg)
+        if not W.restore(wt, slug):
+            print(f"session: could not apply {W.ref_for(slug)} in {wt.as_posix()}; it stays on the ref",
+                  file=sys.stderr)
+        return print_redirect(wt.as_posix(), slug, branch)
+    rc = enter_session(root, reg, host, {**row, "branch": branch, "run": "open", "has_stash": False}, j)
+    if rc == 0 and not W.restore(host, slug):
+        print(f"session: could not apply {W.ref_for(slug)} in {host.as_posix()}; it stays on the ref",
+              file=sys.stderr)
+        return 2
+    if rc == 0:
+        session_line(host, slug, branch)
+    return rc
+
+
+from session_close import cmd_close  # noqa: E402,F401 | re-export; last, because session_close imports this module lazily

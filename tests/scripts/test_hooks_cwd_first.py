@@ -139,3 +139,25 @@ def test_reply_lands_in_worktree_with_escaped_quote(named_tree):
     assert r.returncode == 0
     assert (wt / ".superlite" / "human-replies.jsonl").exists(), wt.name
     assert not (hub / ".superlite" / "human-replies.jsonl").exists()
+
+
+def _git(cwd, *args):
+    subprocess.run(["git", "-C", str(cwd), *args], check=True, capture_output=True, text=True)
+
+
+def test_harness_worktree_under_hub_uses_hub_run(tmp_path):
+    hub = tmp_path / "hub"
+    hub.mkdir()
+    _git(hub, "init", "-q")
+    _git(hub, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "i")
+    wt = hub / ".claude" / "worktrees" / "x"
+    _git(hub, "worktree", "add", "-q", "-b", "worktree-x", str(wt))
+    (hub / ".superlite").mkdir()
+    (hub / ".superlite" / "orchestrator.json").write_text('{"mode": "human", "approved": true}')
+    (hub / ".superlite" / "stable.json").write_text("{}")
+    assert not (wt / ".superlite").exists()
+    payload = {"tool_name": "Write", "tool_input": {"file_path": str(hub / "src" / "a.py")}, "cwd": str(wt)}
+    env = {k: v for k, v in os.environ.items() if k != "CLAUDE_PROJECT_DIR"}
+    r = subprocess.run([BASH, str(HOOKS / "pre-tool")], input=json.dumps(payload), capture_output=True,
+                       text=True, env=env, cwd=str(wt))
+    assert r.returncode == 2

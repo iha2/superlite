@@ -96,10 +96,10 @@ def test_ensure_moves_open_host_session_out_while_active_is_open(repo):
     (repo / "app.py").write_text("print('wip')\n")
     cp = run("ensure", "--slug", "next", "--move", "yes", cwd=repo)
     assert cp.returncode == 0, cp.both
-    wt = repo / ".superlite" / "worktrees" / "sessions" / "next"
+    wt = repo / ".claude" / "worktrees" / "sessions-next"
     assert branch(wt) == "superlite/sessions/next"
     assert last(cp) == f"SESSION worktree={wt.as_posix()} slug=next branch=superlite/sessions/next"
-    old = repo / ".superlite" / "worktrees" / "sessions" / "demo"
+    old = repo / ".claude" / "worktrees" / "sessions-demo"
     assert branch(old) == "superlite/sessions/demo" and (old / "app.py").read_text() == "print('wip')\n"
     assert branch(repo) == "main" and git(repo, "status", "--porcelain").strip() == ""
     assert row_of(repo, "next")["owned"] is True and reg_of(repo)["active"] is None
@@ -115,7 +115,7 @@ def test_finished_active_is_parked_and_new_session_goes_in_place(repo):
     cp = run("ensure", "--slug", "after", cwd=repo)
     assert cp.returncode == 0, cp.both
     assert branch(repo) == "superlite/sessions/after"
-    assert not (repo / ".superlite" / "worktrees" / "sessions" / "after").exists()
+    assert not (repo / ".claude" / "worktrees" / "sessions-after").exists()
     assert row_of(repo, "demo")["status"] == "parked"
     assert (repo / ".superlite" / "session-store" / "demo" / "orchestrator.json").is_file()
     assert not (repo / ".superlite" / "orchestrator.json").exists()
@@ -143,8 +143,8 @@ def test_close_host_parks_and_switches_back_keeping_branch(repo):
     assert cp.returncode == 0, cp.both
     assert branch(repo) == "main"
     assert (repo / "app.py").read_text() == "print('hi')\n"
-    row = row_of(repo, "demo")
-    assert row["run"] == "finished" and row["status"] == "parked" and row["has_stash"] is True
+    assert all(r["slug"] != "demo" for r in reg_of(repo)["sessions"])  # closed: archived, row removed
+    assert (repo / ".superlite" / "session-store" / "demo" / "session.json").is_file()
     assert (repo / ".superlite" / "session-store" / "demo" / "progress.md").is_file()
     assert git(repo, "branch", "--list", "superlite/sessions/demo").strip()
     assert reg_of(repo)["active"] is None
@@ -156,12 +156,13 @@ def test_close_host_parks_and_switches_back_keeping_branch(repo):
 def test_close_parallel_removes_owned_worktree_keeps_branch(repo):
     run("ensure", "--slug", "demo", cwd=repo)
     run("ensure", "--slug", "next", "--move", "yes", cwd=repo)
-    wt = repo / ".superlite" / "worktrees" / "sessions" / "next"
+    wt = repo / ".claude" / "worktrees" / "sessions-next"
     cp = run("close", "--slug", "next", "--keep-branch", cwd=repo)
     assert cp.returncode == 0, cp.both
     assert not wt.exists()
     assert git(repo, "branch", "--list", "superlite/sessions/next").strip()
-    assert row_of(repo, "next")["run"] == "finished"
+    assert all(r["slug"] != "next" for r in reg_of(repo)["sessions"])  # archived, row removed
+    assert (repo / ".superlite" / "session-store" / "next" / "session.json").is_file()
     assert branch(repo) == "main"
 
 
@@ -187,7 +188,7 @@ def test_unregistered_linked_worktree_is_registered_in_place(repo, tmp_path):
     assert row["owned"] is False and row["branch"] == "feat/y" and row["run"] == "open"
     assert Path(row["worktree"]).resolve() == other
     assert last(cp) == f"SESSION worktree={other.as_posix()} slug=x branch=feat/y"
-    assert not (repo / ".superlite" / "worktrees" / "sessions" / "x").exists()
+    assert not (repo / ".claude" / "worktrees" / "sessions-x").exists()
     assert "already open here" in run("ensure", "--slug", "x", cwd=other).out
 
 
@@ -216,7 +217,7 @@ def test_mark_run_none_without_registry_or_row_and_never_raises(repo, tmp_path):
     assert session.mark_run(tmp_path / "missing", "finished") is None
     run("ensure", "--slug", "demo", cwd=repo)
     run("ensure", "--slug", "next", "--move", "yes", cwd=repo)
-    wt = repo / ".superlite" / "worktrees" / "sessions" / "next"
+    wt = repo / ".claude" / "worktrees" / "sessions-next"
     assert session.mark_run(wt, "finished") == "next"
     assert row_of(repo, "next")["run"] == "finished" and row_of(repo, "demo")["run"] == "open"
     assert session.mark_run(wt, "open") == "next" and "finished_at" not in row_of(repo, "next")
@@ -307,7 +308,7 @@ def test_status_shows_removed_for_closed_parallel_worktree(repo):
     run("ensure", "--slug", "next", "--move", "yes", cwd=repo)
     run("close", "--slug", "next", "--keep-branch", cwd=repo)
     out = run("status", cwd=repo).out
-    assert "worktree (removed)" in out and "worktree None" not in out
+    assert "next" not in out and "worktree None" not in out  # a closed session leaves the status list
 
 
 def snapshot(repo):
@@ -419,8 +420,8 @@ def test_ensure_leaves_committed_gitignore_and_status_clean(repo):
     assert sp(["git", "check-ignore", "-q", ".superlite/x"], cwd=repo).returncode == 0
     session.mark_run(repo, "finished")
     assert run("close", "--slug", "demo", "--keep-branch", cwd=repo).returncode == 0
-    assert row_of(repo, "demo")["has_stash"] is False
-    assert "stash:no" in run("status", cwd=repo).out
+    assert all(r["slug"] != "demo" for r in reg_of(repo)["sessions"])
+    assert "demo" not in run("status", cwd=repo).out
 
 
 def test_no_gitignore_uses_info_exclude(repo):
@@ -435,7 +436,7 @@ def test_no_gitignore_uses_info_exclude(repo):
 
 
 def wt_of(r, slug):
-    return r / ".superlite" / "worktrees" / "sessions" / slug
+    return r / ".claude" / "worktrees" / f"sessions-{slug}"
 
 
 def commit_file(cwd, name, text, msg):
@@ -477,9 +478,8 @@ def test_close_owned_parallel_stashes_work(owned_b):
     assert cp.returncode == 0, cp.both
     assert not wt.exists()
     assert git(repo, "branch", "--list", "superlite/sessions/b").strip()
-    row = row_of(repo, "b")
-    assert row.get("has_stash") is True and row.get("stash_oid"), row
-    shown = git(repo, "stash", "show", "-p", "--include-untracked", row["stash_oid"])
+    assert all(r["slug"] != "b" for r in reg_of(repo)["sessions"])  # archived; WIP is on a private ref
+    shown = git(repo, "show", "-p", "refs/superlite/wip/b")
     assert "TWO-edit" in shown and "new.txt" in shown and "untracked-content" in shown
     assert (repo / ".superlite" / "session-store" / "b" / "run-file.txt").is_file()
 
@@ -520,9 +520,9 @@ def test_close_owned_parallel_keeps_staged_and_nested_untracked(repo):
     (wt / "d1" / "d2" / "deep.txt").write_text("deep\n")
     cp = run("close", "--slug", "b", "--untracked", "stash", cwd=repo)
     assert cp.returncode == 0, cp.both
-    row = row_of(repo, "b")
-    shown = git(repo, "stash", "show", "-p", "--include-untracked", row["stash_oid"])
-    assert "STAGED" in shown and "deep.txt" in shown
+    ref = "refs/superlite/wip/b"
+    assert "STAGED" in git(repo, "show", f"{ref}^2:app.py")  # the index commit keeps the staged edit
+    assert git(repo, "show", f"{ref}:d1/d2/deep.txt") == "deep\n"
 
 
 def test_close_owned_parallel_worktree_deleted_by_hand(repo):
@@ -599,7 +599,7 @@ def test_base_follows_main_checkout_branch_after_close(repo):
     cp = run("ensure", "--slug", "b", cwd=repo)
     assert cp.returncode == 0, cp.both
     assert is_ancestor(repo, feat, "superlite/sessions/b"), "b was cut from the stale base, not from feature"
-    assert reg_of(repo)["base"] == "feature"
+    assert row_of(repo, "b")["base"] == "feature"  # the registry base is set once; rows keep their own
 
 
 def test_finished_active_is_parked_and_new_session_keeps_recorded_base(repo):
@@ -625,7 +625,7 @@ def test_detached_host_with_deleted_base_still_starts(repo):
     cp = run("ensure", "--slug", "z", cwd=repo)
     assert cp.returncode == 0, cp.both
     assert row_of(repo, "z")["branch"] == "superlite/sessions/z"
-    assert reg_of(repo)["base"] == "trunk"
+    assert row_of(repo, "z")["base"] == "trunk"
     git(repo, "checkout", "-q", "--detach")
     assert run("close", "--slug", "z", cwd=repo).returncode == 0
     git(repo, "checkout", "-q", "--detach")
@@ -669,7 +669,8 @@ def test_adopted_branch_survives_close_and_discard(repo):
     assert row_of(repo, "r").get("adopted_branch") is True
     assert run("close", "--slug", "r", cwd=repo).returncode == 0
     assert "other" in git(repo, "branch", "--format=%(refname:short)").split()
-    assert run("discard", "--slug", "r", cwd=repo).returncode == 0
+    assert run("ensure", "--slug", "r2", "--branch", "other", cwd=repo).returncode == 0
+    assert run("discard", "--slug", "r2", cwd=repo).returncode == 0
     assert "other" in git(repo, "branch", "--format=%(refname:short)").split()
 
 
@@ -849,7 +850,7 @@ def test_rows_record_their_own_base(repo):
     git(repo, "switch", "-q", "-c", "feature")
     commit_file(repo, "feat.txt", "feature\n", "feature work")
     assert run("ensure", "--slug", "c", cwd=repo).returncode == 0
-    assert reg_of(repo)["base"] == "feature"
+    assert row_of(repo, "c")["base"] == "feature" and reg_of(repo)["base"] == "main"
     assert row_of(repo, "c")["base"] == "feature"
     assert row_of(repo, "b")["base"] == "main"
 

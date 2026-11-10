@@ -180,7 +180,7 @@ def parked_p(tmp_path):
 
 @pytest.fixture
 def two_bases(tmp_path):
-    """Session b is cut from main; session c later starts on feature, which moves the registry base."""
+    """Session b is cut from main; session c starts on feature and the registry base names feature."""
     r = tmp_path.resolve() / "bases"
     r.mkdir()
     git(r, "init", "-q", "-b", "main")
@@ -193,15 +193,19 @@ def two_bases(tmp_path):
     git(r, "switch", "-q", "-c", "feature")
     commit(r, "feat.txt", "feature\n", "feature work")
     assert cli("session.py", "ensure", "--slug", "c", cwd=r).returncode == 0
-    reg = json.loads((r / ".superlite" / "sessions.json").read_text(encoding="utf-8"))
-    assert reg["base"] == "feature"
+    f = r / ".superlite" / "sessions.json"
+    reg = json.loads(f.read_text(encoding="utf-8"))
+    assert reg["base"] == "main"  # ensure now sets the registry base once; each row keeps its own
+    reg["base"] = "feature"  # a registry whose base moved (older registries did this on every new session)
+    f.write_text(json.dumps(reg), encoding="utf-8")
+    assert row(r, "b")["base"] == "main" and row(r, "c")["base"] == "feature"
     return r
 
 
 def test_sync_merges_the_rows_own_base(two_bases):
     """sync for b brings in main (its own base), never the feature branch the registry now names."""
     r = two_bases
-    wt = r / ".superlite" / "worktrees" / "sessions" / "b"
+    wt = r / ".claude" / "worktrees" / "sessions-b"
     tmpw = r.parent / "mainwt"
     git(r, "worktree", "add", "-q", str(tmpw), "main")
     commit(tmpw, "m.txt", "m\n", "main work")

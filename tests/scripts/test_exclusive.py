@@ -96,7 +96,7 @@ def test_peers_released_after_last_run(tmp_path, monkeypatch):
     session = SCRIPTS / "session.py"
     assert run(session, "ensure", "--slug", "a", cwd=repo).returncode == 0
     assert run(session, "create", "--slug", "b", "--worktree", cwd=repo).returncode == 0
-    wt = repo / ".superlite" / "worktrees" / "sessions" / "b"
+    wt = repo / ".claude" / "worktrees" / "sessions-b"
     run(EX, "on", cwd=repo)
     settings = repo / ".claude" / "settings.local.json"
     assert json.loads(settings.read_text(encoding="utf-8"))["enabledPlugins"][PEER] is False

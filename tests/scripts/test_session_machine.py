@@ -112,7 +112,7 @@ class SessionMachine(RuleBasedStateMachine):
         return rc, out
 
     def holdings(self, wts: dict) -> dict:
-        """One scan: scope -> all text held there (checkout files, stash patches). Scopes: ("co", path), ("stash", slug)."""
+        """One scan: scope -> all text held there (checkout files, stash patches, WIP refs). Scopes: ("co", path), ("stash", slug), ("wip", slug)."""
         held: dict = {}
         for co in map(Path, wts):
             chunks = []
@@ -132,13 +132,19 @@ class SessionMachine(RuleBasedStateMachine):
                 self.stash_text[ref] = git(self.root, "show", ref) + git(self.root, "show", f"{ref}^3", check=False)
             text = self.stash_text[ref]
             held[("stash", m.group(1) if m else msg)] = held.get(("stash", m.group(1) if m else msg), "") + text
+        prefix = "refs/superlite/wip/"  # close parks dirty work on a private ref instead of the stash list
+        for line in git(self.root, "for-each-ref", "--format=%(objectname) %(refname)", prefix).splitlines():
+            oid, _, ref = line.partition(" ")
+            if oid not in self.stash_text:
+                self.stash_text[oid] = git(self.root, "show", oid)
+            held[("wip", ref[len(prefix):])] = self.stash_text[oid]
         return held
 
     def where_found(self, token: str, held: dict | None = None) -> set:
         return {scope for scope, text in (held or self.holdings()).items() if token in text}
 
     def scopes_of(self, slug: str, wts: dict) -> set:
-        return {("stash", slug)} | {("co", p) for p, b in wts.items() if slug_of(b) == slug}
+        return {("stash", slug), ("wip", slug)} | {("co", p) for p, b in wts.items() if slug_of(b) == slug}
 
     def known(self) -> list:
         """Registered slugs first (so most picks hit a real session), then the pool (so some miss)."""

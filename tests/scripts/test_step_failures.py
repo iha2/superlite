@@ -15,6 +15,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 import base  # noqa: E402
 import session  # noqa: E402
+import session_wip  # noqa: E402
 
 READONLY_STASH = {"list", "show"}
 CHANGING_BRANCH_FLAGS = {"-d", "-D", "-m", "-M", "-c", "-f", "--delete", "--move", "--force"}
@@ -50,6 +51,22 @@ class Fault:
                     raise base.GitError(args, "injected fault")
                 return subprocess.CompletedProcess(["git", *args], 1, "", "injected fault")
         return self.real(*args, cwd=cwd, check=check)
+
+    def wip(self):
+        """The same fault for session_wip's own git runner (close parks dirty work on a private ref through it)."""
+        real = session_wip._git
+
+        def run(cwd, *args, env=None, data=None, check=True):
+            if is_changing(args):
+                self.count += 1
+                if self.count == self.at:
+                    self.hit = (args, check)
+                    if check:
+                        raise RuntimeError(f"git {' '.join(args)}: injected fault")
+                    return subprocess.CompletedProcess(["git", *args], 1, b"", b"injected fault")
+            return real(cwd, *args, env=env, data=data, check=check)
+
+        return run
 
 
 def git(cwd, *args):
@@ -96,6 +113,7 @@ def snapshot(r: Path, skip: tuple = ()) -> dict:
         "worktrees": git(r, "worktree", "list", "--porcelain"),
         "heads": {w.as_posix(): git(w, "rev-parse", "--abbrev-ref", "HEAD") for w in wts if w.is_dir()},
         "stashes": git(r, "stash", "list", "--format=%gd %H %gs"),
+        "wip_refs": git(r, "for-each-ref", "refs/superlite", "--format=%(refname) %(objectname)"),
         "files": {w.as_posix(): tree_files(w, skip) for w in wts if w.is_dir()},
         "registry": json.loads(reg.read_text(encoding="utf-8")) if reg.is_file() else None,
     }
@@ -147,9 +165,10 @@ def run_with_fault(monkeypatch, tmp_path, name, at, skip=()):
     root = setup(tmp_path)
     before = snapshot(root, skip)
     fault = Fault(at)
-    monkeypatch.setattr(base, "git", fault)
-    rc, out = sess(root, *argv)
-    monkeypatch.setattr(base, "git", fault.real)
+    with monkeypatch.context() as mp:
+        mp.setattr(base, "git", fault)
+        mp.setattr(session_wip, "_git", fault.wip())
+        rc, out = sess(root, *argv)
     return root, before, fault, rc, out
 
 

@@ -57,7 +57,7 @@ def test_start_cuts_a_worktree_and_records_feature_json(repo):
     cp = proto(repo, "start", "--topic", "export", "--run", "go run .", "--reach", "http://localhost:8080")
     assert cp.returncode == 0, cp.both
     st = state(repo)
-    wt = repo / ".superlite" / "sandboxes" / "export-proto"
+    wt = repo / ".claude" / "worktrees" / "export-proto"
     assert st["status"] == "building" and st["branch"] == "superlite/export-proto" and st["level"] == "L1"
     assert st["worktree"] == wt.as_posix() and (wt / "main.go").is_file() and st["run"] == "go run ."
     assert st["plan"] == "docs/plans/2026-10-21-export.feature.md" and st["base"] == "main"
@@ -114,14 +114,14 @@ def test_gate_fails_open_and_skips_the_prototype_build(repo, tmp_path):
     (sl / "feature.json").write_text("{not json")
     assert orchestrator.gate(sl, "dispatch") is None
     (sl / "feature.json").write_text(json.dumps({"status": "tryout"}))
-    plan_in_proto = sl / "sandboxes" / "export-proto" / "docs" / "plans" / "p.proto.md"
+    plan_in_proto = sl.parent / ".claude" / "worktrees" / "export-proto" / "docs" / "plans" / "p.proto.md"
     assert orchestrator.gate(plan_in_proto, "dispatch") is None  # the prototype build has its own .superlite
     assert orchestrator.gate(repo / "docs" / "plans" / "p.md", "dispatch") == orchestrator.TRYOUT_BLOCK
 
 
 def test_discard_saves_the_report_and_removes_the_worktree(repo):
     proto(repo, "start", "--topic", "export")
-    wt = repo / ".superlite" / "sandboxes" / "export-proto"
+    wt = repo / ".claude" / "worktrees" / "export-proto"
     (wt / ".superlite").mkdir()
     head = {"wall_min": {"projected": 4.0, "actual": 5.0}, "cost_usd_agents": {"projected": 0.5, "actual": 0.6}}
     (wt / ".superlite" / "report.json").write_text(json.dumps({"headline": head, "tasks": [{}, {}]}))

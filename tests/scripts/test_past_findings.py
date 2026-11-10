@@ -64,7 +64,9 @@ def test_pr25_close_clean_worktree_keeps_branch_with_unmerged_commits(repo):
     assert r.code == 0, r.err
     assert not wt.exists()
     assert repo.git("rev-parse", "--verify", "-q", branch).strip()  # the branch and its commit survive
-    assert repo.session_row("p") is not None  # and the row stays so the session can come back
+    assert repo.session_row("p") is None  # the row leaves the registry...
+    manifest = repo.state("session-store/p/session.json")  # ...and the archive manifest lets the session come back
+    assert manifest and manifest["slug"] == "p" and manifest["branch"] == branch and manifest["run"] == "finished"
 
 
 # ---- PR 23: open_in_harness wording ----------------------------------------------------------------------------
@@ -102,7 +104,7 @@ def test_pr23_drafting_open_rule_checks_the_flag_in_both_modes():
 
 def test_pr21_create_refuses_an_existing_directory_that_is_not_a_worktree(repo):
     """Finding 63: a plain directory already sitting at the session path is never adopted, and no branch changes."""
-    (repo.root / ".superlite" / "worktrees" / "sessions" / "n").mkdir(parents=True)
+    (repo.root / ".claude" / "worktrees" / "sessions-n").mkdir(parents=True)
     r = repo.cli("session", "create", "--slug", "n", "--worktree")
     assert r.code == 2 and "already exists" in r.err
     assert repo.branch() == "main" and repo.session_row("n") is None
@@ -241,6 +243,18 @@ def test_pr7_exclusive_settings_write_does_not_block_checkpoints(repo):
     assert repo.cli("orchestrator", "set", "ai", env={"CLAUDE_CODE": "1"}).code == 0
     settings = repo.root / ".claude" / "settings.local.json"
     assert settings.is_file()  # the suspension did write the file
+    plan = repo.write("docs/plans/2026-11-01-flow.md", FLOW_PLAN.read_text(encoding="utf-8"))
+    assert repo.cli("plan_tools", "lint", "--plan", plan, "--stable").code == 0
+    assert repo.cli("dispatch", "--plan", plan).code == 0
+    for tid in ("T1", "T2", "T3", "T4"):
+        fake_agent.do(tid, plan, repo)
+    r = repo.cli("checkpoint", "--plan", plan, "T1", "T2", "T3", "T4")
+    assert r.code == 0 and "out-of-scope" not in r.out, r.out + r.err
+
+
+def test_checkpoint_ignores_a_harness_worktree_in_the_unhidden_home(repo):
+    """A hub holding a harness-made .claude/worktrees/<x> checkout (home not hidden yet) never blocks a checkpoint."""
+    repo.git("worktree", "add", "-q", "-b", "worktree-agent-1", repo.root / ".claude" / "worktrees" / "agent-1")
     plan = repo.write("docs/plans/2026-11-01-flow.md", FLOW_PLAN.read_text(encoding="utf-8"))
     assert repo.cli("plan_tools", "lint", "--plan", plan, "--stable").code == 0
     assert repo.cli("dispatch", "--plan", plan).code == 0

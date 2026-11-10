@@ -22,3 +22,5 @@ venv/
 *.egg-info/
 build/
 dist/
+.claude/worktrees/
+.claude/settings.local.json
