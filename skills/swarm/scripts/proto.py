@@ -37,7 +37,7 @@ if str(HERE) not in sys.path:
 
 import base  # noqa: E402
 import claude_create  # noqa: E402
-import harness  # noqa: E402
+import host_harness as harness  # noqa: E402
 import orchestrator  # noqa: E402
 import state  # noqa: E402
 import worktree_home  # noqa: E402

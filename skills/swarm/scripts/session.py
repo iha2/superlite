@@ -31,7 +31,7 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
-import harness  # noqa: E402
+import host_harness as harness  # noqa: E402
 import session_registry as R  # noqa: E402
 from session_ensure import (  # noqa: E402,F401
     cmd_close, cmd_create, cmd_ensure, cmd_untracked, enter_session, guarded, park_active, split_move,

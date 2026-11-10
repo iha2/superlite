@@ -16,7 +16,7 @@ SESSION = SCRIPTS / "session.py"
 sys.path.insert(0, str(SCRIPTS))
 
 import claude_create  # noqa: E402
-import harness  # noqa: E402
+import host_harness as harness  # noqa: E402
 
 
 def run(*args, cwd=None, claude=True):

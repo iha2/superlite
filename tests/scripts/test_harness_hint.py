@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "skills" / "swarm" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-import harness  # noqa: E402
+import host_harness as harness  # noqa: E402
 
 ENTER = re.compile(r"^session: enter EnterWorktree path=(\S+)$", re.M)
 

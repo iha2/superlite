@@ -12,7 +12,7 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
-import harness  # noqa: E402
+import host_harness as harness  # noqa: E402
 import session_registry as R  # noqa: E402
 
 CHOICES = "worktree | superlite | PATTERN"
