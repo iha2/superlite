@@ -6,6 +6,5 @@
     "name": "CWogu"
   },
   "license": "MIT",
-  "keywords": ["skills", "tdd", "debugging", "workflow"],
-  "dependencies": ["claude-agent-map"]
+  "keywords": ["skills", "tdd", "debugging", "workflow"]
 }

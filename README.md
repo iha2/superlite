@@ -94,6 +94,8 @@ You need Claude Code, git, Python 3.10 or newer (the tools are Python; the proje
 /plugin install superlite@superlite-dev
 ```
 
+Optional, for the agent map pane in Claude Desktop: `/plugin install claude-agent-map@superlite-dev`. Superlite works without it; in a terminal use `/superlite:tail`.
+
 Or load a local checkout for one session: `claude --plugin-dir <path-to-superlite>`
 
 Open a fresh session: the superlite intro appears once. Then send `Let's make a react todo list`; a working install starts `inventing` before any code is written. Installs for Codex, Cursor, Gemini CLI, OpenCode and the other harnesses are in [Installation](#installation) below.
