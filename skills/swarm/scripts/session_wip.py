@@ -1,7 +1,7 @@
 """Session WIP on private refs: `refs/superlite/wip/<slug>` holds a snapshot of the working tree and the index.
 
-Like `git stash create`, the snapshot is a commit whose tree is the working tree, with parents HEAD and an
-index commit (the staged tree), so staged and unstaged contents round-trip separately.
+Like `git stash create`, the snapshot is a revision whose tree is the working tree, with parents HEAD and an
+index revision (the staged tree), so staged and unstaged contents round-trip separately.
 
 Unlike `git stash`, the ref never touches the shared stash list (so `git stash clear` and other sessions cannot
 lose or steal it) and one ref per slug means two sessions never cross. Stdlib only.
@@ -88,7 +88,7 @@ def save(cwd: Path, slug: str, untracked: bool = True) -> str | None:
 
 
 def _untracked_paths(top, ref: str) -> list[str] | None:
-    """Paths in a legacy `git stash -u` commit's third parent (its untracked files); None when it has none."""
+    """Paths in a legacy `git stash -u` entry's third parent (its untracked files); None when it has none."""
     if _git(top, "rev-parse", "--verify", "-q", f"{ref}^3", check=False).returncode != 0:
         return None
     raw = _git(top, "ls-tree", "-r", "-z", "--name-only", f"{ref}^3").stdout
