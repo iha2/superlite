@@ -115,16 +115,17 @@ def git(*args, check=True, env=None):  # O(output) + process spawn
 
 
 SETTINGS_LOCAL = ".claude/settings.local.json"  # written by exclusive.py (peer suspension); no task owns it
+WORKTREE_HOME = ".claude/worktrees/"  # linked checkouts (superlite's and the Claude Code harness's): never this tree's changes
 
 
 def hard_ignored(path):  # O(len path)
     """Run bookkeeping and bytecode: never staged, even when a task's Owns would match."""
     p = "/" + path
-    return path.endswith(".pyc") or f"/{state.DIR_NAME}/" in p or "/__pycache__/" in p or path == SETTINGS_LOCAL
+    return path.endswith(".pyc") or f"/{state.DIR_NAME}/" in p or "/__pycache__/" in p or path == SETTINGS_LOCAL or path.startswith(WORKTREE_HOME)
 
 
 def ignored(path):  # O(d + entries)
-    return path.endswith(".pyc") or path == SETTINGS_LOCAL or gitignore.ignored(path, PLAN_IGNORE)  # matcher built once per process
+    return path.endswith(".pyc") or path == SETTINGS_LOCAL or path.startswith(WORKTREE_HOME) or gitignore.ignored(path, PLAN_IGNORE)  # matcher built once per process
 
 
 def claims(owns):  # O(f)

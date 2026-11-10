@@ -117,7 +117,7 @@ def test_restore_run_state_can_retry_after_partial_copy(tmp_path, monkeypatch):
 
 def test_use_redirects_when_branch_live_in_other_worktree(repo):
     assert run(SESSION, "create", "--slug", "auth", "--worktree", cwd=repo).returncode == 0
-    wt = repo / ".superlite" / "worktrees" / "sessions" / "auth"
+    wt = repo / ".claude" / "worktrees" / "sessions-auth"
     assert wt.is_dir()
     # From hub, create/use same slug must REDIRECT, not check out again
     cp = run(SESSION, "use", "--slug", "auth", cwd=repo)
@@ -129,7 +129,7 @@ def test_use_redirects_when_branch_live_in_other_worktree(repo):
 
 def test_discard_removes_parallel_worktree(repo):
     assert run(SESSION, "create", "--slug", "auth", "--worktree", cwd=repo).returncode == 0
-    wt = repo / ".superlite" / "worktrees" / "sessions" / "auth"
+    wt = repo / ".claude" / "worktrees" / "sessions-auth"
     assert wt.is_dir()
     cp = run(SESSION, "discard", "--slug", "auth", cwd=repo)
     assert cp.returncode == 0, cp.both
@@ -270,14 +270,15 @@ def test_concurrent_parallel_creates_all_register(repo):
     procs = [subprocess.Popen([sys.executable, str(SESSION), "create", "--slug", f"p{i}", "--worktree"],
                               cwd=repo, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
              for i in range(5)]
-    assert all(p.wait(timeout=120) == 0 for p in procs)
+    results = [(p.wait(timeout=120), p.stderr.read().decode("utf-8", "replace")) for p in procs]
+    assert all(rc == 0 for rc, _ in results), results
     assert {s["slug"] for s in reg_of(repo)["sessions"]} == {f"p{i}" for i in range(5)}
 
 
 def test_hud_uses_path_components_and_works_from_worktree(repo):
     assert run(SESSION, "create", "--slug", "auth", cwd=repo).returncode == 0
     assert run(SESSION, "create", "--slug", "host-extra", "--worktree", cwd=repo).returncode == 0
-    wt = repo / ".superlite" / "worktrees" / "sessions" / "host-extra"
+    wt = repo / ".claude" / "worktrees" / "sessions-host-extra"
     cp = run(HUD, str(wt), cwd=wt)
     assert cp.out.startswith("superlite session: host-extra |"), cp.both
     cp = run(HUD, str(repo), cwd=repo)
@@ -286,7 +287,7 @@ def test_hud_uses_path_components_and_works_from_worktree(repo):
 
 def test_prompt_hook_emits_hud_without_cost_or_run_dir(repo):
     assert run(SESSION, "create", "--slug", "solo", "--worktree", cwd=repo).returncode == 0
-    wt = repo / ".superlite" / "worktrees" / "sessions" / "solo"
+    wt = repo / ".claude" / "worktrees" / "sessions-solo"
     shutil.rmtree(wt / ".superlite")
     env = dict(os.environ, SUPERLITE_NO_COST_REPORT="1", SUPERLITE_PYTHON=sys.executable,
                CLAUDE_PLUGIN_ROOT=str(ROOT))

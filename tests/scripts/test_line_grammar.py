@@ -27,6 +27,7 @@ LINES = {
     "REDIRECT": (rf"REDIRECT worktree={PATHISH} slug={SLUG} branch={PATHISH}", r"REDIRECT( worktree=\S*( slug=\S*( branch=\S*)?)?)?"),
     "ASK untracked=": (rf"ASK untracked=\d+ slug={SLUG}: .+", r"ASK untracked=\S*( slug=\S*:?.*)?"),
     "ASK move": (rf"ASK move slug={SLUG}: .+", r"ASK move( slug=\S*:?.*)?"),
+    "ASK branch-name": (rf"ASK branch-name slug={SLUG}: .+", r"ASK branch-name( slug=\S*:?.*)?"),
     "ask:": (r"ask: .+ Options: \w+( \| \w+)*", r"ask:( .*)?"),
     "CONFLICT": (r"CONFLICT\b.*", r"CONFLICT\b.*"),
     "SUSPECT HANG": (r"SUSPECT HANG: [A-Z]+ \S.* - no output for \d+s.*; process tree: .+", r"SUSPECT HANG\b.*"),
@@ -34,13 +35,20 @@ LINES = {
     "Verdict:": (r"Verdict: (APPROVED|CHANGES_REQUESTED)", r"Verdict: (APPROVED|CHANGES_REQUESTED|\S*)"),
     "budget:": (r"budget: coordinator \$\d+\.\d\d \| agents \$\d+\.\d\d \| total \$\d+\.\d\d.*", r"budget:( .*)?"),
     "next:": (r"next:( .+)?", r"next:( .*)?"),
+    "session: drift": (rf"session: drift (pruned|gone|moved|unregistered|lost-wip|dangling-active|base) slug=({SLUG}|-) path=\S+: .+", r"session: drift\b.*"),
+    "session: worktree": (r"session: worktree (session|proto|integration|harness|unknown) (superlite|harness|user) \S+ (detached [0-9a-f]{7}|\S+)", r"session: worktree\b.*"),
+    "session: reconcile": (r"session: reconcile (ok \(0 drift, \d+ worktrees\)|\d+ drift \(report only; rerun with --apply\)|applied \d+ fix(es)?, \d+ worktrees recorded)", r"session: reconcile\b.*"),
+    "session: enter": (r"session: enter EnterWorktree path=\S+", r"session: enter\b.*"),
+    "session: create EnterWorktree": (r"session: create EnterWorktree name=\S+ base=\S+", r"session: create EnterWorktree\b.*"),
+    "session: note": (r"session: note .+", r"session: note\b.*"),
+    "session: branch-name": (r"session: branch-name (unset|\S+ \((preferences|saved)\))", r"session: branch-name\b.*"),
 }
 FULL = {k: re.compile(v[0]) for k, v in LINES.items()}
 QUOTED = {k: re.compile(v[1]) for k, v in LINES.items()}
 # longest leader first so "ASK untracked=" is never read as another leader
 LEADERS = sorted(LINES, key=len, reverse=True)
 
-ENV = dict(os.environ, PYTHONIOENCODING="utf-8", SUPERLITE_NO_AUTO_SESSION="")
+ENV = {k: v for k, v in dict(os.environ, PYTHONIOENCODING="utf-8", SUPERLITE_NO_AUTO_SESSION="").items() if k != "CLAUDECODE"}
 
 
 def leader_of(line: str) -> str | None:
@@ -128,6 +136,44 @@ def test_session_lines(tmp_path):
     check_lines(out, {"REDIRECT"})
 
 
+def test_enter_line(tmp_path):
+    repo = make_repo(tmp_path, FIX / "plans" / "minisheet.md")
+    env = dict(ENV, CLAUDECODE="1")
+    assert tool("session", "branch-name", "worktree", cwd=repo, env=env)[0].returncode == 0
+    git(repo, "switch", "-q", "-c", "side")  # hub off the base: superlite cuts the worktree, then the enter line
+    (repo / "side.txt").write_text("x\n")
+    git(repo, "add", "side.txt")
+    git(repo, "commit", "-q", "-m", "side")
+    cp, out = tool("session", "create", "--slug", "aa", "--worktree", "--base", "main", cwd=repo, env=env)
+    assert cp.returncode == 0, out
+    check_lines(out, {"session: enter", "session: note"})
+    ok = "session: enter EnterWorktree path=/r/.claude/worktrees/sessions-a"
+    assert FULL["session: enter"].fullmatch(ok)
+    assert not FULL["session: enter"].fullmatch("session: enter EnterWorktree name=a")
+
+
+def test_claude_create_lines(tmp_path):
+    repo = make_repo(tmp_path, FIX / "plans" / "minisheet.md")
+    env = dict(ENV, CLAUDECODE="1")
+    cp, out = tool("session", "branch-name", "status", cwd=repo, env=env)
+    check_lines(out, {"session: branch-name"})
+    cp, out = tool("session", "ensure", "--slug", "aa", cwd=repo, env=env)
+    assert cp.returncode == 0, out
+    cp, out = tool("session", "ensure", "--slug", "bb", cwd=repo, env=env)
+    assert cp.returncode == 4, out
+    check_lines(out, {"ASK branch-name", "ask:"})
+    cp, out = tool("session", "branch-name", "superlite", cwd=repo, env=env)
+    check_lines(out, {"session: branch-name"})
+    cp, out = tool("session", "ensure", "--slug", "bb", cwd=repo, env=env)
+    assert cp.returncode == 0, out
+    check_lines(out, {"session: create EnterWorktree"})
+    assert FULL["session: create EnterWorktree"].fullmatch("session: create EnterWorktree name=bb base=main")
+    assert not FULL["session: create EnterWorktree"].fullmatch("session: create EnterWorktree path=/r")
+    assert FULL["session: note"].fullmatch("session: note hub on side, not main; superlite cut the worktree")
+    assert FULL["session: branch-name"].fullmatch("session: branch-name unset")
+    assert FULL["session: branch-name"].fullmatch("session: branch-name feat/{slug} (saved)")
+
+
 def test_checkpoint_and_next_lines(tmp_path):
     plan_fix = FIX / "run_plan"
     repo = make_repo(tmp_path, plan_fix / "plan.md")
@@ -188,4 +234,20 @@ def test_named_lines_are_declared():
         if not (QUOTED[k].fullmatch(s) or QUOTED[k].match(s)):
             bad.append(f"{path}:{n}: {snippet!r} does not fit the declared {k!r}")
     assert not bad, "\n".join(bad)
-    assert set(LINES) == set(LEADERS) and len(LINES) == 15
+    assert set(LINES) == set(LEADERS) and len(LINES) == 23
+
+
+def test_reconcile_lines():
+    ok = ["session: drift pruned slug=a path=/x/a: worktree missing, branch superlite/sessions/a present",
+          "session: drift gone slug=c path=-: branch and worktree missing",
+          "session: drift dangling-active slug=- path=-: active names no row",
+          "session: worktree session superlite /x/a superlite/sessions/a",
+          "session: worktree unknown user /y detached abcdef1",
+          "session: reconcile ok (0 drift, 3 worktrees)",
+          "session: reconcile 2 drift (report only; rerun with --apply)",
+          "session: reconcile applied 1 fix, 4 worktrees recorded",
+          "session: reconcile applied 2 fixes, 4 worktrees recorded"]
+    assert check_lines("\n".join(ok), {"session: drift", "session: worktree", "session: reconcile"})
+    for bad in ("session: drift weird slug=a path=/x: d", "session: worktree session superlite /x",
+                "session: reconcile applied 1 fix"):
+        assert not FULL[leader_of(bad)].fullmatch(bad)

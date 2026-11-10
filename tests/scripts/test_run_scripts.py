@@ -131,8 +131,13 @@ def test_parse_owns_expands_braces_and_ignores_notes():
 # --------------------------------------------------------------------- assign
 
 def pool(tmp_path, agents):
+    # A copy of the plan outside the repo: the fixture's run dir would be this checkout's .superlite, whose
+    # stable.json (a live run's) would set the tiers.
+    plan = tmp_path / "plan" / "plan.md"
+    plan.parent.mkdir(exist_ok=True)
+    shutil.copy(PLAN_FIX / "plan.md", plan)
     p = tmp_path / "pool.json"
-    p.write_text(json.dumps({"plan": str(PLAN_FIX / "plan.md"), "agents": agents}))
+    p.write_text(json.dumps({"plan": str(plan), "agents": agents}))
     return p
 
 

@@ -278,7 +278,7 @@ def test_set_in_parallel_worktree_writes_its_own_state(tmp_path):
     assert run(SESSION, "ensure", "--slug", "a", cwd=repo).returncode == 0
     cp = run(SESSION, "ensure", "--slug", "b", "--move", "yes", cwd=repo)
     assert cp.returncode == 0, cp.both
-    wt = repo / ".superlite" / "worktrees" / "sessions" / "b"
+    wt = repo / ".claude" / "worktrees" / "sessions-b"
     main_file = repo / ".superlite" / "orchestrator.json"
     main_file.write_text(json.dumps({"mode": "ai", "approved": True}), encoding="utf-8")
     main_bytes = main_file.read_bytes()

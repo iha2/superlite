@@ -9,7 +9,7 @@
 State: `.superlite/feature.json` {topic, plan, worktree, branch, base, run, reach, level, status, started, tryout_time,
 tryout_approved, tryout_by, tryout_approved_time, proto_report}. status is building (the prototype build runs in the
 worktree), tryout (shown to the human, waiting for the reply), approved, or discarded. `start` cuts the worktree
-`.superlite/sandboxes/<topic>-proto` on branch `superlite/<topic>-proto` from the user's HEAD (the user's checkout is never
+`.claude/worktrees/<topic>-proto` on branch `superlite/<topic>-proto` from the user's HEAD (the user's checkout is never
 touched; uncommitted changes are not in the prototype); run again on the same topic it reopens the prototype for a fix
 round (status building). The prototype build keeps its own `.superlite` inside the worktree, so its plan, lint, dispatch
 and report run there, ungated by this file. `tryout` prints the run command, how to reach the prototype and the feature
@@ -36,8 +36,11 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 import base  # noqa: E402
+import claude_create  # noqa: E402
+import harness  # noqa: E402
 import orchestrator  # noqa: E402
 import state  # noqa: E402
+import worktree_home  # noqa: E402
 
 FILE = "feature.json"
 STATUSES = ("building", "tryout", "approved", "discarded")
@@ -133,6 +136,26 @@ def status_line(st: dict | None, sl=None) -> str:
     return s
 
 
+def cmd_adopt(a, sl) -> int:
+    """Record the hub's feature.json for the Claude-created worktree this command runs in."""
+    cwd = Path.cwd()
+    top = Path(git("rev-parse", "--show-toplevel", cwd=cwd).stdout.strip())
+    hub = state.hub_root(top)
+    if top.resolve() == hub.resolve():
+        print("proto: --adopt runs inside the worktree EnterWorktree created, not in the hub", file=sys.stderr)
+        return 2
+    branch = git("rev-parse", "--abbrev-ref", "HEAD", cwd=top).stdout.strip()
+    ref = a.base or git("rev-parse", "--abbrev-ref", "HEAD", cwd=hub).stdout.strip()
+    st = {"v": 1, "topic": a.topic, "plan": a.plan or newest_feature_plan(), "worktree": top.as_posix(), "branch": branch,
+          "base": ref, "run": a.run, "reach": a.reach, "level": a.level, "status": "building", "rounds": 1,
+          "started": now_ms(), "tryout_time": None, "tryout_approved": False, "adopted": True}
+    write_state(sl, st)
+    print(status_line(st))
+    print(f"proto: build the prototype there with its own plan (at most {MAX_PROTO_TASKS} tasks): "
+          f"superlite-cli plan_tools lint --stable --plan {top.as_posix()}/docs/plans/<date>-{a.topic}.proto.md")
+    return 0
+
+
 def cmd_start(a, sl) -> int:
     if not TOPIC.match(a.topic or ""):
         print("proto: --topic must be a short slug (a-z, 0-9, -)", file=sys.stderr)
@@ -147,13 +170,19 @@ def cmd_start(a, sl) -> int:
     if st and st["status"] not in ("discarded", "approved") and st["topic"] != a.topic:
         print(f"proto: prototype {st['topic']} is still open; run superlite-cli proto discard first", file=sys.stderr)
         return 2
+    if a.adopt:
+        return cmd_adopt(a, sl)
     root = Path(git("rev-parse", "--show-toplevel").stdout.strip())
-    wt = Path(a.path) if a.path else state.path(root, "sandboxes") / f"{a.topic}-proto"
-    branch = f"superlite/{a.topic}-proto"
     base_ref = a.base or git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    if harness.under_claude_code() and not a.path and claude_create.hub_on_base(root, base_ref):
+        print(claude_create.create_line(f"{a.topic}-proto", base_ref).replace("session: ", "proto: ", 1))
+        return 0
+    wt = Path(a.path) if a.path else worktree_home.proto_dir(root, a.topic)
+    branch = f"superlite/{a.topic}-proto"
     if wt.exists():
         print(f"proto: {wt} already exists; pass --path or remove it", file=sys.stderr)
         return 2
+    worktree_home.hide_all(root)
     wt.parent.mkdir(parents=True, exist_ok=True)
     if git("check-ignore", "-q", str(wt), cwd=root, check=False).returncode != 0 and wt.is_relative_to(root):
         import gitignore
@@ -236,6 +265,12 @@ def cmd_discard(a, sl) -> int:
     rep = proto_report(st)
     if rep:
         st["proto_report"] = rep
+    if st.get("adopted"):  # Claude owns the worktree and its branch
+        st.update(status="discarded", discarded=now_ms(), branch_kept=True)
+        write_state(sl, st)
+        print(status_line(st))
+        print("proto: leave the sandbox with ExitWorktree remove")
+        return 0
     if Path(st["worktree"]).is_dir():
         git("worktree", "remove", "--force", st["worktree"])
     git("worktree", "prune", check=False)
@@ -254,8 +289,9 @@ def main(argv=None):  # O(P + R) + git spawns
     s.add_argument("--topic", required=True)
     s.add_argument("--plan", help="the feature plan (default: the newest docs/plans/*.feature.md)")
     s.add_argument("--level", choices=["L1", "L2"], default="L1", help="L1 stubs (default), L2 an isolated environment")
-    s.add_argument("--path", help=f"the worktree folder (default {state.DIR_NAME}/sandboxes/<topic>-proto)")
+    s.add_argument("--path", help="the worktree folder (default .claude/worktrees/<topic>-proto)")
     s.add_argument("--base", help="the ref to cut from (default: the current branch)")
+    s.add_argument("--adopt", action="store_true", help="record the worktree EnterWorktree created (run inside it)")
     t = sub.add_parser("tryout")
     t.add_argument("--start", action="store_true", help="also launch the run command in the background")
     t.add_argument("--approve", action="store_true", help="record the try-out approval; send this when you understand the reply as approval")
@@ -273,6 +309,13 @@ def main(argv=None):  # O(P + R) + git spawns
     a = ap.parse_args(argv)
     sys.stdout.reconfigure(encoding="utf-8")
     sl = Path(a.dir) if a.dir else state.run_dir(Path.cwd())
+    if a.cmd == "start" and a.adopt and not a.dir:
+        sl = state.run_dir(state.hub_root(Path.cwd()))
+    if a.cmd != "start" and not a.dir and read_state(sl) is None:
+        hub_sl = state.run_dir(state.hub_root(Path.cwd()))  # inside an adopted Claude worktree: feature.json is the hub's
+        hub_st = read_state(hub_sl) if hub_sl != sl else None
+        if hub_st and hub_st.get("adopted"):
+            sl = hub_sl
     if a.cmd == "start":
         return cmd_start(a, sl)
     if a.cmd == "tryout":

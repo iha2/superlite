@@ -9,7 +9,7 @@ A superlite user running inside a Claude Code worktree (desktop app worktree ses
 
 ## Design principle (set by the user, 2026-11-07)
 
-When running under Claude Code, **prefer the harness's worktree abstractions for everything superlite needs a worktree for**: `EnterWorktree` / `ExitWorktree` for the session, feature and integration worktrees; `isolation: worktree` for parallel implementers and fixers; the desktop app's worktree sessions and `sync_with_base_branch` / `clean_up_worktrees` for sync and cleanup. Superlite's own `git worktree add/remove` paths remain only as the fallback for other harnesses (Codex, Cursor, Gemini, and so on) or when a Claude Code tool is unavailable. Superlite adds the session registry, branch/base bookkeeping and HUD on top; it does not duplicate what the harness does.
+When running under Claude Code, **prefer the harness's worktree abstractions for everything superlite needs a worktree for**: `EnterWorktree` / `ExitWorktree` for the session, feature and integration worktrees; the desktop app's worktree sessions and `sync_with_base_branch` / `clean_up_worktrees` for sync and cleanup. Superlite's own `git worktree add/remove` paths remain only as the fallback for other harnesses (Codex, Cursor, Gemini, and so on) or when a Claude Code tool is unavailable. Superlite adds the session registry, branch/base bookkeeping and HUD on top; it does not duplicate what the harness does.
 
 ## What the user will see or do differently
 
@@ -33,7 +33,7 @@ When running under Claude Code, **prefer the harness's worktree abstractions for
 6. HUD, `finish` (`mark_run`), `sync` and `exclusive` all resolve the right row for an adopted worktree.
 7. Docs and commands (`commands/*.md`, `AGENTS.md`, `docs/sessions.md`, `docs/feature-flow.md`, `skills/shipping`, `skills/swarm`) agree: no instruction to hand-run `git worktree add` for the session worktree; "move the agent root" replaced.
 8. Under Claude Code, the docs, commands and shipping skill instruct `EnterWorktree` / `ExitWorktree` first for session, feature and integration worktrees, and `git worktree add` appears only as a labelled fallback for other harnesses. With the harness absent, the old path still works unchanged.
-9. Write-capable agents run with `isolation: worktree` under Claude Code (D7) and their results land through the harness; with isolation off, behaviour is unchanged.
+9. Dropped with D7 (user, 2026-11-10): agents keep working in the shared checkout; no agent runs with `isolation: worktree`.
 10. Every worktree superlite cuts (parallel session, proto sandbox, integration, merge checkout) lands under `<hub>/.claude/worktrees/`; the hub reports no untracked files for it, `git stash -u` leaves it alone, `owned:true` rows there are closable by superlite, and `EnterWorktree path=` accepts it from a pinned agent. Sessions registered at old `.superlite/worktrees/...` paths still close and discard correctly.
 11. For each home (A hub, B adopted harness worktree, C superlite-cut worktree) the full lifecycle works and is tested: create, stop/park, resume, close, discard. In A, WIP is stashed under a slug tag and restored by oid with branch switches; in B and C no stash is used and WIP stays in the worktree; stopping a dirty worktree never removes it; moving A to C via `split_move` keeps WIP; two parked sessions' stashes never cross.
 12. All existing tests in `tests/scripts/` pass; `test_line_grammar.py` still accepts every emitted line.
@@ -79,8 +79,13 @@ Sources: two read-only agent reports of the cached plugin; the docs agent used t
 - D2. **Adopt, never own.** Adopted rows get `owned:False` and `adopted_branch:True` always; superlite never removes the worktree or deletes the branch. Cleanup is `ExitWorktree`.
 - D3. **Real base.** Record `base` / `base_sha` from the merge-base of the adopted branch with the default base; fall back to `reg.base`.
 - D4. **Isolated subagents:** register as children of the parent session (`parent` field), no HUD line change; do not auto-run `ensure` from agents. Smallest option; revisit if needed.
-- D5. **Harness-first creation (revised).** Under Claude Code, the proto sandbox, the integration worktree and the session worktree are created with `EnterWorktree` (and left with `ExitWorktree`), then registered by `session ensure` / `proto start --adopt`. `superlite-cli` only registers and records; it runs `git worktree add` itself only when not under Claude Code or when `EnterWorktree` is unavailable (fallback, current behaviour). Detect the harness via `CLAUDE_CODE` / `CLAUDE_PLUGIN_ROOT` (already used by the hooks) plus the available tools. The integration "dedicated worktree" rule becomes: reuse the harness worktree when it is dedicated to this feature, else `EnterWorktree` a new one.
-- D7. **Implementers and fixers.** Add `isolation: worktree` to the write-capable agents (`implementer*`, `fixer-*`, `package-reviewer`) when running under Claude Code and the plan's task graph marks tasks as file-parallel; otherwise keep the shared checkout plus `exclusive.py`. Results come back through the harness's worktree merge/keep, not a bespoke one. Needs a prototype to confirm how `ensure` and the edit guard resolve in an isolated subagent worktree.
+- D5. **Claude creates, superlite adopts (revised by the user, 2026-11-10). Claude Code only (`CLAUDECODE=1`); other harnesses keep superlite's `git worktree add` path unchanged.**
+  - Session, integration and prototype worktrees are created with `EnterWorktree name=<slug>` from the hub; superlite adopts them (`session ensure` / `proto start --adopt`). The merge checkout needs an existing branch, so it is entered with `EnterWorktree path=`.
+  - Base: the repo sets `"worktree": {"baseRef": "head"}` in `.claude/settings.json`, and superlite checks the hub is on the needed base (the user's branch for a prototype, the starting branch for integration) before the agent calls `EnterWorktree`. No reset after creation: a reset makes `ExitWorktree remove` treat every base commit as unmerged work (probe, 2026-11-10).
+  - Branch name: asked once, the first time a flow needs a worktree (keep Claude's `worktree-<slug>`, switch to `superlite/sessions/<slug>`, or the user's own pattern); saved in superlite preferences, changeable later.
+  - Cleanup: Claude owns it (`ExitWorktree remove` / the desktop app). `session close` and `proto discard` archive and unregister only.
+  - Probe facts (2026-11-10, this repo, WSL): `EnterWorktree name=x` creates `<hub>/.claude/worktrees/x` on `worktree-x`; it refuses when the session cwd is a worktree whose `.git` file holds a Windows path, so it is called from the hub; with the default `fresh` it cut from `fa77b90` (main); `ExitWorktree remove` of a worktree with no new commits succeeds without `discard_changes`. The `baseRef: head` setting applies from the next session start (not to a running session); a fresh session then cut `worktree-x` from the hub's HEAD (`fd5bc3a`), and `ExitWorktree remove` without `discard_changes` deleted it and its branch. With the `superlite` branch choice (`git switch -c superlite/sessions/<slug>` inside the Claude worktree): `ExitWorktree remove` with no new commits deletes the worktree and `worktree-<slug>` and keeps the superlite branch; with commits on it, remove refuses and asks for confirmation ("removing keeps that branch, so no commit is lost"), and `keep` leaves it on disk.
+- D7. **Dropped (user, 2026-11-10).** No `isolation: worktree` for implementers or fixers, per call or in frontmatter. Superlite already keeps parallel agents apart with `Owns`, `exclusive.py` and per-task checkpoints in one shared checkout; an isolated worktree would add a checkout per agent, a reset off origin's default branch and a land step for no extra safety.
 - D8. **Cleanup and sync.** Under Claude Code, shipping tells the agent to call `ExitWorktree` (keep or remove) and, in the desktop app, `sync_with_base_branch` / `clean_up_worktrees`, instead of `git worktree remove` and `session sync`. `session sync` stays as the fallback.
 - D6. **Build target.** The build runs in a clone of `iha2/superlite` (on its own session/worktree), not in this vault. Needs a clone path from you, or I clone to a scratch location.
 
@@ -101,67 +106,50 @@ Source: the tool descriptions loaded in this session (`EnterWorktree`, `ExitWork
 ### Lifecycle (mermaid)
 
 ```mermaid
-stateDiagram-v2
-    [*] --> Hub: session starts in main checkout
-    Hub --> Worktree: EnterWorktree(name)<br/>.claude/worktrees/NAME, new branch<br/>base = worktree.baseRef
-    Hub --> Worktree: EnterWorktree(path)<br/>existing worktree from git worktree list
-    [*] --> Worktree: desktop app session / claude --worktree<br/>(harness already placed the session)
-    Worktree --> Hub: ExitWorktree(keep)<br/>dir and branch stay
-    Worktree --> Removed: ExitWorktree(remove)<br/>refuses if uncommitted or unmerged<br/>unless discard_changes=true
-    Worktree --> Worktree: sync_with_base_branch<br/>(desktop app fetches origin and merges base)
-    Worktree --> Kept: session archived with uncommitted work
-    Worktree --> Idle: no activity 30/60/90 days
-    Idle --> Pruned: clean_up_worktrees<br/>worktree removed, branch + session stay
-    Kept --> Removed: discard_kept_worktree<br/>(user approves, changes lost)
-    Pruned --> Worktree: session resumed, branch checked out again
-    Removed --> [*]
+flowchart TD
+    S([Session starts]) --> E[EnterWorktree, app or --worktree]
+    E --> WT[Worktree]
+    WT --> K[Exit: keep]
+    WT --> I[Idle: app cleanup]
+    WT --> A[Archived, dirty]
+    WT --> R[Exit: remove]
+    I --> P([Pruned: branch kept])
+    A --> D[discard_kept_worktree]
+    D --> X([Removed])
+    R --> X
 ```
+
+`ExitWorktree keep` returns to the hub and leaves the directory and branch. A resumed session checks a pruned branch out again. In the desktop app, `sync_with_base_branch` merges the base into a worktree.
 
 ### Ownership rules that constrain superlite (mermaid)
 
 ```mermaid
 flowchart TD
-    A[Worktree exists] --> B{Created by EnterWorktree<br/>in THIS session?}
-    B -- yes --> C[ExitWorktree may keep or remove it]
-    B -- no --> D{Entered via EnterWorktree path=?}
-    D -- yes --> E[ExitWorktree keep only:<br/>returns to launch dir, never removes]
-    D -- no --> F[Not touched by ExitWorktree:<br/>no-op if no worktree session is active]
-    A --> G{Created by the desktop app?}
-    G -- yes --> H[App owns lifecycle:<br/>archive, clean_up_worktrees,<br/>discard_kept_worktree, sync_with_base_branch]
-    A --> I{Created by superlite git worktree add?}
-    I -- yes --> J[Only superlite session close/discard<br/>may remove it; harness will not]
+    A{Made by EnterWorktree this session?} -->|yes| C[ExitWorktree keeps or removes]
+    A -->|no| B{Made by the desktop app?}
+    B -->|yes| H[App cleans and syncs]
+    B -->|no| D{Cut by superlite?}
+    D -->|yes| J[session close removes]
+    D -->|no| F[ExitWorktree keep only]
 ```
 
 ### Where superlite plugs in (mermaid)
 
 ```mermaid
 sequenceDiagram
-    autonumber
-    actor U as User
-    participant CC as Claude Code harness
-    participant SL as superlite-cli (registry)
+    participant U as User
+    participant CC as Claude
+    participant SL as superlite
     participant WT as Worktree
-    U->>CC: /superlite:feature <request>
-    alt harness already put the session in a worktree (desktop app, --worktree, EnterWorktree earlier)
-        CC->>WT: cwd = existing worktree
-        CC->>SL: session ensure --slug topic
-        SL->>SL: register in place: owned=false, adopted_branch=true, base = merge-base
-    else main checkout, Claude Code available
-        CC->>WT: EnterWorktree(name=topic)  [allowed: project instructions name worktrees]
-        CC->>SL: session ensure --slug topic
-        SL->>SL: register in place (same as above)
-    else other harness or EnterWorktree unavailable
-        SL->>WT: git worktree add (current behaviour, fallback)
-        SL->>SL: register: owned=true
-    end
-    CC->>CC: build waves; write agents use isolation: worktree
-    CC->>SL: finish / report
-    alt harness-owned
-        CC->>WT: ExitWorktree(keep or remove) / desktop cleanup
-        SL->>SL: mark_run finished, never git worktree remove
-    else superlite-owned
-        SL->>WT: session close removes worktree (existing rules)
-    end
+    U->>CC: /superlite:feature
+    CC->>SL: session ensure
+    SL->>WT: adopt or cut
+    SL-->>CC: enter line
+    CC->>WT: EnterWorktree path
+    CC->>CC: build
+    CC->>SL: finish
+    SL->>WT: close if superlite cut
+    CC->>WT: ExitWorktree if harness
 ```
 
 ### Facts that change the design
@@ -199,38 +187,31 @@ The existing serial model stays first-class. A session is a branch plus parked s
 ### Stop, park and resume (mermaid)
 
 ```mermaid
-stateDiagram-v2
-    [*] --> Active: ensure
-    state Active {
-        [*] --> InHub: home A
-        [*] --> InAdopted: home B (harness worktree)
-        [*] --> InCut: home C (superlite worktree)
-    }
-    Active --> Parked: stop or switch session
-    note right of Parked
-        A: stash -u tagged superlite-session:SLUG
-           + run files to session-store/SLUG
-        B and C: worktree stays on disk,
-           WIP stays in it, no stash
-    end note
-    Parked --> Active: resume (A: switch + stash apply by oid;<br/>B and C: EnterWorktree path= or REDIRECT)
-    Active --> Finished: finish (mark_run finished)
-    Parked --> Finished: finish
-    Finished --> Closed: session close
-    Finished --> Discarded: session discard
-    Closed --> [*]: A: hub back to base<br/>B: unregister only<br/>C: git worktree remove
-    Discarded --> [*]: A: reset --hard in hub<br/>B: unregister only<br/>C: remove --force + branch -D
+flowchart TD
+    E([ensure]) --> A[Active]
+    A --> S[stop or switch]
+    S --> P[Parked: resume to make active]
+    A --> F[Finished]
+    P --> F
+    F --> C[session close]
+    F --> D[session discard]
+    C --> CL([Closed: archived])
+    D --> DI([Discarded])
 ```
+
+Resume moves a parked session back to Active. Parking in home A stashes WIP (tag `superlite-session:SLUG`) and moves run files to `session-store/SLUG`; in homes B and C the worktree and its WIP stay on disk. Close: A puts the hub back on base, B only unregisters, C runs `git worktree remove`. Discard: A resets the hub, B only unregisters, C removes the worktree and deletes the branch.
 
 ### Moving between homes (mermaid)
 
 ```mermaid
-flowchart LR
-    A[Home A: hub, branch + stash] -- "split_move: stash -u, switch hub to base,<br/>cut worktree, stash apply" --> C[Home C: worktree under .claude/worktrees]
-    A -- "harness already isolated the session:<br/>adopt, no split" --> B[Home B: adopted harness worktree]
-    C -- "close: remove worktree,<br/>keep branch" --> A2[Hub on base, branch kept]
-    B -- "close: unregister only" --> B2[Harness keeps worktree and branch]
-    B -- "ExitWorktree keep/remove or app cleanup" --> B3[Harness-managed end of life]
+flowchart TD
+    A[Home A: hub, branch + stash] --> S[split_move keeps WIP]
+    A --> H[harness isolated it]
+    S --> C[Home C: superlite worktree]
+    H --> B[Home B: harness worktree]
+    C --> CC([close: worktree removed])
+    B --> BC([close: unregister only])
+    B --> BX([ExitWorktree or app])
 ```
 
 ### Rules that keep the three homes consistent
@@ -262,7 +243,7 @@ Also in the prototype: `reconcile` report-only plus `--apply` (checks 13, 14) an
 2. `session_ensure.py`: `_register_linked` sets adoption fields and real base; `_ensure` skips `_go_parallel` / move-out when already in an isolated harness worktree; `close` message.
 3. `session_switch.py`: `_discard` / `close` guard (never delete adopted branch or worktree); message pointing to `ExitWorktree`.
 4. `session_hud.py` and `session_sync.py`: row resolution and base for adopted worktrees; HUD marks harness-owned.
-5. Hooks (`_preamble`, `capture-agent-*`): confirm subagent cwd resolution for isolated worktrees; add the parent link (D4) if cheap.
+5. Hooks: no change (D7 dropped); the walk-up already finds the hub run from any worktree under the hub.
 6. Docs/commands: replace `git worktree add` instructions and "move the agent root"; document EnterWorktree / ExitWorktree / `--worktree` behaviour in `docs/sessions.md` and `docs/feature-flow.md`.
 7. Tests: new cases next to `test_session_ensure.py:181` and the files listed above, including detached and out-of-tree worktrees.
 8. Seam checks: adopted-worktree session plus `proto start` plus `finish`; every existing test still passes.

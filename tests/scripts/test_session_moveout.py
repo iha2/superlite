@@ -71,7 +71,7 @@ def branch(cwd):
 
 
 def wt_of(r, slug):
-    return r / ".superlite" / "worktrees" / "sessions" / slug
+    return r / ".claude" / "worktrees" / f"sessions-{slug}"
 
 
 def snapshot(r):

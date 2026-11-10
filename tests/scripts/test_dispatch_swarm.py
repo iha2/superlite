@@ -107,8 +107,12 @@ def test_main_no_swarm_without_host(tmp_path, monkeypatch, capsys):
 
 def test_ready_and_assign_subcommands(tmp_path, capsys):
     import json
+    import shutil
 
-    plan = ROOT / "tests" / "scripts" / "fixtures" / "run_plan" / "plan.md"
+    # A copy outside the repo: the fixture's run dir would be this checkout's .superlite (a live run's stable.json).
+    plan = tmp_path / "plan" / "plan.md"
+    plan.parent.mkdir()
+    shutil.copy(ROOT / "tests" / "scripts" / "fixtures" / "run_plan" / "plan.md", plan)
     assert dispatch.main(["ready", "--plan", str(plan)]) == 0
     assert capsys.readouterr().out.split() == ["T2", "T5", "T4", "T1"]
     pool = tmp_path / "pool.json"

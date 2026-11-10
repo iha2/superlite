@@ -14,10 +14,13 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 import gitignore  # noqa: E402
+import session_archive as A  # noqa: E402
 import session_registry as R  # noqa: E402
+import session_wip as W  # noqa: E402
 import state  # noqa: E402
+import worktree_home  # noqa: E402
 from journal import Journal  # noqa: E402
-from session_ensure import enter_session, guarded, park_active  # noqa: E402
+from session_ensure import archived_row, enter_session, guarded, park_active, restore_archived  # noqa: E402
 from session_registry import (  # noqa: E402
     ORCH, base_now, behind_base, branch_exists, branch_for, branch_owner, clear_run_state, current_branch,
     default_base, drop_stashes, find_row, git, hub_root, in_progress, is_dirty, owned_worktree, print_redirect,
@@ -47,6 +50,7 @@ def cmd_status(a) -> int:  # O(N)
         behind = behind_base(root, reg, s, tips.get(name, ""))
         print(f"session: {s.get('status', '?')} {s['slug']} | branch {s.get('branch')} | "
               f"worktree {s.get('worktree') or '(removed)'} | {stash} | run:{s.get('run') or 'open'}"
+              + (" | harness" if s.get("harness") else " | adopted" if s.get("adopted_branch") else "")
               + (f" | {name}:+{behind}" if behind else ""))
     return 0
 
@@ -61,9 +65,18 @@ def cmd_use(a) -> int:  # O(S)
 def _use(root: Path, slug: str, a) -> int:
     reg = read_reg(root)
     row = find_row(reg, slug)
-    branch = (row or {}).get("branch") or branch_for(slug)
+    archived = archived_row(root, reg, slug)
+    known = row or archived or {}
+    branch = known.get("branch") if known.get("adopted_branch") else (known.get("branch") or branch_for(slug))
     host = resolve_host(root, reg)
-    owner = branch_owner(root, branch)
+    if archived and _in_place(archived, start_dir(a)):  # an adopted worktree, used from inside itself
+        with Journal() as j:
+            j.step("re-register in place")
+            return restore_archived(root, reg, host, archived, j)
+    if archived and archived.get("detached") and not _in_place(archived, start_dir(a)):
+        print(f"session: {slug} was a detached worktree; run ensure inside it to restore", file=sys.stderr)
+        return 2
+    owner = branch_owner(root, branch) if branch else None  # a detached row has no branch to look up
     if owner and not same(owner, host):
         return print_redirect(owner, slug, branch)
     active = reg.get("active")
@@ -76,7 +89,7 @@ def _use(root: Path, slug: str, a) -> int:
             return 2
         print(f"session: already active {slug} on {branch} in {host.as_posix()}")
         return 0
-    if row is None and not branch_exists(root, branch):
+    if row is None and not archived and not (branch and branch_exists(root, branch)):
         print(f"session: unknown session {slug}; run superlite-cli session create --slug {slug}", file=sys.stderr)
         return 2
     if in_progress(host):
@@ -89,7 +102,7 @@ def _use(root: Path, slug: str, a) -> int:
         return 2
     note, keep = None, False
     if parking:
-        target = branch if branch_exists(root, branch) else (reg.get("base") or default_base(root))
+        target = branch if branch and branch_exists(root, branch) else (reg.get("base") or default_base(root))
         stop, note, keep = untracked_gate(host, active, getattr(a, "untracked", None) or reg.get("untracked"),
                                           target)
         if stop is not None:
@@ -101,7 +114,16 @@ def _use(root: Path, slug: str, a) -> int:
             if note:
                 print(note)
         j.step("enter the session")
+        if archived:
+            return restore_archived(root, reg, host, archived, j)
         return enter_session(root, reg, host, row or {"slug": slug, "branch": branch, "has_stash": False}, j)
+
+
+def _in_place(archived: dict, start: Path) -> bool:
+    """The archived row is an adopted worktree that still exists and is the checkout the command runs in."""
+    wt = archived.get("worktree")
+    return bool(wt and not archived.get("owned") and archived.get("adopted_branch") and Path(wt).is_dir()
+                and same(wt, toplevel(start)))
 
 
 def continue_apply(root: Path, reg: dict, host: Path, slug: str) -> int:  # O(stash)
@@ -128,29 +150,48 @@ def cmd_discard(a) -> int:  # O(tree)
         reg = read_reg(root)
         row = find_row(reg, slug)
         if not row:
-            print(f"session: no registered session {slug}", file=sys.stderr)
-            return 2
+            m = A.read(root, slug)
+            if m is None:
+                print(f"session: no registered session {slug}", file=sys.stderr)
+                return 2
+            git("update-ref", "-d", W.ref_for(slug), cwd=root, check=False)  # archived: ref, manifest, branch
+            shutil.rmtree(store_path(root, slug), ignore_errors=True)
+            branch = m.get("branch") or branch_for(slug)
+            if not a.keep_branch and not m.get("adopted_branch") and branch_owner(root, branch) is None:
+                git("branch", "-D", branch, cwd=root, check=False)
+            print(f"session: discarded {slug}")
+            _exit_hint(slug, m)
+            return 0
         host = resolve_host(root, reg)
         if same(row.get("worktree"), host) and reg.get("active") == slug and in_progress(host):
             print("session: merge/rebase in progress; finish or abort it before discard", file=sys.stderr)
             return 2
         _discard(root, reg, row, slug, a.keep_branch)
     print(f"session: discarded {slug}")
+    _exit_hint(slug, row)
     return 0
+
+
+def _exit_hint(slug: str, row: dict) -> None:
+    """An adopted harness worktree is never removed here; the user leaves it with ExitWorktree."""
+    if row.get("harness"):
+        print(f"session: {slug} lives in a harness worktree; leave it with ExitWorktree")
 
 
 def _discard(root: Path, reg: dict, row: dict, slug: str, keep_branch: bool) -> None:
     """Drop the session's work, then its registry row last: a failure leaves the row, so discard can be run again."""
     branch = row.get("branch") or branch_for(slug)
+    adopted = bool(row.get("adopted_branch"))
     host = resolve_host(root, reg)
     if same(row.get("worktree"), host):
         _discard_on_host(reg, row, slug, host)
-    elif owned_worktree(root, row) and Path(row["worktree"]).is_dir():
+    elif not adopted and owned_worktree(root, row) and Path(row["worktree"]).is_dir():
         git("worktree", "remove", "--force", row["worktree"], cwd=root)
         git("worktree", "prune", cwd=root, check=False)
     shutil.rmtree(store_path(root, slug), ignore_errors=True)
-    if not keep_branch and not row.get("adopted_branch") and branch_owner(root, branch) is None:
+    if not keep_branch and not row.get("adopted_branch") and row.get("branch") and branch_owner(root, branch) is None:
         git("branch", "-D", branch, cwd=root, check=False)
+
     def drop(r):
         r["sessions"] = [s for s in r["sessions"] if s.get("slug") != slug]
         if r.get("active") == slug:
@@ -199,8 +240,8 @@ def _split_checks(reg: dict, root: Path, here: Path, a, cur: str, new_slug: str,
     in_place = not same(here, root) or (cur != base and base_owner is not None and not same(base_owner, here))
     keep_branch = cur if (cur != base or in_place) else branch_for(keep_slug)
     new_branch = branch_for(new_slug)
-    wt_keep = here if in_place else sessions_dir(root) / keep_slug
-    wt_new = sessions_dir(root) / new_slug
+    wt_keep = here if in_place else worktree_home.session_dir(root, keep_slug)
+    wt_new = worktree_home.session_dir(root, new_slug)
     owner = branch_owner(root, new_branch)
     if owner:
         return print_redirect(owner, new_slug, new_branch)
@@ -248,13 +289,14 @@ def _split(a, root: Path, here: Path, cur: str, new_slug: str, keep_slug: str) -
         if not in_place:
             split_move(root, state.run_dir(here), cur, base, keep_branch, wt_keep, j)
         j.step("create the new worktree")
+        worktree_home.hide_all(root)
         wt_new.parent.mkdir(parents=True, exist_ok=True)
         git("worktree", "add", "-q", "-b", new_branch, str(wt_new), base, cwd=root)
         j.undo(lambda: (git("worktree", "remove", "--force", str(wt_new), cwd=root, check=False),
                         git("branch", "-D", new_branch, cwd=root, check=False)), "worktree and branch")
         j.step("write the registry")
         def record(r):
-            r["base"] = base
+            r["base"] = r.get("base") or base
             prior = find_row(r, keep_slug)
             keep_owned = bool(prior and prior.get("owned")) if in_place else True
             for slug, branch, wt, owned, role in ((keep_slug, keep_branch, wt_keep, keep_owned, "previous"),
@@ -262,7 +304,7 @@ def _split(a, root: Path, here: Path, cur: str, new_slug: str, keep_slug: str) -
                 upsert_row(r, {"slug": slug, "branch": branch, "worktree": wt.as_posix(),
                                "store": store_path(root, slug).as_posix(), "has_stash": False,
                                "status": "parallel", "owned": owned, "role": role, "topic": slug,
-                               **base_now(root, r)})
+                               **base_now(root, {**r, "base": base})})
         R.update(root, record)
     print(f"session: previous {keep_slug} -> {wt_keep.as_posix()} on {keep_branch}")
     print(f"session: new {new_slug} -> {wt_new.as_posix()} on {new_branch}")

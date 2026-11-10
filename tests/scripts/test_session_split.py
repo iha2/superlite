@@ -58,8 +58,8 @@ def test_split_moves_open_run_and_cuts_new_worktree(repo):
     (repo / "app.py").write_text("print('wip')\n")
     cp = run(SESSION, "split", "--keep", "export", "--new", "auth", cwd=repo)
     assert cp.returncode == 0, cp.both
-    keep = repo / ".superlite" / "worktrees" / "sessions" / "export"
-    new = repo / ".superlite" / "worktrees" / "sessions" / "auth"
+    keep = repo / ".claude" / "worktrees" / "sessions-export"
+    new = repo / ".claude" / "worktrees" / "sessions-auth"
     assert keep.is_dir() and new.is_dir()
     assert (keep / ".superlite" / "orchestrator.json").is_file()
     assert (keep / ".superlite" / "progress.md").read_text(encoding="utf-8") == "- start abc\n"
@@ -72,7 +72,7 @@ def test_split_moves_open_run_and_cuts_new_worktree(repo):
     assert not (new / ".superlite" / "orchestrator.json").exists()
     reg = json.loads((repo / ".superlite" / "sessions.json").read_text(encoding="utf-8"))
     assert {s["slug"] for s in reg["sessions"]} == {"export", "auth"}
-    assert "worktrees/sessions/export" in cp.out and "worktrees/sessions/auth" in cp.out
+    assert "worktrees/sessions-export" in cp.out and "worktrees/sessions-auth" in cp.out
 
 
 def test_split_reuses_current_feature_branch_for_keep(repo):
@@ -82,7 +82,7 @@ def test_split_reuses_current_feature_branch_for_keep(repo):
     git(repo, "commit", "-q", "-m", "wip")
     cp = run(SESSION, "split", "--new", "billing", cwd=repo)
     assert cp.returncode == 0, cp.both
-    keep = repo / ".superlite" / "worktrees" / "sessions" / "export"
+    keep = repo / ".claude" / "worktrees" / "sessions-export"
     assert git(keep, "branch", "--show-current").strip() == "superlite/sessions/export"
     assert (keep / "app.py").read_text(encoding="utf-8") == "print('on-branch')\n"
     assert git(repo, "branch", "--show-current").strip() == "main"
@@ -102,9 +102,12 @@ def test_split_refuses_bad_topics(repo):
 def test_split_rolls_back_on_failure(repo):
     (repo / "app.py").write_text("print('wip')\n")
     (repo / "app.py.new").write_text("untracked\n")
-    sessions = repo / ".superlite" / "worktrees"
+    sessions = repo / ".claude"
     sessions.mkdir(parents=True)
-    (sessions / "sessions").write_text("not a dir\n")  # blocks worktree creation after the run moved
+    (sessions / "worktrees").write_text("not a dir\n")
+    with (repo / ".git" / "info" / "exclude").open("a") as fh:
+        fh.write("/.claude/worktrees\n")  # a file the stash -u of the move must not sweep away
+    # blocks worktree creation after the run moved
     cp = run(SESSION, "split", "--keep", "export", "--new", "auth", cwd=repo)
     assert cp.returncode == 1 and "rolling back" in cp.err, cp.both
     assert (repo / ".superlite" / "orchestrator.json").is_file()
@@ -172,7 +175,7 @@ def test_split_keeps_sandboxes_and_rebinds_checkpoints(repo):
     cp = run(SESSION, "split", "--keep", "export", "--new", "auth", cwd=repo)
     assert cp.returncode == 0, cp.both
     assert (box / "keep.txt").is_file()
-    keep = repo / ".superlite" / "worktrees" / "sessions" / "export"
+    keep = repo / ".claude" / "worktrees" / "sessions-export"
     st = json.loads((keep / ".superlite" / "checkpoints.json").read_text(encoding="utf-8"))
     assert st["branch"] == "refs/heads/superlite/sessions/export"
 
@@ -182,7 +185,7 @@ def test_split_preserves_staged_changes(repo):
     git(repo, "add", "app.py")
     (repo / "app.py").write_text("print('worktree')\n")
     assert run(SESSION, "split", "--keep", "export", "--new", "auth", cwd=repo).returncode == 0
-    keep = repo / ".superlite" / "worktrees" / "sessions" / "export"
+    keep = repo / ".claude" / "worktrees" / "sessions-export"
     assert git(keep, "show", ":app.py") == "print('staged')\n"
     assert (keep / "app.py").read_text(encoding="utf-8") == "print('worktree')\n"
 
@@ -198,7 +201,7 @@ def test_split_from_linked_feature_worktree_keeps_run_in_place(repo):
     assert cp.returncode == 0, cp.both
     assert (feat / ".superlite" / "orchestrator.json").is_file()
     assert git(feat, "branch", "--show-current").strip() == "superlite/export"
-    new = repo / ".superlite" / "worktrees" / "sessions" / "auth"
+    new = repo / ".claude" / "worktrees" / "sessions-auth"
     assert git(new, "branch", "--show-current").strip() == "superlite/sessions/auth"
     reg = json.loads((repo / ".superlite" / "sessions.json").read_text(encoding="utf-8"))
     export = next(s for s in reg["sessions"] if s["slug"] == "export")

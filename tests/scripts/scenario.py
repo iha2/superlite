@@ -129,9 +129,10 @@ class Repo:
             fh.write(json.dumps({"t": t, "approves": approves, "text": text}) + "\n")
 
     def assert_closed_clean(self, slug: str) -> None:
-        """A finished flow: session row finished, checkout back on main, main has no new commits."""
-        row = self.session_row(slug)
-        assert row is not None and row["run"] == "finished", row
+        """A finished flow: session archived (row gone, manifest says finished), checkout back on main, main has no new commits."""
+        assert self.session_row(slug) is None
+        row = self.state(f"session-store/{slug}/session.json")
+        assert row is not None and row["run"] == "finished" and row.get("closed_at"), row
         assert self.branch() == "main"
         assert self.log("main") == [self.base_sha]
 
