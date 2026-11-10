@@ -17,9 +17,9 @@ import session_wip as W  # noqa: E402
 import state  # noqa: E402
 from journal import Journal, JournalError  # noqa: E402
 from session_registry import (  # noqa: E402
-    branch_for, branch_owner, current_branch, find_row, git, hub_root, in_progress, now_ms, owned_worktree,
-    park_run_state, paths_text, read, registry_lock, restore_run_state, row_base, run_entries, same, set_run,
-    start_dir, store_path, untracked_files, untracked_gate, validate_slug, write)
+    branch_for, branch_owner, current_branch, drop_stashes, find_row, git, hub_root, in_progress, now_ms,
+    owned_worktree, park_run_state, paths_text, read, registry_lock, restore_run_state, row_base, run_entries,
+    same, session_stashes, set_run, start_dir, store_path, untracked_files, untracked_gate, validate_slug, write)
 
 def cmd_close(a) -> int:  # O(tree)
     slug = validate_slug(a.slug)
@@ -43,9 +43,7 @@ def _close(root: Path, slug: str, a) -> int:
         return _close_owned(root, reg, row, slug, a)
     if not row.get("owned") and row.get("adopted_branch") and row.get("worktree") and not same(row["worktree"], root):
         return _close_adopted(root, reg, row, slug)
-    print(f"session: closed {slug}")
-    write(root, reg)
-    return 0
+    return _close_stored(root, reg, row, slug)
 
 
 def _save_wip(cwd: Path, slug: str, keep_untracked: bool, j: Journal) -> str | None:
@@ -164,6 +162,34 @@ def _close_owned(root: Path, reg: dict, row: dict, slug: str, a) -> int:
           + "; removed its worktree")
     if note:
         print(note)
+    return 0
+
+
+def _close_stored(root: Path, reg: dict, row: dict, slug: str) -> int:
+    """A parked host session or an owned one whose worktree is gone: nothing live to park. Archive its store and
+    saved work (stash moved to the private ref) and unregister it; the active checkout is never touched."""
+    oid = row.get("stash_oid") if row.get("has_stash") else None
+    if oid and git("cat-file", "-e", f"{oid}^{{commit}}", cwd=root, check=False).returncode != 0:
+        oid = None  # the recorded stash is gone: nothing to carry
+    refs = session_stashes(root, row) if oid else []
+    before = copy.deepcopy(reg)
+    try:
+        with Journal() as j:
+            if oid and not W.exists(root, slug):
+                j.step("save the work on the private ref")
+                git("update-ref", W.ref_for(slug), oid, cwd=root)
+                j.undo(lambda: git("update-ref", "-d", W.ref_for(slug), cwd=root, check=False), "wip ref")
+            _archive(root, reg, row, slug, W.ref_for(slug) if W.exists(root, slug) else None, j)
+            write(root, reg)
+    except JournalError as e:
+        reg.clear()
+        reg.update(before)
+        print(f"session: could not close {slug}: {e}; nothing changed", file=sys.stderr)
+        return 2
+    if refs:
+        drop_stashes(root, refs[:1])  # the work now lives on the ref; the shared stash list is cleared of it
+    print(f"session: closed {slug}; archived to {store_path(root, slug).as_posix()}"
+          + (f" (wip {W.ref_for(slug)})" if W.exists(root, slug) else ""))
     return 0
 
 

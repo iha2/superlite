@@ -189,3 +189,13 @@ def test_off_claude_code_adopt_keeps_branch(busy):
     wt = enter_worktree(busy, "b")
     assert run("ensure", "--slug", "b", cwd=wt, claude=False).returncode == 0
     assert row_of(busy, "b")["branch"] == "worktree-b"
+
+
+def test_create_rerun_inside_claude_worktree_adopts_it(busy):
+    set_pref(busy, "superlite")
+    assert "session: create EnterWorktree name=a" in run("create", "--slug", "a", "--worktree", cwd=busy).out
+    wt = enter_worktree(busy, "a")
+    cp = run("create", "--slug", "a", "--worktree", cwd=wt)
+    assert cp.returncode == 0, cp.both
+    row = row_of(busy, "a")
+    assert row and row["owned"] is False and row["harness"] is True and row["branch"] == "superlite/sessions/a"

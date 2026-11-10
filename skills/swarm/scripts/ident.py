@@ -22,7 +22,9 @@ def git_path(p: str) -> str:
 def native(p) -> Path:
     """A path this process can open: `C:/x` becomes `/mnt/c/x` under WSL when that mount exists."""
     s = git_path(str(p))
-    if os.name != "nt" and len(s) > 2 and s[1] == ":" and s[0].isalpha():
+    if os.name == "nt":
+        return Path(s)
+    if len(s) > 2 and s[1] == ":" and s[0].isalpha():
         mnt = f"/mnt/{s[0].lower()}"
         if os.path.isdir(mnt):
             return Path(mnt + "/" + s[3:])

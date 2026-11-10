@@ -18,6 +18,7 @@ import session_archive as A  # noqa: E402
 import session_registry as R  # noqa: E402
 import session_wip as W  # noqa: E402
 import claude_create  # noqa: E402
+import host_harness as harness  # noqa: E402
 import state  # noqa: E402
 from worktree_home import harness_worktree, session_dir  # noqa: E402,F401  (harness_worktree re-exported)
 from journal import Journal, JournalError  # noqa: E402
@@ -423,6 +424,9 @@ def _create(root: Path, slug: str, a) -> int:
     if existing:
         print(f"session: {slug} already exists; run superlite-cli session use --slug {slug}", file=sys.stderr)
         return 2
+    here = toplevel(start_dir(a))
+    if a.worktree and harness.under_claude_code() and not same(here, host):  # the rerun inside Claude's worktree
+        return _register_linked(root, reg, here, slug)
     if branch_exists(root, branch):
         print(f"session: branch {branch} already exists; pick another --slug", file=sys.stderr)
         return 2

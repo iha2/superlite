@@ -24,7 +24,7 @@ from session_ensure import archived_row, enter_session, guarded, park_active, re
 from session_registry import (  # noqa: E402
     ORCH, base_now, behind_base, branch_exists, branch_for, branch_owner, clear_run_state, current_branch,
     default_base, drop_stashes, find_row, git, hub_root, in_progress, is_dirty, owned_worktree, print_redirect,
-    registry_lock, resolve_host, same, session_stashes, sessions_dir, sha_of, slug_from_branch, split_move,
+    registry_lock, resolve_host, same, session_line, session_stashes, sessions_dir, sha_of, slug_from_branch, split_move,
     start_dir, store_path, toplevel, unmerged, untracked_gate, upsert_row, validate_slug)
 
 read_reg = R.read
@@ -76,9 +76,16 @@ def _use(root: Path, slug: str, a) -> int:
     if archived and archived.get("detached") and not _in_place(archived, start_dir(a)):
         print(f"session: {slug} was a detached worktree; run ensure inside it to restore", file=sys.stderr)
         return 2
-    owner = branch_owner(root, branch) if branch else None  # a detached row has no branch to look up
+    if row and row.get("detached"):  # no branch to look up or switch to: its own checkout is the session
+        return _use_detached(row, slug, start_dir(a))
+    owner = branch_owner(root, branch) if branch else None
     if owner and not same(owner, host):
         return print_redirect(owner, slug, branch)
+    if archived and archived.get("owned") and archived.get("worktree") and not a.continue_apply \
+            and not same(archived["worktree"], host):  # its own checkout comes back: the hub session is untouched
+        with Journal() as j:
+            j.step("recreate the worktree")
+            return restore_archived(root, reg, host, archived, j)
     active = reg.get("active")
     if a.continue_apply:
         return continue_apply(root, reg, host, slug)
@@ -117,6 +124,18 @@ def _use(root: Path, slug: str, a) -> int:
         if archived:
             return restore_archived(root, reg, host, archived, j)
         return enter_session(root, reg, host, row or {"slug": slug, "branch": branch, "has_stash": False}, j)
+
+
+def _use_detached(row: dict, slug: str, start: Path) -> int:
+    """A registered detached worktree: report it in place or redirect to it; refuse when the checkout is gone."""
+    wt = row.get("worktree")
+    if not wt or not Path(wt).is_dir():
+        print(f"session: {slug} was a detached worktree that is gone; nothing to restore", file=sys.stderr)
+        return 2
+    if same(wt, toplevel(start)):
+        session_line(wt, slug, "HEAD")
+        return 0
+    return print_redirect(wt, slug, "HEAD")
 
 
 def _in_place(archived: dict, start: Path) -> bool:
@@ -181,14 +200,14 @@ def _exit_hint(slug: str, row: dict) -> None:
 def _discard(root: Path, reg: dict, row: dict, slug: str, keep_branch: bool) -> None:
     """Drop the session's work, then its registry row last: a failure leaves the row, so discard can be run again."""
     branch = row.get("branch") or branch_for(slug)
-    adopted = bool(row.get("adopted_branch"))
     host = resolve_host(root, reg)
     if same(row.get("worktree"), host):
         _discard_on_host(reg, row, slug, host)
-    elif not adopted and owned_worktree(root, row) and Path(row["worktree"]).is_dir():
+    elif owned_worktree(root, row) and Path(row["worktree"]).is_dir():
         git("worktree", "remove", "--force", row["worktree"], cwd=root)
         git("worktree", "prune", cwd=root, check=False)
     shutil.rmtree(store_path(root, slug), ignore_errors=True)
+    git("update-ref", "-d", W.ref_for(slug), cwd=root, check=False)  # a failed archive restore may leave it
     if not keep_branch and not row.get("adopted_branch") and row.get("branch") and branch_owner(root, branch) is None:
         git("branch", "-D", branch, cwd=root, check=False)
 

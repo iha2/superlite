@@ -136,7 +136,7 @@ def apply(root: Path, reg: dict) -> tuple[dict, list[dict]]:  # O(N * W)
     # a gone row stays only while a live stash can still restore it
     new["sessions"] = [r for r in new.get("sessions", [])
                        if r["slug"] not in gone or sr.session_stashes(root, r)]
-    if any(d["class"] == "dangling-active" for d in ds):
+    if new.get("active") and not any(r["slug"] == new["active"] for r in new["sessions"]):
         new["active"] = None
     if any(d["class"] == "base" for d in ds):
         new["base"] = sr.default_base(root)

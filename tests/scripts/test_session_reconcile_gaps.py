@@ -1,10 +1,12 @@
 """Try-out fix round: stable re-apply, leaked registry base, Windows-written paths read from WSL."""
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -84,3 +86,20 @@ def test_native_maps_drive_paths_under_wsl():
     assert ident.native("C:/Users") == Path("/mnt/c/Users")
     assert ident.same_path(Path("C:/Users"), Path("/mnt/c/Users"))
     assert ident.native("/home/x") == Path("/home/x")
+
+
+def test_native_returns_the_normalized_path_on_windows(monkeypatch):
+    monkeypatch.setattr(ident, "os", SimpleNamespace(name="nt", path=os.path))
+    assert ident.native("/mnt/c/Users/x") == Path("C:/Users/x")
+    assert ident.native("D:\\y") == Path("D:\\y")
+
+
+def test_one_apply_clears_active_of_a_dropped_row(hub):
+    r = reg()
+    r["active"] = "ghost"
+    r["sessions"] = [{"slug": "ghost", "branch": "superlite/ghost", "worktree": str(hub / "nowhere"),
+                      "store": str(hub / "s"), "status": "parallel", "owned": True, "run": "open"}]
+    first, _ = rec.apply(hub, r)
+    assert not any(s["slug"] == "ghost" for s in first["sessions"]) and first["active"] is None
+    second, _ = rec.apply(hub, first)
+    assert json.dumps(second, sort_keys=True) == json.dumps(first, sort_keys=True)

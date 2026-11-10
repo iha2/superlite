@@ -520,8 +520,9 @@ def test_close_owned_parallel_keeps_staged_and_nested_untracked(repo):
     (wt / "d1" / "d2" / "deep.txt").write_text("deep\n")
     cp = run("close", "--slug", "b", "--untracked", "stash", cwd=repo)
     assert cp.returncode == 0, cp.both
-    shown = git(repo, "show", "-p", "refs/superlite/wip/b")
-    assert "STAGED" in shown and "deep.txt" in shown
+    ref = "refs/superlite/wip/b"
+    assert "STAGED" in git(repo, "show", f"{ref}^2:app.py")  # the index commit keeps the staged edit
+    assert git(repo, "show", f"{ref}:d1/d2/deep.txt") == "deep\n"
 
 
 def test_close_owned_parallel_worktree_deleted_by_hand(repo):

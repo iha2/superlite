@@ -1,4 +1,7 @@
-"""Session WIP on private refs: `refs/superlite/wip/<slug>` holds a snapshot of the working tree.
+"""Session WIP on private refs: `refs/superlite/wip/<slug>` holds a snapshot of the working tree and the index.
+
+Like `git stash create`, the snapshot is a commit whose tree is the working tree, with parents HEAD and an
+index commit (the staged tree), so staged and unstaged contents round-trip separately.
 
 Unlike `git stash`, the ref never touches the shared stash list (so `git stash clear` and other sessions cannot
 lose or steal it) and one ref per slug means two sessions never cross. Stdlib only.
@@ -44,19 +47,26 @@ def _dirty(cwd, untracked: bool) -> bool:
     return bool(_out(cwd, "status", "--porcelain", mode))
 
 
+def _patch(top, a: str, b: str) -> bytes:
+    return _git(top, "-c", "diff.noprefix=false", "-c", "diff.mnemonicPrefix=false", "diff", "--binary",
+                "--no-ext-diff", "--no-textconv", "--no-renames", a, b).stdout
+
+
 def save(cwd: Path, slug: str, untracked: bool = True) -> str | None:
-    """Snapshot the working tree (tracked changes, plus untracked files when `untracked`) to the slug's ref and
-    reset the tree to HEAD. Returns the snapshot oid, or None when there was nothing to save."""
+    """Snapshot the working tree (tracked changes, plus untracked files when `untracked`) and the index to the
+    slug's ref and reset the tree to HEAD. Returns the snapshot oid, or None when there was nothing to save."""
     if not _dirty(cwd, untracked):
         return None
     top = _out(cwd, "rev-parse", "--show-toplevel")
     head = _out(cwd, "rev-parse", "HEAD")
+    staged = _out(top, "write-tree")
+    icommit = _out(top, "commit-tree", staged, "-p", head, "-m", f"superlite wip index {slug}", env=IDENT)
     with tempfile.TemporaryDirectory() as tmp:
         env = {"GIT_INDEX_FILE": str(Path(tmp) / "index"), **IDENT}
-        _git(top, "read-tree", "HEAD", env=env)
+        _git(top, "read-tree", staged, env=env)
         _git(top, "add", "-A" if untracked else "-u", "--", ":/", env=env)
         tree = _out(top, "write-tree", env=env)
-    oid = _out(top, "commit-tree", tree, "-p", head, "-m", f"superlite wip {slug}", env=IDENT)
+    oid = _out(top, "commit-tree", tree, "-p", head, "-p", icommit, "-m", f"superlite wip {slug}", env=IDENT)
     ref = ref_for(slug)
     prev = _out(top, "rev-parse", "--verify", "-q", ref, check=False)
     _git(top, "update-ref", ref, oid)
@@ -64,10 +74,11 @@ def save(cwd: Path, slug: str, untracked: bool = True) -> str | None:
         _git(top, "reset", "--hard", "-q")
         if untracked:
             _git(top, "clean", "-fdq")
-    except RuntimeError as e:  # put the tree back from the snapshot, then take the ref back: nothing half done
-        try:
-            _git(top, "checkout", "-q", oid, "--", ":/")
-            _git(top, "reset", "-q")
+    except RuntimeError as e:  # put tree and index back from the snapshot, then take the ref back
+        try:  # non-overlay: paths deleted before save are deleted again, not left resurrected by the reset
+            _git(top, "checkout", "-q", "--no-overlay", oid, "--", ":/")
+            _git(top, "read-tree", icommit)
+            _git(top, "update-index", "-q", "--refresh", check=False)
         except RuntimeError:
             raise RuntimeError(f"{e}; the work is kept on {ref}") from e
         _git(top, "update-ref", *(("-d", ref) if not prev else (ref, prev)))
@@ -76,17 +87,26 @@ def save(cwd: Path, slug: str, untracked: bool = True) -> str | None:
 
 
 def restore(cwd: Path, slug: str) -> bool:
-    """Apply the saved changes and delete the ref. True when applied or nothing was saved; False (ref kept,
-    nothing applied) when the tree is dirty or the changes do not apply cleanly."""
+    """Apply the saved changes (staged ones to the index too) and delete the ref. True when applied or nothing
+    was saved; False (ref kept, nothing applied) when the tree is dirty or the changes do not apply cleanly."""
     if not exists(cwd, slug):
         return True
     if _dirty(cwd, untracked=False):
         return False
     top = _out(cwd, "rev-parse", "--show-toplevel")
     ref = ref_for(slug)
-    patch = _git(top, "-c", "diff.noprefix=false", "-c", "diff.mnemonicPrefix=false", "diff", "--binary",
-                 "--no-ext-diff", "--no-textconv", "--no-renames", f"{ref}^", ref).stdout
-    if patch and _git(top, "apply", "--binary", data=patch, check=False).returncode != 0:
+    tree_patch = _patch(top, f"{ref}^1", ref)
+    has_index = _git(top, "rev-parse", "--verify", "-q", f"{ref}^2", check=False).returncode == 0
+    index_patch = _patch(top, f"{ref}^1", f"{ref}^2") if has_index else b""
+    if index_patch and _git(top, "apply", "--check", "--cached", "--binary", data=index_patch,
+                            check=False).returncode != 0:
+        return False
+    if tree_patch and _git(top, "apply", "--check", "--binary", data=tree_patch, check=False).returncode != 0:
+        return False
+    if index_patch:
+        _git(top, "apply", "--cached", "--binary", data=index_patch)
+    if tree_patch and _git(top, "apply", "--binary", data=tree_patch, check=False).returncode != 0:
+        _git(top, "reset", "-q")  # the index matched HEAD before: take the staged half back
         return False
     _git(top, "update-ref", "-d", ref)
     return True

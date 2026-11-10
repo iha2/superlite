@@ -157,3 +157,31 @@ def test_restore_with_noprefix_config(repo):
     W.save(repo, "a")
     assert W.restore(repo, "a") is True
     assert (repo / "app.py").read_text() == "changed\n"
+
+
+def test_staged_and_unstaged_round_trip(repo):
+    (repo / "app.py").write_text("staged\n")
+    git(repo, "add", "app.py")
+    (repo / "app.py").write_text("one\n")  # disk back to HEAD, index holds the staged version
+    (repo / "bin.dat").write_bytes(b"\x07")
+    git(repo, "add", "bin.dat")
+    (repo / "bin.dat").write_bytes(b"\x08")  # staged and unstaged differ
+    W.save(repo, "a")
+    assert git(repo, "status", "--porcelain") == ""
+    assert W.restore(repo, "a") is True
+    assert git(repo, "show", ":app.py") == "staged\n"
+    assert (repo / "app.py").read_text() == "one\n"
+    staged = subprocess.run(["git", "show", ":bin.dat"], cwd=repo, capture_output=True, check=True).stdout
+    assert staged == b"\x07" and (repo / "bin.dat").read_bytes() == b"\x08"
+    assert not W.exists(repo, "a")
+
+
+def test_deleted_tracked_round_trip(repo):
+    (repo / "app.py").unlink()
+    (repo / "bin.dat").unlink()
+    git(repo, "rm", "-q", "--cached", "bin.dat")  # one staged deletion, one unstaged
+    W.save(repo, "a")
+    assert (repo / "app.py").exists() and (repo / "bin.dat").exists()
+    assert W.restore(repo, "a") is True
+    assert not (repo / "app.py").exists() and not (repo / "bin.dat").exists()
+    assert sorted(git(repo, "status", "--porcelain").splitlines()) == [" D app.py", "D  bin.dat"]

@@ -142,3 +142,89 @@ def test_use_archived_adopted_in_place(repo):
     assert row["slug"] == "x" and row["status"] == "parallel" and row["run"] == "open"
     assert row["worktree"].replace("\\", "/").endswith(".claude/worktrees/x")
     assert state_of(repo) == before
+
+
+def ok(cp):
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    return cp
+
+
+def detached_row(repo, wt):
+    head = git(repo, "rev-parse", "HEAD").strip()
+    return adopted_row(repo, slug="d", branch=None, detached=True, head=head, harness=False,
+                       worktree=wt.as_posix(), store=(repo / ".superlite" / "session-store" / "d").as_posix())
+
+
+def test_use_registered_detached_in_place_or_redirect(repo):
+    wt = repo.parent / "outside"
+    git(repo, "worktree", "add", "-q", "--detach", str(wt))
+    write_rows(repo, detached_row(repo, wt))
+    cp = run_in(wt, "use", "--slug", "d")
+    assert cp.returncode == 0 and "Traceback" not in cp.stderr, cp.stdout + cp.stderr
+    assert any(ln.startswith("SESSION worktree=") and "slug=d" in ln for ln in cp.stdout.splitlines())
+    cp = run(repo, "use", "--slug", "d")
+    assert "Traceback" not in cp.stderr and any(ln.startswith("REDIRECT worktree=") for ln in cp.stdout.splitlines())
+    assert reg(repo)["sessions"][0]["slug"] == "d"
+
+
+def test_use_registered_detached_missing_checkout_refused(repo):
+    write_rows(repo, detached_row(repo, repo.parent / "gone"))
+    cp = run(repo, "use", "--slug", "d")
+    assert cp.returncode == 2 and "Traceback" not in cp.stderr, cp.stdout + cp.stderr
+    assert reg(repo)["sessions"][0]["slug"] == "d"
+
+
+def test_reopen_archived_parallel_leaves_hub_session_alone(repo):
+    ok(run(repo, "create", "--slug", "h"))
+    ok(run(repo, "create", "--slug", "o", "--worktree"))
+    ok(run(repo, "close", "--slug", "o"))
+    (repo / "app.py").write_text("hub work\n")
+    cp = run(repo, "use", "--slug", "o")
+    assert any(ln.startswith("REDIRECT worktree=") for ln in cp.stdout.splitlines()), cp.stdout + cp.stderr
+    r = reg(repo)
+    assert r["active"] == "h" and {s["slug"] for s in r["sessions"]} == {"h", "o"}
+    assert next(s for s in r["sessions"] if s["slug"] == "h")["status"] == "active"
+    assert (repo / "app.py").read_text() == "hub work\n" and git(repo, "stash", "list") == ""
+    assert git(repo, "branch", "--show-current").strip() == "superlite/sessions/h"
+
+
+def test_discard_removes_owned_checkout_of_existing_branch(repo):
+    ok(run(repo, "create", "--slug", "o", "--worktree"))
+    r = reg(repo)
+    wt = Path(r["sessions"][0]["worktree"])
+    r["sessions"][0]["adopted_branch"] = True  # what `ensure --branch <existing>` records for a cut worktree
+    (repo / ".superlite" / "sessions.json").write_text(json.dumps(r), encoding="utf-8")
+    ok(run(repo, "discard", "--slug", "o"))
+    assert not wt.exists() and "superlite/sessions/o" in git(repo, "branch", "--list")
+    assert str(wt.name) not in git(repo, "worktree", "list")
+
+
+def test_discard_registered_drops_leftover_wip_ref(repo):
+    ok(run(repo, "create", "--slug", "s"))
+    git(repo, "update-ref", "refs/superlite/wip/s", git(repo, "rev-parse", "HEAD").strip())
+    ok(run(repo, "discard", "--slug", "s"))
+    assert git(repo, "for-each-ref", "refs/superlite/wip/s").strip() == ""
+
+
+def test_close_parked_host_session_archives_and_unregisters(repo):
+    ok(run(repo, "create", "--slug", "a"))
+    (repo / "app.py").write_text("a work\n")
+    ok(run(repo, "create", "--slug", "b"))
+    before = git(repo, "branch", "--show-current")
+    ok(run(repo, "close", "--slug", "a"))
+    r = reg(repo)
+    assert [s["slug"] for s in r["sessions"]] == ["b"] and r["active"] == "b"
+    assert (repo / ".superlite" / "session-store" / "a" / "session.json").is_file()
+    assert git(repo, "for-each-ref", "refs/superlite/wip/a").strip() and git(repo, "stash", "list") == ""
+    assert git(repo, "branch", "--show-current") == before
+    ok(run(repo, "use", "--slug", "a"))
+    assert (repo / "app.py").read_text() == "a work\n"
+
+
+def test_close_owned_session_with_worktree_gone_archives(repo):
+    ok(run(repo, "create", "--slug", "o", "--worktree"))
+    wt = Path(reg(repo)["sessions"][0]["worktree"])
+    git(repo, "worktree", "remove", "--force", str(wt))
+    ok(run(repo, "close", "--slug", "o"))
+    assert reg(repo)["sessions"] == []
+    assert (repo / ".superlite" / "session-store" / "o" / "session.json").is_file()

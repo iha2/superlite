@@ -38,12 +38,14 @@ if str(HERE) not in sys.path:
 import base  # noqa: E402
 import claude_create  # noqa: E402
 import host_harness as harness  # noqa: E402
+import ident  # noqa: E402
 import orchestrator  # noqa: E402
 import state  # noqa: E402
 import worktree_home  # noqa: E402
 
 FILE = "feature.json"
 STATUSES = ("building", "tryout", "approved", "discarded")
+PENDING = "proto-pending.json"  # Claude Code: the create line's topic, resolved plan and expected worktree, until --adopt
 NO_REPLY = ("BLOCKED: no human reply since the prototype was shown; show how to try it, ask the human to reply "
             "\"it works\" or list the changes, end your turn")
 TOPIC = re.compile(r"^[a-z0-9][a-z0-9-]{0,40}$")
@@ -136,20 +138,52 @@ def status_line(st: dict | None, sl=None) -> str:
     return s
 
 
+def pending(sl) -> dict | None:  # O(file)
+    d = base.read_json(Path(sl) / PENDING, None)
+    return d if isinstance(d, dict) and d.get("topic") else None
+
+
+def originating_run(cwd: Path) -> Path | None:  # O(W) file reads + 2 git spawns
+    """The run folder, among every checkout of this repo, whose feature.json names the current checkout as its
+    prototype (the hub or the session worktree that ran `proto start`), or None."""
+    try:
+        r = base.git("rev-parse", "--show-toplevel", cwd=cwd, check=False)
+        top = Path(r.stdout.strip()) if r.returncode == 0 and r.stdout.strip() else None
+        text = base.git("worktree", "list", "--porcelain", cwd=top, check=False).stdout if top else ""
+    except base.GitError:
+        return None
+    for ln in text.splitlines():
+        if not ln.startswith("worktree "):
+            continue
+        other = Path(ident.git_path(ln[len("worktree "):]))
+        if ident.same_path(other, top):
+            continue
+        sl = other / state.DIR_NAME
+        for st in (read_state(sl), pending(sl)):
+            if st and st.get("worktree") and ident.same_path(Path(st["worktree"]), top):
+                return sl
+    return None
+
+
 def cmd_adopt(a, sl) -> int:
-    """Record the hub's feature.json for the Claude-created worktree this command runs in."""
+    """Complete the originating run's feature.json (else the hub's) for the Claude-created worktree this runs in."""
     cwd = Path.cwd()
     top = Path(git("rev-parse", "--show-toplevel", cwd=cwd).stdout.strip())
     hub = state.hub_root(top)
     if top.resolve() == hub.resolve():
         print("proto: --adopt runs inside the worktree EnterWorktree created, not in the hub", file=sys.stderr)
         return 2
+    pend = pending(sl) or {}
+    pend = pend if pend.get("topic") == a.topic and ident.same_path(Path(pend.get("worktree") or "."), top) else {}
     branch = git("rev-parse", "--abbrev-ref", "HEAD", cwd=top).stdout.strip()
-    ref = a.base or git("rev-parse", "--abbrev-ref", "HEAD", cwd=hub).stdout.strip()
-    st = {"v": 1, "topic": a.topic, "plan": a.plan or newest_feature_plan(), "worktree": top.as_posix(), "branch": branch,
-          "base": ref, "run": a.run, "reach": a.reach, "level": a.level, "status": "building", "rounds": 1,
+    ref = a.base or pend.get("base") or git("rev-parse", "--abbrev-ref", "HEAD", cwd=hub).stdout.strip()
+    st = {"v": 1, "topic": a.topic, "plan": a.plan or pend.get("plan") or newest_feature_plan(), "worktree": top.as_posix(),
+          "branch": branch, "base": ref, "run": a.run or pend.get("run"), "reach": a.reach or pend.get("reach"),
+          "level": a.level, "status": "building", "rounds": 1,
           "started": now_ms(), "tryout_time": None, "tryout_approved": False, "adopted": True}
     write_state(sl, st)
+    if pend:
+        (Path(sl) / PENDING).unlink(missing_ok=True)
     print(status_line(st))
     print(f"proto: build the prototype there with its own plan (at most {MAX_PROTO_TASKS} tasks): "
           f"superlite-cli plan_tools lint --stable --plan {top.as_posix()}/docs/plans/<date>-{a.topic}.proto.md")
@@ -176,6 +210,10 @@ def cmd_start(a, sl) -> int:
     base_ref = a.base or git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     if harness.under_claude_code() and not a.path and claude_create.hub_on_base(root, base_ref):
         print(claude_create.create_line(f"{a.topic}-proto", base_ref).replace("session: ", "proto: ", 1))
+        plan = a.plan or newest_feature_plan()  # resolved here: the new checkout lacks an uncommitted plan
+        base.write_json(sl / PENDING, {"topic": a.topic, "plan": Path(plan).resolve().as_posix() if plan else None,
+                                       "worktree": (worktree_home.home_path(state.hub_root(root)) / f"{a.topic}-proto").as_posix(),
+                                       "base": base_ref, "run": a.run, "reach": a.reach})
         return 0
     wt = Path(a.path) if a.path else worktree_home.proto_dir(root, a.topic)
     branch = f"superlite/{a.topic}-proto"
@@ -199,6 +237,9 @@ def cmd_start(a, sl) -> int:
           f"superlite-cli plan_tools lint --stable --plan {wt.as_posix()}/docs/plans/<date>-{a.topic}.proto.md")
     if dirty:
         print("proto: note: your uncommitted changes are not in the prototype (it is cut from HEAD)")
+    enter = harness.enter_line(wt.resolve(), Path.cwd()) if harness.under_claude_code() else None
+    if enter:
+        print(enter)
     return 0
 
 
@@ -309,13 +350,12 @@ def main(argv=None):  # O(P + R) + git spawns
     a = ap.parse_args(argv)
     sys.stdout.reconfigure(encoding="utf-8")
     sl = Path(a.dir) if a.dir else state.run_dir(Path.cwd())
-    if a.cmd == "start" and a.adopt and not a.dir:
-        sl = state.run_dir(state.hub_root(Path.cwd()))
-    if a.cmd != "start" and not a.dir and read_state(sl) is None:
-        hub_sl = state.run_dir(state.hub_root(Path.cwd()))  # inside an adopted Claude worktree: feature.json is the hub's
-        hub_st = read_state(hub_sl) if hub_sl != sl else None
-        if hub_st and hub_st.get("adopted"):
-            sl = hub_sl
+    if not a.dir and read_state(sl) is None:  # inside a Claude-created prototype: its feature.json is the originating run's
+        origin = originating_run(Path.cwd())
+        if origin:
+            sl = origin
+        elif a.cmd == "start" and a.adopt:
+            sl = state.run_dir(state.hub_root(Path.cwd()))
     if a.cmd == "start":
         return cmd_start(a, sl)
     if a.cmd == "tryout":

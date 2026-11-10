@@ -165,10 +165,10 @@ def run_with_fault(monkeypatch, tmp_path, name, at, skip=()):
     root = setup(tmp_path)
     before = snapshot(root, skip)
     fault = Fault(at)
-    monkeypatch.setattr(base, "git", fault)
-    monkeypatch.setattr(session_wip, "_git", fault.wip())
-    rc, out = sess(root, *argv)
-    monkeypatch.undo()
+    with monkeypatch.context() as mp:
+        mp.setattr(base, "git", fault)
+        mp.setattr(session_wip, "_git", fault.wip())
+        rc, out = sess(root, *argv)
     return root, before, fault, rc, out
 
 
