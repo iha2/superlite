@@ -4,9 +4,15 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
+
+_SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "swarm" / "scripts"
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))
+import base  # noqa: E402  (base.bash(): Git Bash on Windows, never the WSL stub)
 
 ROOT = Path(__file__).resolve().parents[2]
 CLI = ROOT / "skills" / "swarm" / "scripts" / "superlite-cli"
@@ -32,7 +38,7 @@ def env_for(tmp_path, claude):
 
 
 def run(cwd, env, *args):
-    return subprocess.run(["bash", str(CLI), *args], cwd=cwd, capture_output=True, text=True, encoding="utf-8",
+    return subprocess.run([base.bash(), str(CLI), *args], cwd=cwd, capture_output=True, text=True, encoding="utf-8",
                           timeout=180, env=env)
 
 

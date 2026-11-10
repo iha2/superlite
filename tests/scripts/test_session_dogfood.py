@@ -12,6 +12,11 @@ from pathlib import Path
 
 import pytest
 
+_SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "swarm" / "scripts"
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))
+import base  # noqa: E402  (base.bash(): Git Bash on Windows, never the WSL stub)
+
 ROOT = Path(__file__).resolve().parents[2]
 CLI = ROOT / "skills" / "swarm" / "scripts" / "superlite-cli"
 sys.path.insert(0, str(ROOT / "skills" / "swarm" / "scripts"))
@@ -26,7 +31,7 @@ def git(cwd, *args):
 
 def sl(hub, *args):
     """superlite-cli session ... --root hub -> (returncode, stdout, stderr)."""
-    cp = subprocess.run(["bash", str(CLI), "session", *args, "--root", str(hub)], capture_output=True, text=True,
+    cp = subprocess.run([base.bash(), str(CLI), "session", *args, "--root", str(hub)], capture_output=True, text=True,
                         encoding="utf-8", timeout=180, env=dict(os.environ, PYTHONIOENCODING="utf-8"))
     return cp.returncode, cp.stdout, cp.stderr
 
