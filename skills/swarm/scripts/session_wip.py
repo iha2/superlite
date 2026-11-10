@@ -87,9 +87,30 @@ def save(cwd: Path, slug: str, untracked: bool = True) -> str | None:
     return oid
 
 
+def _untracked_paths(top, ref: str) -> list[str] | None:
+    """Paths in a legacy `git stash -u` commit's third parent (its untracked files); None when it has none."""
+    if _git(top, "rev-parse", "--verify", "-q", f"{ref}^3", check=False).returncode != 0:
+        return None
+    raw = _git(top, "ls-tree", "-r", "-z", "--name-only", f"{ref}^3").stdout
+    return [p.decode("utf-8", "surrogateescape") for p in raw.split(b"\0") if p]
+
+
+def _write_untracked(top, ref: str, paths: list[str]) -> bool:
+    """Check the third parent's files out of a temp index into the tree; on failure remove what was written."""
+    with tempfile.TemporaryDirectory() as tmp:
+        env = {"GIT_INDEX_FILE": str(Path(tmp) / "index")}
+        _git(top, "read-tree", f"{ref}^3", env=env)
+        if _git(top, "checkout-index", "-a", f"--prefix={Path(top).as_posix()}/", env=env, check=False).returncode == 0:
+            return True
+    for p in paths:
+        (Path(top) / p).unlink(missing_ok=True)
+    return False
+
+
 def restore(cwd: Path, slug: str) -> bool:
     """Apply the saved changes (staged ones to the index too) and delete the ref. True when applied or nothing
-    was saved; False (ref kept, nothing applied) when the tree is dirty or the changes do not apply cleanly."""
+    was saved; False (ref kept, nothing applied) when the tree is dirty, an untracked file of a legacy stash
+    already exists, or the changes do not apply cleanly."""
     if not exists(cwd, slug):
         return True
     if _dirty(cwd, untracked=False):
@@ -104,10 +125,17 @@ def restore(cwd: Path, slug: str) -> bool:
         return False
     if tree_patch and _git(top, "apply", "--check", "--binary", data=tree_patch, check=False).returncode != 0:
         return False
+    extra = _untracked_paths(top, ref)
+    if extra and any(os.path.lexists(Path(top) / p) for p in extra):
+        return False  # never overwrite an untracked file that is already there
+    if extra and not _write_untracked(top, ref, extra):
+        return False
     if index_patch:
         _git(top, "apply", "--cached", "--binary", data=index_patch)
     if tree_patch and _git(top, "apply", "--binary", data=tree_patch, check=False).returncode != 0:
         _git(top, "reset", "-q")  # the index matched HEAD before: take the staged half back
+        for p in extra or []:
+            (Path(top) / p).unlink(missing_ok=True)
         return False
     _git(top, "update-ref", "-d", ref)
     return True

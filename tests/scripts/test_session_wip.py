@@ -195,3 +195,31 @@ def test_save_refuses_over_pending_wip(repo):
         W.save(repo, "a")
     assert git(repo, "rev-parse", "refs/superlite/wip/a").strip() == first
     assert (repo / "app.py").read_text() == "second edit\n"
+
+
+def _legacy_stash(repo):
+    (repo / "app.py").write_text("changed\n")
+    (repo / "dir").mkdir()
+    (repo / "dir" / "new.txt").write_text("untracked\n")
+    git(repo, "stash", "push", "-q", "-u", "-m", "legacy")
+    oid = git(repo, "rev-parse", "refs/stash").strip()
+    git(repo, "stash", "drop", "-q")
+    git(repo, "update-ref", W.ref_for("a"), oid)
+
+
+def test_restore_legacy_stash_untracked(repo):
+    _legacy_stash(repo)
+    assert W.restore(repo, "a") is True
+    assert (repo / "app.py").read_text() == "changed\n"
+    assert (repo / "dir" / "new.txt").read_text() == "untracked\n"
+    assert not W.exists(repo, "a")
+
+
+def test_restore_legacy_stash_refuses_untracked_collision(repo):
+    _legacy_stash(repo)
+    (repo / "dir").mkdir()
+    (repo / "dir" / "new.txt").write_text("mine\n")
+    assert W.restore(repo, "a") is False
+    assert W.exists(repo, "a")
+    assert (repo / "dir" / "new.txt").read_text() == "mine\n"
+    assert (repo / "app.py").read_text() == "one\n"

@@ -179,7 +179,7 @@ def cmd_adopt(a, sl) -> int:
     ref = a.base or pend.get("base") or git("rev-parse", "--abbrev-ref", "HEAD", cwd=hub).stdout.strip()
     st = {"v": 1, "topic": a.topic, "plan": a.plan or pend.get("plan") or newest_feature_plan(), "worktree": top.as_posix(),
           "branch": branch, "base": ref, "run": a.run or pend.get("run"), "reach": a.reach or pend.get("reach"),
-          "level": a.level, "status": "building", "rounds": 1,
+          "level": a.level or pend.get("level") or "L1", "status": "building", "rounds": 1,
           "started": now_ms(), "tryout_time": None, "tryout_approved": False, "adopted": True}
     write_state(sl, st)
     if pend:
@@ -213,7 +213,7 @@ def cmd_start(a, sl) -> int:
         plan = a.plan or newest_feature_plan()  # resolved here: the new checkout lacks an uncommitted plan
         base.write_json(sl / PENDING, {"topic": a.topic, "plan": Path(plan).resolve().as_posix() if plan else None,
                                        "worktree": (worktree_home.home_path(state.hub_root(root)) / f"{a.topic}-proto").as_posix(),
-                                       "base": base_ref, "run": a.run, "reach": a.reach})
+                                       "base": base_ref, "run": a.run, "reach": a.reach, "level": a.level})
         return 0
     wt = Path(a.path) if a.path else worktree_home.proto_dir(root, a.topic)
     branch = f"superlite/{a.topic}-proto"
@@ -229,7 +229,7 @@ def cmd_start(a, sl) -> int:
     git("worktree", "add", *([str(wt), branch] if has_branch else ["-b", branch, str(wt), base_ref]))
     dirty = bool(git("status", "--porcelain", "--untracked-files=no", cwd=root, check=False).stdout.strip())
     st = {"v": 1, "topic": a.topic, "plan": a.plan or newest_feature_plan(), "worktree": wt.as_posix(), "branch": branch,
-          "base": base_ref, "run": a.run, "reach": a.reach, "level": a.level, "status": "building", "rounds": 1,
+          "base": base_ref, "run": a.run, "reach": a.reach, "level": a.level or "L1", "status": "building", "rounds": 1,
           "started": now_ms(), "tryout_time": None, "tryout_approved": False}
     write_state(sl, st)
     print(status_line(st))
@@ -329,7 +329,7 @@ def main(argv=None):  # O(P + R) + git spawns
     s = sub.add_parser("start")
     s.add_argument("--topic", required=True)
     s.add_argument("--plan", help="the feature plan (default: the newest docs/plans/*.feature.md)")
-    s.add_argument("--level", choices=["L1", "L2"], default="L1", help="L1 stubs (default), L2 an isolated environment")
+    s.add_argument("--level", choices=["L1", "L2"], default=None, help="L1 stubs (default), L2 an isolated environment")
     s.add_argument("--path", help="the worktree folder (default .claude/worktrees/<topic>-proto)")
     s.add_argument("--base", help="the ref to cut from (default: the current branch)")
     s.add_argument("--adopt", action="store_true", help="record the worktree EnterWorktree created (run inside it)")

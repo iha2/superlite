@@ -152,3 +152,17 @@ def test_start_inside_adopted_prototype_reopens_fix_round(repo):
     assert cp.returncode == 0 and "create EnterWorktree" not in cp.stdout, cp.stdout + cp.stderr
     assert "(fix round 2)" in cp.stdout
     assert feature(s)["rounds"] == 2 and feature(s)["status"] == "building"
+
+
+def test_level_survives_create_adopt_handoff(repo):
+    assert proto(repo, "start", "--topic", "x", "--level", "L2").returncode == 0
+    wt = sandbox(repo)
+    assert proto(wt, "start", "--topic", "x", "--adopt").returncode == 0
+    assert feature(repo)["level"] == "L2"
+
+
+def test_adopt_explicit_level_wins(repo):
+    assert proto(repo, "start", "--topic", "x", "--level", "L2").returncode == 0
+    wt = sandbox(repo)
+    assert proto(wt, "start", "--topic", "x", "--adopt", "--level", "L1").returncode == 0
+    assert feature(repo)["level"] == "L1"

@@ -23,6 +23,8 @@ import session_registry as R  # noqa: E402
 import session_switch as S  # noqa: E402
 import session_wip  # noqa: E402
 
+_REAL_WIP = (session_wip.ref_for, session_wip.save, session_wip.restore)
+
 
 def git(cwd, *args, check=True):
     return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, check=check).stdout
@@ -285,3 +287,21 @@ def test_discard_archived_slug(repo, capsys):
     assert git(repo, "rev-parse", "-q", "--verify", _ref("a"), check=False).strip() == ""
     assert not (repo / ".superlite" / "session-store" / "a").exists()
     assert git(repo, "branch", "--list", "superlite/sessions/a").strip() == ""
+
+
+def test_park_close_use_restores_untracked(repo, monkeypatch):
+    ensure(repo, "a")
+    (repo / "app.py").write_text("print('wip')\n")
+    (repo / "notes.txt").write_text("untracked\n")
+    oid = R.stash_push(repo, R.stash_msg("a"))
+    reg = reg_of(repo)
+    reg["sessions"][0].update(status="parked", has_stash=True, stash_oid=oid, stash_message=R.stash_msg("a"))
+    reg["active"] = None
+    R.write(repo, reg)
+    git(repo, "switch", "-q", "main")
+    assert close(repo, "a") == 0
+    for name, fn in zip(("ref_for", "save", "restore"), _REAL_WIP):
+        monkeypatch.setattr(session_wip, name, fn, raising=False)
+    assert use(repo, "a") == 0
+    assert (repo / "app.py").read_text() == "print('wip')\n"
+    assert (repo / "notes.txt").read_text() == "untracked\n"
