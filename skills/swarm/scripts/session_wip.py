@@ -57,6 +57,8 @@ def save(cwd: Path, slug: str, untracked: bool = True) -> str | None:
     slug's ref and reset the tree to HEAD. Returns the snapshot oid, or None when there was nothing to save."""
     if not _dirty(cwd, untracked):
         return None
+    if exists(cwd, slug):  # an earlier snapshot not yet restored is the only reference to that work
+        raise RuntimeError(f"{ref_for(slug)} already holds unrestored work; apply or discard it before saving again")
     top = _out(cwd, "rev-parse", "--show-toplevel")
     head = _out(cwd, "rev-parse", "HEAD")
     staged = _out(top, "write-tree")
@@ -68,7 +70,6 @@ def save(cwd: Path, slug: str, untracked: bool = True) -> str | None:
         tree = _out(top, "write-tree", env=env)
     oid = _out(top, "commit-tree", tree, "-p", head, "-p", icommit, "-m", f"superlite wip {slug}", env=IDENT)
     ref = ref_for(slug)
-    prev = _out(top, "rev-parse", "--verify", "-q", ref, check=False)
     _git(top, "update-ref", ref, oid)
     try:
         _git(top, "reset", "--hard", "-q")
@@ -81,7 +82,7 @@ def save(cwd: Path, slug: str, untracked: bool = True) -> str | None:
             _git(top, "update-index", "-q", "--refresh", check=False)
         except RuntimeError:
             raise RuntimeError(f"{e}; the work is kept on {ref}") from e
-        _git(top, "update-ref", *(("-d", ref) if not prev else (ref, prev)))
+        _git(top, "update-ref", "-d", ref)
         raise
     return oid
 

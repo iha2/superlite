@@ -218,6 +218,17 @@ def test_apply_gone_keeps_row_with_stash(hub):
     assert [s["slug"] for s in new["sessions"]] == ["c"]
 
 
+def test_apply_gone_keeps_row_with_wip_ref(hub):
+    git(hub, "update-ref", "refs/superlite/wip/c", "HEAD")
+    new, _ = rec.apply(hub, mkreg(row("c")))
+    assert [s["slug"] for s in new["sessions"]] == ["c"]
+
+
+def test_apply_gone_drops_row_without_stash_or_wip(hub):
+    new, _ = rec.apply(hub, mkreg(row("c")))
+    assert new["sessions"] == []
+
+
 def test_apply_idempotent(hub):
     a = add_wt(hub, ".superlite/worktrees/a", "superlite/sessions/a")
     shutil.rmtree(a)

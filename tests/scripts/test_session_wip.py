@@ -185,3 +185,13 @@ def test_deleted_tracked_round_trip(repo):
     assert W.restore(repo, "a") is True
     assert not (repo / "app.py").exists() and not (repo / "bin.dat").exists()
     assert sorted(git(repo, "status", "--porcelain").splitlines()) == [" D app.py", "D  bin.dat"]
+
+
+def test_save_refuses_over_pending_wip(repo):
+    dirty(repo)
+    first = W.save(repo, "a")
+    (repo / "app.py").write_text("second edit\n")
+    with pytest.raises(RuntimeError, match="refs/superlite/wip/a"):
+        W.save(repo, "a")
+    assert git(repo, "rev-parse", "refs/superlite/wip/a").strip() == first
+    assert (repo / "app.py").read_text() == "second edit\n"
