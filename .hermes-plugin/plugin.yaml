@@ -1,6 +1,6 @@
 name: superlite
 version: 3.3.0
 description: Superlite skills and workflow bootstrap for Hermes Agent
-author: CWogu
+author: Iheatu Chris Wogu
 provides_hooks:
   - pre_llm_call
