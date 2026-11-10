@@ -3,7 +3,7 @@
   "version": "3.3.0",
   "description": "Lightweight Claude Code skills for the build lifecycle: one approval gate, parallel waves, short reports",
   "author": {
-    "name": "CWogu"
+    "name": "Iheatu Chris Wogu"
   },
   "homepage": "https://github.com/iha2/superlite",
   "license": "MIT",
@@ -25,7 +25,7 @@
     "displayName": "Superlite",
     "shortDescription": "Lean planning, TDD, debugging, and delivery workflows for coding agents",
     "longDescription": "Use Superlite to guide agent work through inventing with one approval gate, contract-style implementation plans, parallel-wave subagent execution, test-driven development, systematic debugging, and finish-the-branch workflows.",
-    "developerName": "CWogu",
+    "developerName": "Iheatu Chris Wogu",
     "capabilities": [
       "Interactive",
       "Read",

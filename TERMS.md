@@ -10,7 +10,7 @@ Support: [GitHub Issues](https://github.com/iha2/superlite/issues).
 
 MIT License
 
-Copyright (c) 2026 CWogu
+Copyright (c) 2026 Iheatu Chris Wogu
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

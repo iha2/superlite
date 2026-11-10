@@ -2,7 +2,7 @@
   "name": "superlite-dev",
   "description": "Development marketplace for superlite",
   "owner": {
-    "name": "CWogu"
+    "name": "Iheatu Chris Wogu"
   },
   "plugins": [
     {
@@ -11,7 +11,7 @@
       "version": "3.3.0",
       "source": "./",
       "author": {
-        "name": "CWogu"
+        "name": "Iheatu Chris Wogu"
       }
     },
     {
@@ -20,7 +20,7 @@
       "version": "0.2.0",
       "source": {"source": "github", "repo": "iha2/claude-agent-map"},
       "author": {
-        "name": "CWogu"
+        "name": "Iheatu Chris Wogu"
       }
     }
   ]
