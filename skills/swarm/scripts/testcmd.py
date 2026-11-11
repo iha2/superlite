@@ -166,7 +166,7 @@ def is_full_trigger(path: str, root: str = ".") -> bool:  # O(map)
     """True when a change to `path` should run the whole suite."""
     p = path.replace("\\", "/")
     name = p.rsplit("/", 1)[-1]
-    if name in FULL_NAMES or name.endswith(".csproj") or p == ".superlite/test-cmd.json":
+    if name in FULL_NAMES or name.endswith(".csproj") or p == f"{state.DIR_NAME}/test-cmd.json":
         return True
     return any(fnmatch.fnmatch(p, g) for g in _map_list(_read_map(root).get("_full")))
 
@@ -209,7 +209,7 @@ def pytest_testpaths(root: str) -> list[str]:  # O(config files); [] when none i
             try:
                 import tomllib
                 v = ((tomllib.loads(text).get("tool") or {}).get("pytest") or {}).get("ini_options", {}).get("testpaths")
-            except Exception:  # noqa: BLE001 - an unreadable pyproject only disables the filter
+            except (ImportError, ValueError, AttributeError):  # an unreadable pyproject only disables the filter
                 v = None
             v = v.split() if isinstance(v, str) else v
         else:
@@ -245,12 +245,38 @@ def _walk_tests(root: str) -> list[str]:  # O(f), capped
     out: list[str] = []
     for dp, dns, fns in os.walk(root):
         dns[:] = sorted(d for d in dns if d not in SKIP_DIRS and not d.startswith("."))
-        for fn in sorted(fns):
-            rel = os.path.relpath(os.path.join(dp, fn), root).replace("\\", "/")
-            if _is_test(rel):
-                out.append(rel)
-                if len(out) >= TEST_WALK_LIMIT:
-                    return out
+        rels = (os.path.relpath(os.path.join(dp, fn), root).replace("\\", "/") for fn in sorted(fns))
+        out.extend(r for r in rels if _is_test(r))
+        if len(out) >= TEST_WALK_LIMIT:
+            return out[:TEST_WALK_LIMIT]
+    return out
+
+
+def _related_hits(root: str, p: str, keep) -> list[tuple[str, str]]:
+    try:
+        return [(t, "related") for t in resolve_related(root, p) if keep(t)]
+    except FileNotFoundError:
+        return []
+
+
+def _mention_hits(p: str, tests: list[str], text) -> list[tuple[str, str]]:
+    stem = Path(p).stem
+    if not stem:
+        return []
+    pat = re.compile(r"\b" + re.escape(stem) + r"\b")
+    return [(t, "mention") for t in tests if pat.search(text(t))]
+
+
+def _map_hits(root: str, p: str, rmap: dict, tests: list[str], keep) -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
+    for glob, vals in rmap.items():
+        if glob == "_full" or not fnmatch.fnmatch(p, glob):
+            continue
+        for v in (x.replace("\\", "/") for x in _map_list(vals)):
+            if any(c in v for c in "*?["):
+                out += [(t, "map") for t in tests if fnmatch.fnmatch(t, v)]
+            elif keep(v) and (Path(root) / v).is_file():
+                out.append((v, "map"))
     return out
 
 
@@ -283,35 +309,10 @@ def select_affected(root: str, changed: list[str]) -> dict:  # O(changed * tests
             if keep(p) and (Path(root) / p).is_file():
                 add(p, "changed")
             continue
-        hit = False
-        try:
-            for t in resolve_related(root, p):
-                if keep(t):
-                    add(t, "related")
-                    hit = True
-        except FileNotFoundError:
-            pass
-        stem = Path(p).stem
-        if stem:
-            pat = re.compile(r"\b" + re.escape(stem) + r"\b")
-            for t in tests:
-                if pat.search(text(t)):
-                    add(t, "mention")
-                    hit = True
-        for glob, vals in rmap.items():
-            if glob == "_full" or not fnmatch.fnmatch(p, glob):
-                continue
-            for v in _map_list(vals):
-                v = v.replace("\\", "/")
-                if any(c in v for c in "*?["):
-                    for t in tests:
-                        if fnmatch.fnmatch(t, v):
-                            add(t, "map")
-                            hit = True
-                elif keep(v) and (Path(root) / v).is_file():
-                    add(v, "map")
-                    hit = True
-        if not hit:
+        hits = _related_hits(root, p, keep) + _mention_hits(p, tests, text) + _map_hits(root, p, rmap, tests, keep)
+        for t, why in hits:
+            add(t, why)
+        if not hits:
             untested.append(p)
     return {"full": False, "selected": sorted(reasons), "reasons": dict(sorted(reasons.items())), "untested": untested}
 

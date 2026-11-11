@@ -114,6 +114,14 @@ def start_background(a, argv):  # O(len argv) + one detached spawn
     return 0
 
 
+def finished_summary(path):
+    """-> the parsed summary at `path`, or None while it is missing or still unreadable."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
 def wait_background(a):  # O(timeout / POLL_SECONDS) polls
     if a.run:  # exactly that run's own summary, whatever the pointer names
         mine = run_summary_path(a.summary, a.run).resolve()
@@ -126,15 +134,12 @@ def wait_background(a):  # O(timeout / POLL_SECONDS) polls
     limit = a.timeout if a.timeout is not None else DEFAULT_WAIT
     deadline = time.monotonic() + limit
     while True:
-        if mine.exists():
-            try:
-                data = json.loads(mine.read_text(encoding="utf-8"))
-                if a.run and data.get("run_id") != a.run:
-                    print(f"run_tests: run id mismatch: wanted {a.run}, file has {data.get('run_id')!r}", file=sys.stderr)
-                    return 2
-                break
-            except (OSError, ValueError):
-                pass
+        data = finished_summary(mine)
+        if data is not None:
+            if a.run and data.get("run_id") != a.run:
+                print(f"run_tests: run id mismatch: wanted {a.run}, file has {data.get('run_id')!r}", file=sys.stderr)
+                return 2
+            break
         line = suspect_line_of(mine)
         if line and not a.patient:  # the probe flagged this run: tell the caller now, run still going
             print(f"{line}\nrun_tests: the run is still going and was not killed; investigate the code, or wait on with --wait --patient")
@@ -308,7 +313,7 @@ def current_tree():  # the working-tree fingerprint, "" when unknown
     try:
         import tree_id
         return tree_id.tree_hash(".") or ""
-    except Exception:  # noqa: BLE001 - a missing or failing fingerprint only disables reuse
+    except (ImportError, OSError, ValueError):  # a missing or failing fingerprint only disables reuse
         return ""
 
 
