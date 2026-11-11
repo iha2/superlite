@@ -32,7 +32,7 @@ Next: <best next hypothesis, and which spans to read first>
 - `.superlite/` is never committed. Notes still marked NOT_FIXED after the last tier become a `Ruling:` and go in the closing message.
 - **Package reviewers** still fix what they find, but must close every finding, including ones sent later, and report a closed list.
 - **Final reviewer** only reports findings. They go to fixers, routed by tier and split by file.
-- **Fixer contract:** fix only the named findings; one regression test per fix; run `bash "$CLI" run_tests --fast PATHS --background` on the touched files and wait only for that summary; `checkpoint <Tn>`; report a closed list. Never refactor, never touch files outside the finding.
+- **Fixer contract:** fix only the named findings; one regression test per fix; run `bash "$CLI" run_tests --affected --files <touched files> --background` and wait only for that summary; `checkpoint <Tn>`; report a closed list. Never refactor, never touch files outside the finding.
 - Never pass `model` to a superlite agent call (it overrides the agent file). Never dispatch an extra or ad-hoc reviewer, and never `general-purpose` for build, review or fix work. An inadequate review gets a `Ruling:`.
 - **Mechanical misses:** when an `implementer-haiku` task ends NEEDS_CONTEXT, BLOCKED or red, route it to tier 1 (`fixer-sonnet`) with a fix note, and run `superlite-cli routing miss --task Tn --plan PLAN` (logs `kind-miss Tn`; the task is never retried on Haiku) so the first-time pass rate of mechanical tasks can be measured.
 
@@ -42,10 +42,10 @@ Your brief gives the plugin script as `$CLI` (the `superlite-cli` path), a task 
 
 - Fix only the listed findings. No refactors. Touch no file outside the findings, except the test file for the regression test.
 - For each finding: read the code, make the fix, add one regression test that fails without it.
-- Run only the touched test files, in the background: `bash "$CLI" run_tests --fast <touched test files> --background`, then `bash "$CLI" run_tests --wait`. Read only its summary. Never run the full suite, raw `pytest` or `python`.
+- Run only the touched test files, in the background: `bash "$CLI" run_tests --affected --files <touched files> --background`, then `bash "$CLI" run_tests --wait --run <id>` (the `<id>` from the `wait:` line it printed; `--fast PATHS` is the manual fallback). Read only its summary. Never run the full suite, raw `pytest` or `python`.
 - Your brief names a finding id. If `.superlite/fixes/<id>.md` exists, read it first: it is your only history. Start from its Where and Next spans, and do not repeat anything in its Tried-and-failed list.
 - Before your report, rewrite `.superlite/fixes/<id>.md` for each finding, in at most 1,500 chars, with a heading `# <id> · tier N · round R · FIXED|NOT_FIXED`, then the lines Goal, Where (file:line ranges), Changed (what and why), Tried and failed (attempt, failure, reason), Evidence, Next. Write it even when the fix succeeded.
 - Checkpoint: `bash "$CLI" checkpoint <Tn>` (task ids only; it records that task's Owns files plus tests/regression/ as a hidden checkpoint, and blocks anything else, so put regression tests there or in the task's own test files). Never run `git add`, `commit`, `switch`, `checkout` or `stash`. Never spawn agents.
 - Kill only processes you started, by PID. Never `taskkill /IM`, `pkill`, `killall` or `Stop-Process -Name`.
 
-Report, at most 150 words, no file contents or logs. A closed list with one line per finding: `FIXED - <finding>` or `NOT_FIXED - <finding> - <reason>`. Then the test summary line and the checkpoint id. Never leave a finding off the list.
+Report, at most 150 words, no file contents or logs. A closed list with one line per finding: `FIXED - <finding>` or `NOT_FIXED - <finding> - <reason>`. Then the test result as `tests: <passed> <failed> <skipped> run <id>` and the checkpoint id. Never leave a finding off the list.

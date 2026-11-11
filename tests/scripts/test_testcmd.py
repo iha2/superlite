@@ -95,7 +95,7 @@ def test_no_test_command_exits_2_with_a_clear_summary(tmp_path):
     cp = rt(tmp_path, "--full")
     assert cp.returncode == 2 and cp.out.strip() == "0 0 0 0.0" and "no test command found" in cp.err
     s = summary(tmp_path)
-    assert set(s) == {"passed", "failed", "skipped", "seconds", "mode", "failures", "skipped_tests"}
+    assert set(s) - {"run_id", "tree"} == {"passed", "failed", "skipped", "seconds", "mode", "failures", "skipped_tests"}
     assert s["failed"] == 1 and "no test command found" in s["failures"][0]
 
 
@@ -108,7 +108,7 @@ def test_junit_from_a_node_runner_keeps_the_summary_shape(tmp_path):
     assert cp.returncode == 1, cp.both
     assert cp.out.strip().split()[:3] == ["2", "1", "0"]
     s = summary(tmp_path)
-    assert set(s) == {"passed", "failed", "skipped", "seconds", "mode", "failures", "skipped_tests"}
+    assert set(s) - {"run_id", "tree"} == {"passed", "failed", "skipped", "seconds", "mode", "failures", "skipped_tests"}
     assert (s["passed"], s["failed"], s["mode"]) == (2, 1, "full")
     assert s["failures"] == ["tests/feed.test.ts::feed > builds rss: expected 1 to be 2"]
     inc = (tmp_path / ".superlite" / "incidents.jsonl").read_text(encoding="utf-8")
@@ -148,8 +148,9 @@ def test_non_python_project_never_asks_for_pytest(tmp_path):
 def test_background_and_wait_work_for_a_non_python_runner(tmp_path):
     config(tmp_path, language="go", test=f'{sys.executable} -c "print(1)"', test_file="", junit="", setup="")
     cp = rt(tmp_path, "--background")
-    assert cp.returncode == 0 and cp.out.startswith("summary:")
-    w = rt(tmp_path, "--wait", "--timeout", "60")
+    lines = cp.out.strip().splitlines()
+    assert cp.returncode == 0 and lines[0].startswith("wait: run_tests --wait --run ") and lines[-1].startswith("summary:")
+    w = rt(tmp_path, "--wait", "--run", lines[0].split()[-1], "--timeout", "60")
     assert w.returncode == 0, w.both
     assert json.loads(w.out)["failed"] == 0
 
@@ -167,3 +168,20 @@ def test_python_project_still_uses_pytest(tmp_path):
     (tmp_path / "test_a.py").write_text("def test_a():\n    assert 1 == 1\n", encoding="utf-8")
     cp = rt(tmp_path, "--full")
     assert cp.returncode == 0 and cp.out.strip().startswith("1 0 0"), cp.both
+
+
+def test_pytest_runs_serially_when_addopts_ask_for_xdist_that_is_missing(tmp_path, monkeypatch):
+    import importlib.util
+    sys.path.insert(0, str(SCRIPTS))
+    import run_tests
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.pytest.ini_options]\naddopts = "-n auto --dist loadfile --strict-markers"\n', encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    real = importlib.util.find_spec
+    monkeypatch.setattr(importlib.util, "find_spec", lambda n, *a: None if n == "xdist" else real(n, *a))
+    assert run_tests.serial_addopts() == ["-o", "addopts=--strict-markers"]
+    (tmp_path / "pyproject.toml").write_text(  # the TOML list form gives the same serial command
+        '[tool.pytest.ini_options]\naddopts = ["-n", "auto", "--dist", "loadfile", "--strict-markers"]\n', encoding="utf-8")
+    assert run_tests.serial_addopts() == ["-o", "addopts=--strict-markers"]
+    monkeypatch.setattr(importlib.util, "find_spec", lambda n, *a: object() if n == "xdist" else real(n, *a))
+    assert run_tests.serial_addopts() == []

@@ -19,7 +19,7 @@ Save to `docs/plans/YYYY-MM-DD-<topic>.md`. When called from `superlite:inventin
 
 **Who orchestrates sets the mode** (`superlite-cli orchestrator status`).
 - **Human orchestrator** (the human validates the plan before it runs), two phases:
-  1. Write the review plan: `docs/plans/<date>-<topic>.review.md`, plain words with diagrams, no code or taskgraph (`review-plan.md`). Nothing is built, dispatched or written except this file before the human's approving reply.
+  1. Write the review plan: `docs/plans/<date>-<topic>.review.md`, plain words with diagrams, no code or taskgraph (`review-plan.md`). Nothing is built, dispatched or written except this file before the human's approving reply. With no question batch, list "Run the whole test suite at finish?" (default no) under "Decisions you can change"; the approving reply may set it.
   2. When `open_in_harness` is on (`superlite-cli agent_specs status`), open the plan for the user first (After writing below; the harness's open row in `using-superlite/references/<harness>-tools.md`). Show it in plain text, not AskUserQuestion: the path, a five-line summary and "Reply approve to start, or tell me what to change". END THE TURN and do nothing else until the human replies.
   3. Read their answer. If you understand it as approval, send approve: `superlite-cli orchestrator approve --review <path>`. Do not pass their words through and do not ask them to retype approve. If you understand it as changes with no approval, revise and ask again. `lint --stable`, `dispatch`, `wave0` and `build_prime` refuse until then.
   4. Write the machine plan `docs/plans/<date>-<topic>.md` from the approved review plan, in the order below (same tasks and scope, header `**Review plan:** <path>`), then `lint --stable`, and dispatch the stable set in the same turn.
@@ -38,7 +38,7 @@ In both modes, write for the split:
 
 ## Plan shape, in this order
 
-1. **Header:** Goal, Architecture, Tech stack, Spec path, `**Detail:** contracts | tests | full` (default `tests`), `**Target-min:** N` (predicted-total target, default 11), `**Ignore:** a/, b, *.c` (optional: paths or globs your tooling generates beyond the language defaults, e.g. `.next/`, `.env`, `*.sqlite`), global constraints (exact values copied from the spec: version floors, names, formats). Task briefs point here, so do not repeat constraints per task.
+1. **Header:** Goal, Architecture, Tech stack, Spec path, `**Detail:** contracts | tests | full` (default `tests`), `**Full suite:** yes | no` (missing means no; from the "Run the whole test suite at finish?" answer), `**Target-min:** N` (predicted-total target, default 11), `**Ignore:** a/, b, *.c` (optional: paths or globs your tooling generates beyond the language defaults, e.g. `.next/`, `.env`, `*.sqlite`), global constraints (exact values copied from the spec: version floors, names, formats). Task briefs point here, so do not repeat constraints per task.
 2. **Main diagram** (always): Mermaid of components and data flow.
 3. **File structure:** every file and its one responsibility. Split by responsibility, not by layer, and follow the repo's patterns.
 4. **Task graph** (always, machine-readable): see below.

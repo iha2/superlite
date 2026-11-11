@@ -327,6 +327,15 @@ class Plan:
                 return [e.strip().strip("`").strip() for e in m.group(1).split(",") if e.strip().strip("`").strip()]
         return None
 
+    def header_full_suite(self) -> bool | None:  # O(L)
+        """The `**Full suite:** yes|no` header line: True for yes/true, False for no/false (any case); None otherwise."""
+        for ln, f in zip(self.lines, self.fenced):
+            m = None if f else re.match(r"^\*\*Full suite:\*\*\s*(.*)$", ln)
+            if m:
+                v = m.group(1).strip().lower()
+                return True if v in ("yes", "true") else False if v in ("no", "false") else None
+        return None
+
     def header_execution(self) -> dict:  # O(L)
         """Parse `**Execution:** host=cursor, parallel=multitask, swarm_by=tier` (empty dict if absent)."""
         import host_models as hm

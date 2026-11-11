@@ -45,6 +45,7 @@ def test_archive_moves_run_files(tmp_path):
     r = repo(tmp_path)
     sl = live(r, progress__md="p", metrics__jsonl="m", test_cmd="x")
     (sl / "test-cmd.json").write_text("{}")
+    (sl / "test-map.json").write_text("{}")  # project config, like test-cmd.json: stays live
     (sl / "sessions.json").write_text("{}")
     (sl / "test_cmd").unlink()
     dest = run_archive.archive(sl, "export", now=NOW)
@@ -56,7 +57,7 @@ def test_archive_moves_run_files(tmp_path):
     assert meta["files"] == ["metrics.jsonl", "progress.md"]
     assert meta["checkout"] == Path(meta["checkout"]).as_posix()
     assert meta["archived_at"] == "2026-11-10T14:03:09"
-    assert sorted(p.name for p in sl.iterdir() if p.name != "runs") == ["sessions.json", "test-cmd.json"]
+    assert sorted(p.name for p in sl.iterdir() if p.name != "runs") == ["sessions.json", "test-cmd.json", "test-map.json"]
 
 
 def test_archive_nothing_returns_none(tmp_path):

@@ -316,6 +316,11 @@ def main(argv=None):  # O(R*w + I*w)
     sys.stdout.reconfigure(encoding="utf-8")
     root = Path(a.ledger).resolve().parent  # .superlite, or the ledger's directory
     sl_dir = root if root.name == state.DIR_NAME else root / state.DIR_NAME
+    import run_tests  # no background test run may write live state after the archive: drain them first
+    live = sl_dir / "test-summary.json"
+    if run_tests.pending_runs(live) and run_tests.wait_all(live) != 0:
+        print("finish: not archived; a background test run is still going. Run finish again when it ends.")
+        return 2
     import session_registry
     try:
         hub = session_registry.hub_root(sl_dir.parent)

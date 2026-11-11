@@ -157,7 +157,7 @@ def test_write_summary_keeps_the_old_shape_without_extra(tmp_path):
     counts = {"passed": 1, "failed": 0, "skipped": 0, "skipped_tests": []}
     run_tests.write_summary(tmp_path / "a.json", "fast", counts, [], 1.0)
     old = json.loads((tmp_path / "a.json").read_text(encoding="utf-8"))
-    assert set(old) == {"passed", "failed", "skipped", "seconds", "mode", "failures", "skipped_tests"}
+    assert set(old) - {"run_id"} == {"passed", "failed", "skipped", "seconds", "mode", "failures", "skipped_tests"}
     run_tests.write_summary(tmp_path / "b.json", "fast", counts, [], 1.0, extra=tp.summary_fields(fake_result(dict(SUSPECT))))
     new = json.loads((tmp_path / "b.json").read_text(encoding="utf-8"))
     assert set(old) < set(new) and all(new[k] == old[k] for k in old)
@@ -368,7 +368,7 @@ def test_windows_minus_one_exit_reads_as_killed_or_crashed(tmp_path):
     assert r.returncode == 1
     s = read_json(tmp_path / ".superlite" / "test-summary.json")
     assert s["failures"][0].startswith("-::process killed or crashed (exit -1)") and "4294967295" not in json.dumps(s)
-    assert set(s) == {"passed", "failed", "skipped", "seconds", "mode", "failures", "skipped_tests"}
+    assert set(s) == {"passed", "failed", "skipped", "seconds", "mode", "failures", "skipped_tests", "run_id"}
 
 
 def test_a_quiet_fast_run_pays_nothing_and_keeps_its_summary_shape(tmp_path):
@@ -378,5 +378,5 @@ def test_a_quiet_fast_run_pays_nothing_and_keeps_its_summary_shape(tmp_path):
     r = rt(tmp_path, {**os.environ})
     assert r.returncode == 0 and "SUSPECT" not in r.stdout
     assert set(read_json(tmp_path / ".superlite" / "test-summary.json")) == {
-        "passed", "failed", "skipped", "seconds", "mode", "failures", "skipped_tests"}
+        "passed", "failed", "skipped", "seconds", "mode", "failures", "skipped_tests", "run_id"}
     assert not list((tmp_path / ".superlite").glob("*.suspect"))

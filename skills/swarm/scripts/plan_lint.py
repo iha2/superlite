@@ -8,8 +8,12 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-import base
-import plan_tools as pt
+HERE = Path(__file__).resolve().parent
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+
+import base  # noqa: E402
+import plan_tools as pt  # noqa: E402
 from plan_schedule import (CTX_CEILING, DEFAULT_SIZE_BAND, ancestors, block_hash, chain_id, dispatched_tasks, edge_notes,
                            effective_context, effective_times, example_issues, find_cycle, parse_taskgraph,
                            schedule_report, split_notes, stable_partition, task_interface, waited_graph)
@@ -159,6 +163,8 @@ class _Lint:
         if plan.header_ignore() is None:
             self.warnings.append("NOTE: no **Ignore:** header line; .gitignore gets only the language defaults "
                                  "(list .env, local databases, .next/, out/ and other generated paths your tooling creates)")
+        if plan.header_full_suite() is None:
+            self.warnings.append("NOTE: no **Full suite:** header line; finish runs affected tests only (missing means no)")
         for t in plan.tasks:
             if not t.has_features and t.stated_time is None:
                 self.warnings.append(f"WARNING: {t.id} has no features (Components, LOC owned, Tests) and no Est. time; "
