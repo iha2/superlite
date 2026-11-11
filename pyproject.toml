@@ -15,5 +15,5 @@ testpaths = ["tests/scripts"]
 addopts = "-n auto --dist loadfile"
 markers = [
     "slow: long-running (state machine, fault injection); deselect with -m 'not slow'",
-    "live: one-turn agent instruction tests (not in testpaths; run: pytest tests/live -m live)",
+    "live: one-turn agent instruction tests (not in testpaths; run: pytest tests/live -m live -n 0)",
 ]
