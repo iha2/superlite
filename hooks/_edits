@@ -309,6 +309,7 @@ project_code() {
     return 1 ;;
   esac
   [ "$active" = 1 ] || return 1
+  if [[ "$pl" =~ ^\.superlite/sandboxes/[^/]+/[^/]+/docs/plans/[^/]+\.md$ ]]; then return 1; fi
   case "$rel" in
     .superlite/sandboxes/*) return 0 ;;
     docs/plans/*|docs/*.md|SPEC*.md|*/SPEC*.md|.superlite/*) return 1 ;;

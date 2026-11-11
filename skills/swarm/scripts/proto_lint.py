@@ -17,16 +17,9 @@ def _norm(path: str) -> str | None:
 
 
 def _resolves_inside(sb_rel: str, plan_rel: str, path: str) -> bool:
-    """Against the repo root first; then, for a plan that lives in the sandbox, against the sandbox."""
+    """Owns claims are repository-relative paths prefixed by the sandbox path."""
     n = _norm(path)
-    if n is None:
-        return False
-    if sandbox.inside(sb_rel, n):
-        return True
-    if sandbox.inside(sb_rel, plan_rel):
-        joined = _norm(f"{sb_rel}/{n}")
-        return joined is not None and sandbox.inside(sb_rel, joined)
-    return False
+    return bool(n and not Path(sb_rel).is_absolute() and sandbox.inside(sb_rel, n))
 
 
 def check(plan_path: str, owns: dict[str, list[str]], sl: Path) -> list[str]:  # O(owns)

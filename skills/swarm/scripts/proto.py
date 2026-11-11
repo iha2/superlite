@@ -37,6 +37,7 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 import base  # noqa: E402
+import checkpoint  # noqa: E402
 import orchestrator  # noqa: E402
 import run_archive  # noqa: E402
 import sandbox  # noqa: E402
@@ -129,11 +130,11 @@ def newest_feature_plan() -> str | None:  # O(F log F)
     return found[-1].as_posix() if found else None
 
 
-def proto_report(st: dict) -> dict | None:  # O(file)
+def proto_report(st: dict, run_dir: Path | None = None) -> dict | None:  # O(file)
     """The prototype build's report headline: saved at discard, else read live, else the archived run of its run id."""
     if st.get("proto_report"):
         return st["proto_report"]
-    sl = run_dir_of(st)
+    sl = Path(run_dir) if run_dir is not None else run_dir_of(st)
     if sl is None:
         return None
     c = base.read_json(sl / "report.json", None)
@@ -148,16 +149,20 @@ def proto_report(st: dict) -> dict | None:  # O(file)
 
 
 def _archived_report(checkout: Path, rid) -> dict | None:  # O(archives)
-    """report.json of the archived run whose run.json id is `rid` (two runs of one checkout share the archive)."""
+    """Newest report for stable run id `rid`, with legacy archive-id lookup."""
     if not rid:
         return None
     runs = run_archive.runs_dir(checkout)
+    best = None
     for meta in runs.glob("*/run.json") if runs.is_dir() else ():
         m = base.read_json(meta, None)
-        if isinstance(m, dict) and m.get("id") == rid:
-            rep = base.read_json(meta.parent / "report.json", None)
-            return rep if isinstance(rep, dict) else None
-    return None
+        if not isinstance(m, dict) or rid not in (m.get("run_id"), m.get("id")):
+            continue
+        rep = base.read_json(meta.parent / "report.json", None)
+        archived_at = str(m.get("archived_at") or "")
+        if isinstance(rep, dict) and (best is None or (archived_at, str(m.get("id"))) > best[:2]):
+            best = (archived_at, str(m.get("id")), rep)
+    return best[2] if best else None
 
 
 def _archived_report_legacy(worktree: Path) -> dict | None:  # O(archives)
@@ -197,8 +202,8 @@ def record_row(st: dict, **extra) -> None:  # O(registry)
         return
     try:
         sb = Path(st["sandbox"])
-        session_sandboxes.record(sb.parents[3], st["topic"], path=sandbox_rel(st), run_id=st.get("run_id"),
-                                 status=st["status"], **extra)
+        session_sandboxes.record(sb.parents[3], st["topic"], session=st.get("session"),
+                                 path=sandbox_rel(st), run_id=st.get("run_id"), status=st["status"], **extra)
     except (OSError, ValueError, KeyError, TypeError, IndexError, base.GitError):
         pass
 
@@ -245,6 +250,7 @@ def cmd_start(a, sl) -> int:
     if sb.exists():
         print(f"proto: {sb.as_posix()} already exists; run superlite-cli proto discard or remove it", file=sys.stderr)
         return 2
+    checkpoint.setup_exclude(root)
     sb.mkdir(parents=True)
     st = {"v": 1, "topic": a.topic, "plan": a.plan or newest_feature_plan(), "sandbox": sb.as_posix(), "session": session,
           "run_id": run_id_for(sl, a.topic, session), "run": a.run, "reach": a.reach, "level": a.level or "L1",

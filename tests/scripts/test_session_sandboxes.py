@@ -52,6 +52,15 @@ def test_record_upserts_by_topic(tmp_path):
     assert e["ended"] and entries[1]["ended"] is None
 
 
+def test_record_drops_malformed_entries(tmp_path):
+    r = repo(tmp_path)
+    reg = session_registry.read(r)
+    reg["sessions"][0]["sandboxes"] = ["broken"]
+    session_registry.write(r, reg)
+    assert ss.record(r, "export", status="building") is True
+    assert row(r)["sandboxes"][0]["topic"] == "export"
+
+
 def test_record_without_session_false(tmp_path):
     r = repo(tmp_path, registered=False)
     assert ss.record(r, "export", status="building") is False

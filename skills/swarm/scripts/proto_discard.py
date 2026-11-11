@@ -49,21 +49,21 @@ def _legacy(checkout: Path, st: dict) -> None:
     st["branch_kept"] = False
 
 
-def discard_open(sl: Path, reason: str = "discard") -> dict | None:
+def discard_open(sl: Path, reason: str = "discard", checkout: Path | None = None) -> dict | None:
     """Discard the open prototype in run folder `sl`; the saved state, or None when none is open."""
     sl = Path(sl)
+    checkout = Path(checkout) if checkout is not None else sl.parent
     st = proto.read_state(sl)
     if not st or st["status"] == "discarded":
         return None
-    checkout = sl.parent
-    rep = proto.proto_report(st)  # before the run files move
+    rep = proto.proto_report(st, sl)  # before the run files move
     if rep:
         st["proto_report"] = rep
         proto.write_state(sl, st)
     if st.get("sandbox"):
         rid = st.get("run_id")
         run_archive.archive(sl, run_archive.current_slug(checkout), unfinished=True, plan=st.get("plan"),
-                            rid=f"{rid}-unfinished" if rid else None, keep=KEEP)
+                            rid=f"{rid}-unfinished" if rid else None, keep=KEEP, checkout=checkout)
         if not _remove_sandbox(checkout, Path(st["sandbox"])):
             st["sandbox_kept"] = True
     else:
@@ -72,8 +72,8 @@ def discard_open(sl: Path, reason: str = "discard") -> dict | None:
     proto.write_state(sl, st)
     if st.get("sandbox"):
         try:  # a session-row failure never fails the discard
-            session_sandboxes.record(checkout, st["topic"], path=proto.sandbox_rel(st), run_id=st.get("run_id"),
-                                     status="discarded")
-        except (IndexError, ValueError, OSError):
+            session_sandboxes.record(checkout, st["topic"], session=st.get("session"),
+                                     path=proto.sandbox_rel(st), run_id=st.get("run_id"), status="discarded")
+        except (IndexError, ValueError, OSError, TypeError, AttributeError):
             pass
     return st

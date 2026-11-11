@@ -20,6 +20,10 @@ DONE = {"discarded", "closed"}
 
 def _upsert(row: dict, topic: str, fields: dict) -> None:
     entries = row.setdefault("sandboxes", [])
+    if not isinstance(entries, list):
+        entries = []
+        row["sandboxes"] = entries
+    entries[:] = [e for e in entries if isinstance(e, dict)]
     entry = next((e for e in entries if e.get("topic") == topic), None)
     if entry is None:
         entry = {"topic": topic, "path": None, "run_id": None, "status": None,
@@ -30,12 +34,12 @@ def _upsert(row: dict, topic: str, fields: dict) -> None:
         entry["ended"] = datetime.now().isoformat(timespec="seconds")
 
 
-def record(checkout: Path, topic: str, **fields) -> bool:  # O(N)
+def record(checkout: Path, topic: str, session: str | None = None, **fields) -> bool:  # O(N)
     try:
         here = sr.toplevel(Path(checkout))
         root = sr.hub_root(here)
         reg = sr.read(root)
-        row = sr.row_at(reg, here, sr.resolve_host(root, reg))
+        row = sr.find_row(reg, session) if session else sr.row_at(reg, here, sr.resolve_host(root, reg))
         if row is None:
             return False
         slug = row["slug"]
@@ -48,7 +52,7 @@ def record(checkout: Path, topic: str, **fields) -> bool:  # O(N)
                 found.append(True)
         sr.update(root, change)
         return bool(found)
-    except (base.GitError, OSError, ValueError, KeyError, TypeError, IndexError) as e:
+    except (base.GitError, OSError, ValueError, KeyError, TypeError, IndexError, AttributeError) as e:
         print(f"session: sandbox record skipped: {e!r}", file=sys.stderr)
         return False
 

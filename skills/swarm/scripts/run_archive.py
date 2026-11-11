@@ -162,7 +162,7 @@ def undo_ensure(sl: Path, dest: Path | None, previous: bytes | None) -> None:
 
 def archive(sl: Path, slug: str | None = None, unfinished: bool = False, plan: str | None = None,
             now: datetime | None = None, rid: str | None = None, reserved: Path | None = None,
-            copy: bool = False, keep: tuple = ()) -> Path | None:
+            copy: bool = False, keep: tuple = (), checkout: Path | None = None) -> Path | None:
     """Move or copy run files into <hub>/.superlite/runs/<id>/ with run.json; None if there are no run files.
     Names in `keep` stay live. Takes no registry lock (session ensure already holds it)."""
     files = entries(sl, keep)
@@ -170,7 +170,7 @@ def archive(sl: Path, slug: str | None = None, unfinished: bool = False, plan: s
         cancel_reservation(reserved)
         return None
     now = (now or datetime.now()).replace(microsecond=0)
-    checkout = Path(sl).parent
+    checkout = Path(checkout) if checkout is not None else Path(sl).parent
     dest = Path(reserved) if reserved is not None else reserve(sl, slug, unfinished, now, rid, keep)
     if dest is None:
         return None
@@ -190,7 +190,8 @@ def archive(sl: Path, slug: str | None = None, unfinished: bool = False, plan: s
                 "status": "unfinished" if unfinished else "finished", "files": names}
         sb = _sandbox_rel(sl, checkout)
         if sb:
-            meta.update(sandbox=sb, run_id=rid)
+            feature_run = _feature_run_id(sl)
+            meta.update(sandbox=sb, run_id=feature_run or rid)
         tmp = dest / "run.json.tmp"
         tmp.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8", newline="\n")
         os.replace(tmp, dest / "run.json")
@@ -214,6 +215,10 @@ def _sandbox_rel(sl: Path, checkout: Path) -> str | None:
         return Path(sb).relative_to(Path(checkout).resolve()).as_posix()
     except ValueError:
         return sb
+
+
+def _feature_run_id(sl: Path):
+    return (_feature_state(sl) or {}).get("run_id")
 
 
 def _copy_entry(source: Path, target: Path) -> None:

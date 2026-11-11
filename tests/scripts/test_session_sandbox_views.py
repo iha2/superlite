@@ -89,7 +89,7 @@ def test_status_lists_sandboxes_with_run_id(hub, capsys, monkeypatch):
     assert session_switch.cmd_status(a) == 0
     out = capsys.readouterr().out
     assert "sandbox export building .superlite/sandboxes/host/export run 20261111-140000-feat" in out
-    assert "old" not in out
+    assert "sandbox old discarded" not in out
 
 
 def test_switch_keeps_each_sessions_sandbox(tmp_path):

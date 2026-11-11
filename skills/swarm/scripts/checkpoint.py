@@ -42,6 +42,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import next_tasks as nt  # noqa: E402
 import base  # noqa: E402
+import checkpoint_import as ci  # noqa: E402
 import gitignore  # noqa: E402
 import sandbox  # noqa: E402
 import state  # noqa: E402
@@ -66,48 +67,9 @@ SETTINGS_LOCAL = ".claude/settings.local.json"  # written by exclusive.py (peer 
 WORKTREE_HOME = ".claude/worktrees/"  # linked checkouts (superlite's and the Claude Code harness's): never this tree's changes
 TASK_ID = re.compile(r"T\d+[A-Za-z]?")
 
-IMPORT_DRIVER = r"""
-import importlib, importlib.util, json, os, sys, traceback
-sys.dont_write_bytecode = True
-root = os.path.abspath(sys.argv[1])
-files = sys.argv[2:]
-sys.path.insert(0, root)
-if os.path.isdir(os.path.join(root, "src")):
-    sys.path.insert(1, os.path.join(root, "src"))
-failures = []
-for rel in files:
-    path = os.path.join(root, rel)
-    parts = rel.replace("\\", "/")[:-3].split("/")
-    if parts[0] == "src" and os.path.isdir(os.path.join(root, "src")):
-        parts = parts[1:]
-    if parts and parts[-1] == "__init__":
-        parts = parts[:-1]
-    if parts and parts[-1] == "__main__":
-        continue  # importing it runs the program (SPECs often require an unguarded sys.exit(main())); the syntax check covers it
-    try:
-        if parts and all(p.isidentifier() for p in parts):
-            importlib.import_module(".".join(parts))
-        else:
-            name = "_slcheck_" + "_".join(p.replace("-", "_") for p in parts)
-            sys.path.append(os.path.dirname(path))
-            spec = importlib.util.spec_from_file_location(name, path)
-            mod = importlib.util.module_from_spec(spec)
-            sys.modules[name] = mod
-            spec.loader.exec_module(mod)
-    except BaseException as e:
-        line = 0
-        for fr in traceback.extract_tb(e.__traceback__):
-            if os.path.abspath(fr.filename) == os.path.abspath(path):
-                line = fr.lineno
-        failures.append({"file": rel, "line": line,
-                         "error": f"{type(e).__name__}: {e}"[:150]})
-print(json.dumps(failures))
-"""
-
-
-def git(*args, check=True, env=None):  # O(output) + process spawn
+def git(*args, check=True, env=None, cwd=None):  # O(output) + process spawn
     r = subprocess.run(["git", *args], capture_output=True, text=True,
-                       encoding="utf-8", env={**os.environ, **env} if env else None)
+                       encoding="utf-8", env={**os.environ, **env} if env else None, cwd=cwd)
     if check and r.returncode != 0:
         nt.die(f"git {' '.join(args[:2])} failed: {(r.stderr or r.stdout).strip()}", 1)
     return r
@@ -157,7 +119,20 @@ def changed_files(keep=None):  # O(m log m) + process spawn
             path = entry[3:].replace("\\", "/")
             if not ignored(path) or (keep and not hard_ignored(path) and keep(path)):
                 files.append(path)
-    return sorted(set(files + sandbox_files(keep)))
+    return sorted(set(files + sandbox_files(keep) + deleted_sandbox_files(keep)))
+
+
+def deleted_sandbox_files(keep):  # O(checkpointed sandbox files)
+    if not keep:
+        return []
+    rel = sandbox.open_sandbox(state.run_dir(Path.cwd()))
+    st = load_state()
+    entries = st.get("entries") if isinstance(st, dict) else None
+    parent = entries[-1].get("sha") if entries else None
+    if not rel or not parent:
+        return []
+    tree = git("ls-tree", "-r", "--name-only", parent).stdout.splitlines()
+    return [f for f in tree if sandbox.inside(rel, f) and keep(f) and not Path(f).exists()]
 
 
 def syntax_errors(files):  # O(total size of m_py files)
@@ -177,7 +152,7 @@ def syntax_errors(files):  # O(total size of m_py files)
 def import_errors(files):  # O(m_py * import cost) + 1 process spawn (batched)
     if not files:
         return []
-    r = subprocess.run([sys.executable, "-I", "-c", IMPORT_DRIVER, ".", *files],
+    r = subprocess.run([sys.executable, "-I", "-c", ci.IMPORT_DRIVER, ".", state.DIR_NAME, *files],
                        capture_output=True, text=True, encoding="utf-8", timeout=120,
                        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
     try:
@@ -203,12 +178,14 @@ def append_ledger(ledger, line):
         f.write(line + "\n")
 
 
-def setup_exclude():  # O(x) + process spawn
+def setup_exclude(cwd=None):  # O(x) + process spawn
     """Add `.superlite/` to the repo's .git/info/exclude (idempotent); True if it did."""
-    r = git("rev-parse", "--git-path", "info/exclude", check=False)
+    r = git("rev-parse", "--git-path", "info/exclude", check=False, cwd=cwd)
     if r.returncode != 0 or not r.stdout.strip():
         return False
     p = Path(r.stdout.strip())
+    if not p.is_absolute():
+        p = Path(cwd or Path.cwd()) / p
     try:
         old = p.read_text(encoding="utf-8") if p.exists() else ""
         if any(ln.strip() in (state.DIR_NAME, f"{state.DIR_NAME}/") for ln in old.splitlines()):
@@ -394,7 +371,7 @@ def save_checkpoint(tid, title, files, plan):  # O(files) + git spawns
         if plain:
             git("add", "-A", "--", *plain, env=env)
         if boxed:
-            git("add", "-f", "--", *boxed, env=env)  # the sandbox folder is git-ignored
+            git("add", "-f", "-A", "--", *boxed, env=env)  # the sandbox folder is git-ignored
         tree = git("write-tree", env=env).stdout.strip()
     finally:
         idx.unlink(missing_ok=True)

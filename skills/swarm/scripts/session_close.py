@@ -47,15 +47,18 @@ def _close(root: Path, slug: str, a) -> int:
     return _close_stored(root, reg, row, slug)
 
 
-def _discard_sandbox(live: Path) -> None:
+def _discard_sandbox(live: Path, row: dict, root: Path, checkout: Path | None = None) -> None:
     """An open prototype sandbox goes first: its run is archived with the session, its files are dropped."""
     try:
         from proto_discard import discard_open  # lazy: the prototype modules are optional here
-        res = discard_open(live, "session close")
+        res = discard_open(live, "session close", checkout=checkout or live.parent)
     except (ImportError, OSError, ValueError, KeyError, TypeError, IndexError) as e:
         print(f"session: could not discard the open sandbox: {e}", file=sys.stderr)
         return
     if res:
+        updated = find_row(read(root), row["slug"])
+        if updated is not None:
+            row["sandboxes"] = copy.deepcopy(updated.get("sandboxes", []))
         print(f"session: discarded the open prototype sandbox ({res.get('status')})")
 
 
@@ -98,7 +101,7 @@ def _close_host(root: Path, reg: dict, row: dict, slug: str, host: Path, a) -> i
     store, live = store_path(root, slug), state.run_dir(host)
     before = copy.deepcopy(reg)
     wip = None
-    _discard_sandbox(live)
+    _discard_sandbox(live, row, root)
     try:
         with Journal() as j:
             j.step("save the work")
@@ -147,7 +150,7 @@ def _close_owned(root: Path, reg: dict, row: dict, slug: str, a) -> int:
     had_run = any(p.name != run_archive.CURRENT_RUN for p in run_entries(live))
     before = read(root)  # as on disk: the undo must not persist the in-memory "finished" mark
     wip = None
-    _discard_sandbox(live)
+    _discard_sandbox(live, row, root)
     try:
         with Journal() as j:
             j.step("save the work")
@@ -188,6 +191,7 @@ def _close_stored(root: Path, reg: dict, row: dict, slug: str) -> int:
         oid = None  # the recorded stash is gone: nothing to carry
     refs = session_stashes(root, row) if oid else []
     before = copy.deepcopy(reg)
+    _discard_sandbox(store_path(root, slug), row, root, Path(row.get("worktree") or root))
     try:
         with Journal() as j:
             if oid and not W.exists(root, slug):
@@ -213,7 +217,7 @@ def _close_adopted(root: Path, reg: dict, row: dict, slug: str) -> int:
     worktree, its dirty files or its branch, and keep no WIP ref."""
     store, live = store_path(root, slug), state.run_dir(Path(row["worktree"]))
     before = copy.deepcopy(reg)
-    _discard_sandbox(live)
+    _discard_sandbox(live, row, root)
     try:
         with Journal() as j:
             j.step("park the run files")

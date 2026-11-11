@@ -130,6 +130,18 @@ def test_start_makes_sandbox_no_branch(repo):
     assert git(repo, "status", "--porcelain") == ""
 
 
+def test_start_ignores_sandbox_without_session_or_gitignore(repo):
+    (repo / ".gitignore").unlink()
+    cp = inproc("start", "--topic", "export", cwd=repo)
+    sb = repo / ".superlite" / "sandboxes" / "host" / "export"
+    assert cp.returncode == 0, cp.both
+    exclude = (repo / ".git" / "info" / "exclude").read_text()
+    assert ".superlite/" in exclude
+    (sb / "stub.py").write_text("value = 1\n")
+    assert git(repo, "check-ignore", "--no-index", ".superlite/sandboxes/host/export/stub.py").strip()
+    assert ".superlite/sandboxes/host/export/stub.py" not in git(repo, "status", "--porcelain", "--untracked-files=all")
+
+
 def test_start_under_claude_code_no_enter_line(repo):
     cp = inproc("start", "--topic", "export", cwd=repo, cc=True)
     assert cp.returncode == 0, cp.both

@@ -64,9 +64,9 @@ def test_traversal_and_absolute_rejected(fake_sandbox, tmp_path, bad):
 def test_relative_to_sandbox_ok(fake_sandbox, tmp_path):
     sl = tmp_path / ".superlite"
     plan = tmp_path / SB / "docs" / "plans" / "x.proto.md"
-    assert proto_lint.check(str(plan), {"T1": ["src/app.py", "tests/t.py"]}, sl) == []
-    out = proto_lint.check(str(plan), {"T1": ["../../../../../src/app.py"]}, sl)
-    assert len(out) == 1
+    assert proto_lint.check(str(plan), {"T1": [f"{SB}/src/app.py", f"{SB}/tests/t.py"]}, sl) == []
+    out = proto_lint.check(str(plan), {"T1": ["src/app.py", "**"]}, sl)
+    assert len(out) == 2
 
 
 def test_proto_plan_outside_fails_lint(fake_sandbox, tmp_path, capsys, monkeypatch):

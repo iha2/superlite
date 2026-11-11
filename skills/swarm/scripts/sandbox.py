@@ -71,6 +71,6 @@ def open_sandbox(sl: Path) -> str | None:
     if feat.get("status") not in OPEN or not isinstance(sb, str) or not sb:
         return None
     try:
-        return Path(sb).relative_to(Path(sl).parent).as_posix()
+        return Path(sb).relative_to(Path(sl).parent.resolve()).as_posix()
     except ValueError:
         return Path(sb).as_posix()

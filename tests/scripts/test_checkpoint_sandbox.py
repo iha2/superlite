@@ -80,3 +80,24 @@ def test_packet_no_section_without_sandbox(repo):
 def test_sandbox_pyc_never_saved(repo):
     (repo / SB / "src" / "m.pyc").write_bytes(b"\0")
     assert cp.changed_files(cp.claims([f"{SB}/"])) == [f"{SB}/src/m.py"]
+
+
+def test_deleted_owned_sandbox_file_is_checkpointed(repo):
+    owned = cp.claims([f"{SB}/src/"])
+    file = repo / SB / "src" / "m.py"
+    first = cp.changed_files(owned)
+    cp.save_checkpoint("T1", "proto", first, "plan.md")
+    file.unlink()
+    deleted = cp.changed_files(owned)
+    assert deleted == [f"{SB}/src/m.py"]
+    sha = cp.save_checkpoint("T1", "delete", deleted, "plan.md")
+    assert f"{SB}/src/m.py" not in git(repo, "ls-tree", "-r", "--name-only", sha).split()
+
+
+def test_sandbox_package_relative_imports_validate(repo):
+    package = repo / SB / "src" / "pkg"
+    package.mkdir()
+    (package / "__init__.py").write_text("")
+    (package / "helper.py").write_text("value = 1\n")
+    (package / "mod.py").write_text("from .helper import value\n")
+    assert cp.import_errors([f"{SB}/src/pkg/mod.py"]) == []

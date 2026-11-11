@@ -60,6 +60,19 @@ def test_archive_moves_run_files(tmp_path):
     assert sorted(p.name for p in sl.iterdir() if p.name != "runs") == ["sessions.json", "test-cmd.json", "test-map.json"]
 
 
+def test_sandbox_archive_keeps_stable_feature_run_id(tmp_path):
+    r = repo(tmp_path)
+    sl = live(r, progress__md="p")
+    sb = r / ".superlite" / "sandboxes" / "host" / "export"
+    (sl / "feature.json").write_text(json.dumps({
+        "sandbox": sb.as_posix(), "status": "building", "run_id": "stable-id",
+    }))
+    dest = run_archive.archive(sl, "export", unfinished=True, now=NOW, rid="stable-id-unfinished",
+                               keep=("feature.json",), checkout=r)
+    meta = json.loads((dest / "run.json").read_text())
+    assert meta["id"] == "stable-id-unfinished" and meta["run_id"] == "stable-id"
+
+
 def test_archive_nothing_returns_none(tmp_path):
     r = repo(tmp_path)
     sl = live(r)

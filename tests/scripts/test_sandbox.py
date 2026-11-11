@@ -73,6 +73,12 @@ def test_open_sandbox_open(repo, status):
     assert sandbox.open_sandbox(sl) == SB
 
 
+def test_open_sandbox_with_relative_run_dir(repo, monkeypatch):
+    feature(repo, status="building", sandbox=(repo / SB).as_posix())
+    monkeypatch.chdir(repo)
+    assert sandbox.open_sandbox(Path(state.DIR_NAME)) == SB
+
+
 def test_open_sandbox_discarded_none(repo):
     assert sandbox.open_sandbox(feature(repo, status="discarded", sandbox=(repo / SB).as_posix())) is None
 

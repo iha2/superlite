@@ -65,6 +65,12 @@ def test_allowed_paths(proj):
     assert run(proj, "Write", {"file_path": "docs/code.py"}).returncode == 2
 
 
+def test_coordinator_can_edit_sandbox_plan_not_code(proj):
+    plan = ".superlite/sandboxes/session/topic/docs/plans/prototype.proto.md"
+    assert run(proj, "Write", {"file_path": plan}).returncode == 0
+    assert run(proj, "Write", {"file_path": ".superlite/sandboxes/session/topic/src/app.py"}).returncode == 2
+
+
 def test_inactive_run_allowed(tmp_path):
     assert run(tmp_path, "Edit", {"file_path": str(tmp_path / "a.py")}).returncode == 0
     assert bash(tmp_path, "sed -i s/a/b/ a.py").returncode == 0
