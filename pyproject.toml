@@ -5,7 +5,7 @@ requires-python = ">=3.12"
 
 [dependency-groups]
 dev = [
-    "hypothesis>=6.170.14",
+    "hypothesis>=6.170.15",
     "pytest",
     "pytest-xdist>=3.8.0",
 ]
