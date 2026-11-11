@@ -192,17 +192,21 @@ def test_unregistered_linked_worktree_is_registered_in_place(repo, tmp_path):
     assert "already open here" in run("ensure", "--slug", "x", cwd=other).out
 
 
-def test_unregistered_linked_worktree_archives_leftovers(repo, tmp_path):
+def test_unregistered_linked_worktree_resumes_leftovers(repo, tmp_path):
     other = tmp_path.resolve() / "linked"
     git(repo, "worktree", "add", "-q", "-b", "feat/y", str(other))
     live = other / ".superlite"
     live.mkdir()
     (live / "progress.md").write_text("old run\n")
+    (live / "metrics.jsonl").write_text('{"task":"T1"}\n')
     cp = run("ensure", "--slug", "x", cwd=other)
     assert cp.returncode == 0, cp.both
-    (archive,) = sorted((repo / ".superlite" / "runs").iterdir())
-    assert (archive / "progress.md").read_text() == "old run\n"
-    assert not (live / "progress.md").exists()
+    assert row_of(repo, "x")["worktree"] == other.as_posix()
+    assert row_of(repo, "x")["run"] == "open"
+    assert run("ensure", "--slug", "x", cwd=other).returncode == 0
+    assert (live / "progress.md").read_text() == "old run\n"
+    assert (live / "metrics.jsonl").read_text() == '{"task":"T1"}\n'
+    assert not list((repo / ".superlite" / "runs").glob("*"))
 
 
 def test_linked_registration_failure_restores_leftovers(repo, tmp_path, monkeypatch):
@@ -695,16 +699,23 @@ def test_ensure_branch_registers_current_branch_in_place(repo):
     assert last(cp) == f"SESSION worktree={repo.as_posix()} slug=rev branch=feature"
 
 
-def test_branch_registration_archives_leftovers(repo):
+def test_branch_registration_resumes_leftovers(repo):
     git(repo, "switch", "-q", "-c", "feature")
     live = repo / ".superlite"
     live.mkdir()
     (live / "progress.md").write_text("old run\n")
+    (live / "metrics.jsonl").write_text('{"task":"T1"}\n')
     cp = run("ensure", "--slug", "rev", "--branch", "feature", cwd=repo)
     assert cp.returncode == 0, cp.both
-    (archive,) = sorted((live / "runs").iterdir())
-    assert (archive / "progress.md").read_text() == "old run\n"
-    assert not (live / "progress.md").exists()
+    assert row_of(repo, "rev")["run"] == "open"
+    assert run("ensure", "--slug", "rev", "--branch", "feature", cwd=repo).returncode == 0
+    assert (live / "progress.md").read_text() == "old run\n"
+    assert (live / "metrics.jsonl").read_text() == '{"task":"T1"}\n'
+    assert not list((live / "runs").glob("*"))
+    assert run("ensure", "--slug", "next", "--move", "yes", cwd=repo).returncode == 0
+    moved = Path(row_of(repo, "rev")["worktree"]) / ".superlite"
+    assert (moved / "progress.md").read_text() == "old run\n"
+    assert (moved / "metrics.jsonl").read_text() == '{"task":"T1"}\n'
 
 
 def test_branch_registration_failure_restores_leftovers(repo, monkeypatch):
@@ -894,6 +905,9 @@ def test_redirect_to_unregistered_worktree_registers_it(repo):
     """REDIRECT to an unregistered checkout of the requested branch registers it as a session first."""
     x = repo.parent / "x"
     git(repo, "worktree", "add", "-q", "-b", "feature", str(x))
+    live = x / ".superlite"
+    live.mkdir()
+    (live / "progress.md").write_text("old run\n")
     cp = run("ensure", "--slug", "rev", "--branch", "feature", cwd=repo)
     assert cp.returncode == 3, cp.both
     assert "REDIRECT" in cp.out, cp.out
@@ -902,6 +916,9 @@ def test_redirect_to_unregistered_worktree_registers_it(repo):
     assert Path(rows[0]["worktree"]).resolve() == x.resolve()
     assert rows[0].get("run", "open") == "open"
     assert rows[0].get("adopted_branch") is True
+    assert run("ensure", "--slug", "rev", "--branch", "feature", cwd=x).returncode == 0
+    assert (live / "progress.md").read_text() == "old run\n"
+    assert not list((repo / ".superlite" / "runs").glob("*"))
 
 
 def test_session_on_base_branch_stays_in_place_when_second_flow_starts(repo):

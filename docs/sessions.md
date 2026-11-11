@@ -76,11 +76,11 @@ Every flow (start, regular, mvp, feature, debug, small, review, research) runs `
 
 | Where it runs | What `ensure` does |
 |---|---|
-| A checkout whose session is open | Nothing; prints `session: <slug> already open here` |
+| A checkout whose session is open | Preserve its run state; prints `session: <slug> already open here` |
 | Main checkout, no active session or the active one is finished | `create` with the main checkout as host: branch `superlite/sessions/<topic>` from the current branch; a finished active session is parked first |
 | Main checkout, active session still open | Moves the open session out (see [Move-out](#move-out)): asks `ASK move`, then it continues in `.superlite/worktrees/sessions/<old>` and the new topic takes the main checkout. Without a move the open session is untouched |
 | Main checkout with a pre-existing run (`orchestrator.json`, no row) | Records it as the active open host session, then follows the row above |
-| Unregistered linked worktree | Registers it where it is (`owned: false`) |
+| Unregistered linked worktree | Registers it where it is (`owned: false`), keeping its existing run state |
 
 A taken slug gets `-2`, `-3`, and the slug it settled on is printed. Under Claude Code the command also prints `session: enter EnterWorktree path=<abs>` when the worktree is not the cwd: call `EnterWorktree` with that path. Elsewhere `cd` to the `SESSION worktree=<path>` (fallback).
 

@@ -46,7 +46,7 @@ def runs(r):
     return sorted(p for p in d.iterdir()) if d.is_dir() else []
 
 
-def test_open_here_archives_unfinished(repo):
+def test_open_here_preserves_unfinished(repo):
     assert run("ensure", "--slug", "demo", cwd=repo).returncode == 0
     sl = repo / ".superlite"
     (sl / "progress.md").write_text("p\n")
@@ -54,23 +54,23 @@ def test_open_here_archives_unfinished(repo):
     lines = cp.out.strip().splitlines()
     assert cp.returncode == 0, cp.err
     assert lines[0] == "session: demo already open here"
-    assert lines[1].startswith("run: archived leftovers to .superlite/runs/")
-    assert lines[1].endswith("-demo-unfinished")
     assert lines[-1].startswith("SESSION ")
-    assert not (sl / "progress.md").exists()
-    (d,) = runs(repo)
-    assert (d / "progress.md").exists() and (d / "run.json").exists()
+    assert (sl / "progress.md").read_text() == "p\n"
+    assert runs(repo) == []
 
 
+@pytest.mark.parametrize("in_flow", [False, True])
 @pytest.mark.parametrize("with_branch", [False, True])
-def test_in_flow_ensure_preserves_active_run(repo, with_branch):
+def test_ensure_preserves_active_run(repo, with_branch, in_flow):
     assert run("ensure", "--slug", "demo", cwd=repo).returncode == 0
     sl = repo / ".superlite"
     progress = sl / "progress.md"
     progress.write_text("current run\n")
     orchestrator = sl / "orchestrator.json"
     orchestrator.write_text('{"mode":"human","approved":false}\n')
-    args = ["ensure", "--slug", "demo", "--in-flow"]
+    args = ["ensure", "--slug", "demo"]
+    if in_flow:
+        args.append("--in-flow")
     if with_branch:
         args.extend(["--branch", git(repo, "branch", "--show-current").strip()])
 
@@ -107,7 +107,8 @@ def test_config_survives(repo):
     (sl / "progress.md").write_text("again\n")
     assert run("ensure", "--slug", "new", cwd=repo).returncode == 0
     assert (sl / "test-cmd.json").exists()
-    assert len(runs(repo)) == 2
+    assert len(runs(repo)) == 1
+    assert (sl / "progress.md").read_text() == "again\n"
 
 
 def test_no_auto_session_untouched(repo):

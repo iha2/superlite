@@ -1,4 +1,4 @@
-"""Seam: ensure -> ledger -> finish -> ensure -> ensure (unfinished) -> close/discard, through superlite-cli."""
+"""Seam: ensure -> ledger -> finish -> ensure -> resume -> close/discard, through superlite-cli."""
 from __future__ import annotations
 
 import os
@@ -72,10 +72,10 @@ def test_cycle(repo, home):
     ledger(repo, "second work\n")
     cp = cli(repo, "session", "ensure", "--slug", "second", home=home)
     ok(cp)
-    assert "archived leftovers" in cp.out
+    assert "already open here" in cp.out
     names = archives(repo)
-    assert len(names) == 2 and any(n.endswith("-second-unfinished") for n in names)
-    assert live(repo) == []
+    assert names == [a]
+    assert live(repo) == ["progress.md"]
 
     ok(cli(repo, "session", "close", "--slug", "first", home=home))
     ok(cli(repo, "session", "discard", "--slug", "second", home=home))

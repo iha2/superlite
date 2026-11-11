@@ -61,7 +61,7 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("--branch", help="an existing branch the session works on instead of a new session branch")
     e.add_argument("--move", choices=["yes"], help="confirm moving the open session out of the main checkout")
     e.add_argument("--untracked", **untracked)
-    e.add_argument("--in-flow", action="store_true", help="preserve run files when ensuring an already-open session")
+    e.add_argument("--in-flow", action="store_true", help="compatibility flag; open sessions always preserve run files")
     e.add_argument("--branch-name", dest="branch_name", default=None, metavar="worktree|superlite|PATTERN", help=branch_help)
 
     c = sp.add_parser("create", help="create a session branch (main checkout, or --worktree parallel)")

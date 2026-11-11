@@ -182,14 +182,12 @@ def _ensure(root: Path, here: Path, want: str, a) -> int:
     row = row_at(reg, here, host)
     exist = getattr(a, "branch", None)
     if exist:
-        rc = _ensure_branch(root, reg, here, row, want, exist, getattr(a, "in_flow", False))
+        rc = _ensure_branch(root, reg, here, row, want, exist)
         if rc is not None:
             return rc
     if is_open(row) and (not exist or row.get("branch") == exist) and (
             row["slug"] == want or row.get("topic") == want or not same(here, host)):
         print(f"session: {row['slug']} already open here")
-        if not getattr(a, "in_flow", False):
-            _say_archived(root, run_archive.archive(state.run_dir(here), row["slug"], unfinished=True))
         session_line(row.get("worktree") or here, row["slug"],
                      row.get("branch") or ("HEAD" if row.get("detached") else branch_for(row["slug"])))
         return 0
@@ -211,8 +209,7 @@ def _ensure(root: Path, here: Path, want: str, a) -> int:
     return rc
 
 
-def _ensure_branch(root: Path, reg: dict, here: Path, row: dict | None, want: str, exist: str,
-                   in_flow: bool = False) -> int | None:
+def _ensure_branch(root: Path, reg: dict, here: Path, row: dict | None, want: str, exist: str) -> int | None:
     """--branch: an existing branch to work on. A rc when it is settled here; None to carry on."""
     host = root
     if not branch_exists(root, exist):
@@ -225,8 +222,6 @@ def _ensure_branch(root: Path, reg: dict, here: Path, row: dict | None, want: st
         return _redirect_to_owner(root, reg, host, owner, want, exist)
     if is_open(row):
         print(f"session: {row['slug']} already open here")
-        if not in_flow:
-            _say_archived(root, run_archive.archive(state.run_dir(here), row["slug"], unfinished=True))
         session_line(row.get("worktree") or here, row["slug"], row.get("branch") or exist)
         return 0
     if row is not None and row.get("branch") == exist:  # its own finished branch: reopen, WIP stays
