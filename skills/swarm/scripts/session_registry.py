@@ -10,7 +10,7 @@ import shutil
 import sys
 import tempfile
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -34,7 +34,7 @@ STORE = "session-store"
 EXIT_REDIRECT = 3
 STASH_PREFIX = "superlite-session:"
 # Hub-level entries and real git checkouts: never parked, moved or wiped with run state.
-STATIONARY = {"worktrees", "sandboxes", STORE, FILE, FILE + ".lock", LOCK}
+STATIONARY = {"worktrees", "sandboxes", "runs", STORE, FILE, FILE + ".lock", LOCK}
 
 
 def git(*args, cwd, check=True):
@@ -265,14 +265,14 @@ def row_at(reg: dict, here: Path, host: Path) -> dict | None:  # O(N)
     return next((s for s in reg["sessions"] if same(s.get("worktree"), here)), None)
 
 
-def mark_run(cwd: Path, run: str) -> str | None:  # O(N)
+def mark_run(cwd: Path, run: str, lock_held: bool = False) -> str | None:  # O(N)
     """Set run open|finished on the session row for the checkout containing cwd; slug, or None. Never raises."""
     try:
         here = toplevel(Path(cwd))
         root = hub_root(here)
         if not _path(root).is_file():
             return None
-        with registry_lock(root):
+        with (nullcontext() if lock_held else registry_lock(root)):
             reg = read(root)
             row = row_at(reg, here, resolve_host(root, reg))
             if row is None:

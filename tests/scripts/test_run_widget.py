@@ -103,6 +103,10 @@ def test_many_rulings_are_capped(tmp_path):
     assert "1 checkpoint taken; work uncommitted in the folder" in card
 
 
+def archived(tmp_path):  # finish moves the run's files into <hub>/.superlite/runs/<id>; the newest one is this run's
+    return max((tmp_path / ".superlite" / "runs").iterdir(), key=lambda p: p.name)
+
+
 def test_finish_with_plan_writes_the_card_and_ends_with_the_widget_line(tmp_path, monkeypatch):
     p, sl = finished_run(tmp_path, monkeypatch)
     cp = run(FINISH, "--ledger", sl / "progress.md", "--log", sl / "i.jsonl", "--plan", p, cwd=tmp_path)
@@ -110,8 +114,8 @@ def test_finish_with_plan_writes_the_card_and_ends_with_the_widget_line(tmp_path
     last = cp.out.rstrip("\n").splitlines()[-1]
     assert last.startswith("widget: ") and "show_widget" in last
     shown = last.split()[1]
-    assert (tmp_path / shown).resolve() == (sl / run_widget.AFTER).resolve()
-    card = (sl / run_widget.AFTER).read_text(encoding="utf-8")
+    assert (tmp_path / shown).resolve() == (archived(tmp_path) / run_widget.AFTER).resolve()
+    card = (archived(tmp_path) / run_widget.AFTER).read_text(encoding="utf-8")
     assert "3 checkpoints taken; work uncommitted in the folder" in card  # counted before finish cleans the checkpoint state
     assert not (sl / "checkpoints.json").exists()
 
@@ -122,7 +126,7 @@ def test_finish_card_reads_the_ledger_it_was_given(tmp_path, monkeypatch):
     (sl / "custom.md").write_text(LEDGER, encoding="utf-8")
     cp = run(FINISH, "--ledger", sl / "custom.md", "--log", sl / "i.jsonl", "--plan", p, cwd=tmp_path)
     assert cp.returncode == 0, cp.both
-    card = (sl / run_widget.AFTER).read_text(encoding="utf-8")
+    card = (archived(tmp_path) / run_widget.AFTER).read_text(encoding="utf-8")
     assert "dropped the CSV export" in card and "stale ruling" not in card
 
 
@@ -249,8 +253,8 @@ def test_lint_then_finish_gives_both_cards(tmp_path, monkeypatch):
     (sl / "progress.md").write_text(LEDGER, encoding="utf-8")
     cp = run(FINISH, "--ledger", sl / "progress.md", "--log", sl / "i.jsonl", "--plan", p, cwd=tmp_path)
     assert cp.returncode == 0, cp.both
-    assert cp.out.rstrip().splitlines()[-1].startswith(f"widget: .superlite/{run_widget.AFTER}")
-    before, after = ((sl / f).read_text(encoding="utf-8") for f in (run_widget.BEFORE, run_widget.AFTER))
+    assert cp.out.rstrip().splitlines()[-1].startswith("widget: .superlite/runs/")
+    before, after = ((archived(tmp_path) / f).read_text(encoding="utf-8") for f in (run_widget.BEFORE, run_widget.AFTER))
     assert f"${proj['cost_usd']:.2f}" in before and f"proj {proj['cost_usd']:.2f}" in after  # the after card compares to the same forecast
 
 

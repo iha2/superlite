@@ -208,7 +208,7 @@ def test_finish_records_run_and_reports_predicted_vs_actual(tmp_path, monkeypatc
     assert cp.returncode == 0, cp.both
     assert "history: 3 rows appended" in cp.out and cp.out.count("predicted vs actual") == 0
     assert "build report (projected -> actual)" in cp.out and "takeaway:" in cp.out and cp.out.count("build report (projected") == 1
-    assert "Full report:" in cp.out and (sl / "report.md").is_file() and "biggest miss" in cp.out
+    assert "Full report:" in cp.out and not (sl / "report.md").exists() and len(list(sl.glob("runs/*/report.md"))) == 1 and "biggest miss" in cp.out
     assert (home / "history.jsonl").is_file() and (home / "stats.json").is_file()
 
 

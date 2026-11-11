@@ -112,7 +112,7 @@ def unblocked_report(ledger, lint_log):  # O(R*w + L*n)
 REPORTED: set[Path] = set()  # run folders whose build report this finish wrote (only they get an after card)
 
 
-def history_section(plan, sl_dir):  # O(M + B + n*(n + e))
+def history_section(plan, sl_dir, rid=None):  # O(M + B + n*(n + e))
     """Append the run's rows to history (global and project), refresh stats, and report predicted against actual."""
     sl = Path(sl_dir)
     if not plan or not (sl / "metrics.jsonl").is_file():
@@ -123,7 +123,7 @@ def history_section(plan, sl_dir):  # O(M + B + n*(n + e))
     import predict
     expected = (OSError, ValueError, KeyError, TypeError, ArithmeticError, planfile.PlanError, predict.PredictError)
     try:
-        rows = history.record_run(plan, sl_dir)
+        rows = history.record_run(plan, sl_dir, run_id=rid)
     except expected as e:
         return f"history: not recorded ({e})"
     out = [f"history: {len(rows)} rows appended"]  # predicted vs actual is the build report's job
@@ -189,7 +189,7 @@ def card_line(plan, sl_dir, ledger=None):  # O(file + R*w + m log m)
     return run_widget.widget_line(out, Path.cwd()) if out else ""  # ledger paths are from the cwd
 
 
-def summary(ledger, log, lint_log=DEFAULT_LINT_LOG, plan=None, sl_dir=None):  # O(R*w + I*w + C + G)
+def summary(ledger, log, lint_log=DEFAULT_LINT_LOG, plan=None, sl_dir=None, rid=None):  # O(R*w + I*w + C + G)
     rulings, checkpoints, tests = read_ledger(ledger)
     incidents = open_incidents(log)
     out = ["# superlite run summary", ""]
@@ -227,13 +227,83 @@ def summary(ledger, log, lint_log=DEFAULT_LINT_LOG, plan=None, sl_dir=None):  # 
     out += [f"- {a}" for a in accepted]
     out.append("")
     if plan is not None:
-        out.append(history_section(plan or None, sl_dir or str(Path(ledger).parent)))  # see history_section
+        out.append(history_section(plan or None, sl_dir or str(Path(ledger).parent), rid))  # see history_section
         out.append("")
     out.append(f"open incidents: {len(incidents)}")
     for e in incidents:
         kind = e.get("kind") or "unknown"
         out.append(f"- {e['file']}:{e['line']} [{kind}] {e.get('context', '')}")
     return "\n".join(out) + "\n"
+
+
+def _shown(path):  # path relative to the cwd when inside it, else absolute
+    full = Path(path).resolve()
+    cwd = Path.cwd().resolve()
+    return full.relative_to(cwd).as_posix() if full.is_relative_to(cwd) else full.as_posix()
+
+
+def run_ids(sl_dir):  # O(files) + registry read; reserve the final id before history refers to it
+    """The session slug, final archive id and reserved folder; unavailable values are None."""
+    reserved = None
+    try:
+        import run_archive
+        marker = run_archive.read_current_run(sl_dir)
+        slug = (marker or {}).get("slug") or run_archive.current_slug(sl_dir.parent)
+        base_id = (marker or {}).get("id") or run_archive.run_id(slug, datetime.now())
+        reserved = run_archive.reserve(sl_dir, slug, rid=base_id)
+        rid = reserved.name if reserved else base_id
+        if marker and rid != marker["id"]:
+            run_archive.write_current_run(sl_dir, dict(marker, id=rid))
+        return slug, rid, reserved
+    except (ImportError, OSError, ValueError) as e:
+        if reserved is not None:
+            import run_archive
+            run_archive.cancel_reservation(reserved)
+        print(f"run: archive id not made ({e})", file=sys.stderr)
+        return None, None, None
+
+
+def archive_run(root, sl_dir, slug, plan, rid, reserved=None):  # O(files); fail open, only the ledger's own run folder is archived
+    """Move the run's files into `<hub>/.superlite/runs/<id>`; None when nothing moved or it failed."""
+    if root.name != state.DIR_NAME or rid is None:
+        return None
+    try:
+        import run_archive
+        return run_archive.archive(sl_dir, slug, plan=plan, rid=rid, reserved=reserved)
+    except (ImportError, OSError, ValueError) as e:
+        print(f"run: not archived ({e})", file=sys.stderr)
+        return None
+
+
+def _finish_locked(a, root, sl_dir):  # O(R*w + I*w)
+    slug, rid, reserved = run_ids(sl_dir)
+    try:
+        sys.stdout.write(summary(a.ledger, a.log, a.lint_log or str(Path(a.ledger).with_name("lint-log.jsonl")),
+                                 a.plan, None, rid))
+        import exclusive  # the run is done: peer plugins may load again
+        widget = card_line(a.plan, root, a.ledger)  # before cleanup, which removes checkpoint state the card counts
+        clean_checkpoints(a.ledger)  # after the summary, which reads the checkpoint state
+        try:  # fail open: no registry, no git, unreadable sessions.json -> no line. Mark first: release looks at open runs.
+            import session
+            marked = session.mark_run(sl_dir.parent, "finished", lock_held=True)
+            if marked:
+                print(f"session: {marked} finished")
+        except (ImportError, OSError, ValueError, KeyError, TypeError):
+            pass
+        print(exclusive.release(sl_dir, lock_held=True))
+        dest = archive_run(root, sl_dir, slug, a.plan, rid, reserved)  # after release: the archive empties the folder
+        if dest:
+            print(f"run: archived to {_shown(dest)}")
+        if widget:
+            if dest:  # the card moved with the run
+                import run_widget
+                widget = run_widget.widget_line(dest / run_widget.AFTER, Path.cwd())
+            print(widget)
+        return 0
+    finally:
+        if reserved:
+            import run_archive
+            run_archive.cancel_reservation(reserved)
 
 
 def main(argv=None):  # O(R*w + I*w)
@@ -245,22 +315,14 @@ def main(argv=None):  # O(R*w + I*w)
     a = ap.parse_args(argv)
     sys.stdout.reconfigure(encoding="utf-8")
     root = Path(a.ledger).resolve().parent  # .superlite, or the ledger's directory
-    sys.stdout.write(summary(a.ledger, a.log, a.lint_log or str(Path(a.ledger).with_name("lint-log.jsonl")), a.plan))
-    import exclusive  # the run is done: peer plugins may load again
-    widget = card_line(a.plan, root, a.ledger)  # before the cleanup, which removes the checkpoint state the card counts
-    clean_checkpoints(a.ledger)  # after the summary, which reads the checkpoint state
     sl_dir = root if root.name == state.DIR_NAME else root / state.DIR_NAME
-    try:  # fail open: no registry, no git, unreadable sessions.json -> no line. Mark first: release looks at open runs.
-        import session
-        slug = session.mark_run(sl_dir.parent, "finished")
-        if slug:
-            print(f"session: {slug} finished")
-    except Exception:
-        pass
-    print(exclusive.release(sl_dir))
-    if widget:
-        print(widget)
-    return 0
+    import session_registry
+    try:
+        hub = session_registry.hub_root(sl_dir.parent)
+    except (session_registry.GitError, OSError, ValueError, IndexError):
+        return _finish_locked(a, root, sl_dir)
+    with session_registry.registry_lock(hub):
+        return _finish_locked(a, root, sl_dir)
 
 
 if __name__ == "__main__":

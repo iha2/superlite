@@ -64,9 +64,12 @@ _HIST_CACHE: dict = {}
 
 
 def history_observations(rows: list) -> list:  # O(R)
-    """Refit observations from history rows (aggregates only): loc, components, tests and duration."""
+    """Refit observations from history rows (aggregates only): loc, components, tests and duration.
+    Prototype rows (`phase: proto`) are not build work and never count."""
     obs = []
     for r in rows:
+        if r.get("phase") == "proto":
+            continue
         loc, secs = r.get("loc"), r.get("duration_s")
         if isinstance(loc, (int, float)) and isinstance(secs, (int, float)) and secs > 0:
             obs.append({"components": float(r.get("components") or 1.0), "loc": float(loc), "slow": r.get("tests") == "slow",
@@ -87,7 +90,7 @@ def load_coef(path=None) -> dict:  # O(S) shipped; O(R) with enough history
         if key is None:
             return coef
         if key not in _HIST_CACHE:
-            obs = history_observations(history.read_rows(hp))
+            obs = history_observations(history.unique_rows([r for r in history.read_rows(hp) if r.get("phase") != "proto"]))
             fitted = None
             if len(obs) >= int(os.environ.get("SUPERLITE_HISTORY_MIN", HISTORY_MIN_ROWS)):
                 fitted, _ = refit(obs, load_models(), coef)
