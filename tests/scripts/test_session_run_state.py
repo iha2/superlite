@@ -68,6 +68,7 @@ def test_main_checkout_without_active_prints_none_here(hub):
 
 def _start(cwd, extra=None):
     env = {**os.environ, "CLAUDE_PLUGIN_ROOT": str(ROOT), "SUPERLITE_HOME": str(cwd / "home")}
+    env.pop("COPILOT_CLI", None)
     env.pop("SUPERLITE_NO_SESSION_HUD", None)
     env.update(extra or {})
     r = subprocess.run([BASH, str(HOOK)], input="", capture_output=True, text=True, encoding="utf-8", env=env,
