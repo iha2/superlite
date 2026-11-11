@@ -322,8 +322,19 @@ def test_finish_waits_for_background_test_runs_before_archiving(repo, calls, cap
     def fake_wait(summary, timeout=None):  # the run finishes while finish waits
         seen.append(Path(summary).name)
         (sl / "test-summary-R1.json").write_text("{}")
+        (sl / "test-summary-R1.done").write_text("")
         return 0
     monkeypatch.setattr(run_tests, "wait_all", fake_wait)
     run_main(capsys)
     (arch,) = runs_of(repo)
     assert seen == ["test-summary.json"] and (arch / "test-summary-R1.json").is_file()
+
+
+def test_finish_does_not_archive_while_a_background_run_is_still_going(repo, calls, capsys, monkeypatch):
+    import run_tests
+    sl = repo / ".superlite"
+    (sl / "test-summary-R1.log").write_text("")
+    monkeypatch.setattr(run_tests, "wait_all", lambda summary, timeout=None: 2)
+    assert finish.main(ARGS) == 2
+    assert "not archived" in capsys.readouterr().out
+    assert runs_of(repo) == [] and (sl / "test-summary-R1.log").is_file()

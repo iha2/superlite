@@ -319,7 +319,8 @@ def main(argv=None):  # O(R*w + I*w)
     import run_tests  # no background test run may write live state after the archive: drain them first
     live = sl_dir / "test-summary.json"
     if run_tests.pending_runs(live) and run_tests.wait_all(live) != 0:
-        print("finish: archiving anyway; a run still going may write its result back into the live folder")
+        print("finish: not archived; a background test run is still going. Run finish again when it ends.")
+        return 2
     import session_registry
     try:
         hub = session_registry.hub_root(sl_dir.parent)

@@ -172,9 +172,21 @@ def test_wait_all_drains_background_runs(repo, capsys):
     Path("s-R1.log").write_text("")
     Path("s-R2.log").write_text("")
     Path("s-R1.json").write_text("{}")
+    Path("s-R2.json").write_text("{}")  # summary written, incidents and ledger still to come: not drained
+    Path("s-R1.done").write_text("")
     assert [p.name for p in run_tests.pending_runs("s.json")] == ["s-R2.json"]
     assert run_tests.main(["--summary", "s.json", "--wait", "--all", "--timeout", "0"]) == 2
     assert "s-R2.json" in capsys.readouterr().err
-    Path("s-R2.json").write_text("{}")
+    Path("s-R2.done").write_text("")
     assert run_tests.main(["--summary", "s.json", "--wait", "--all", "--timeout", "0"]) == 0
     assert "drained" in capsys.readouterr().out
+
+
+def test_background_child_writes_done_marker_last_even_on_crash(repo, monkeypatch):
+    def crash(a):
+        assert not Path(a.summary).with_suffix(".done").exists()
+        raise RuntimeError("boom")
+    monkeypatch.setattr(run_tests, "run", crash)
+    with pytest.raises(RuntimeError):
+        run_tests.main(["--summary", "s-R9.json", "--publish", "s.json", "--run-id", "R9", "--fast", "tests"])
+    assert Path("s-R9.done").exists() and json.loads(Path("s-R9.json").read_text())["run_id"] == "R9"

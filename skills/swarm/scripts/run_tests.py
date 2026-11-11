@@ -115,20 +115,18 @@ def start_background(a, argv):  # O(len argv) + one detached spawn
     return 0
 
 
-def pending_runs(summary):  # O(runs) background runs next to `summary` whose own summary is not written yet
+def pending_runs(summary):  # O(runs) background runs next to `summary` without a `.done` (written after all its state)
     p = Path(summary)
     return sorted(log.with_suffix(p.suffix) for log in p.parent.glob(f"{p.stem}-*.log")
-                  if not log.with_suffix(p.suffix).exists())
+                  if not log.with_suffix(".done").exists())
 
 
 def wait_all(summary, timeout=None):  # O(timeout / POLL_SECONDS) polls -> 0 drained, 2 timed out
-    """Block until every background run started next to `summary` has written its own summary."""
+    """Block until every background run started next to `summary` has finished all its writes (its done marker)."""
     limit = timeout if timeout is not None else DEFAULT_WAIT
     deadline = time.monotonic() + limit
-    left = pending_runs(summary)
-    while left and time.monotonic() < deadline:
+    while (left := pending_runs(summary)) and time.monotonic() < deadline:
         time.sleep(POLL_SECONDS)
-        left = pending_runs(summary)
     if left:
         print(f"run_tests: TIMEOUT: {len(left)} background run(s) still going after {limit:.0f}s: "
               + ", ".join(x.name for x in left), file=sys.stderr)
@@ -328,6 +326,8 @@ def main(argv=None):  # O(X + T*d + B + F log F) + pytest run + one incident app
                               error=f"run_tests crashed: {e!r}")
                 publish_summary(a)
             raise
+        finally:  # last write of the run: --wait --all and finish treat it as drained only now
+            Path(a.summary).with_suffix(".done").touch()
     try:
         return run(a)  # see run
     finally:  # a foreground run has no --wait reader: its sidecar must not outlive it
