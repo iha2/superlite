@@ -142,3 +142,18 @@ def test_wait_run_id_mismatch(repo, capsys):
     assert "run id mismatch" in capsys.readouterr().err
     Path("s-X2.json").write_text(json.dumps({"passed": 1, "failed": 0, "skipped": 0}))
     assert run_tests.main(["--summary", "s.json", "--wait", "--run", "X2", "--timeout", "2"]) == 2
+
+
+@pytest.mark.parametrize(("mode", "failed", "expected"), [
+    ("affected", 0, 0),
+    ("affected", 1, 1),
+    ("full", 0, 1),
+    ("fast", 0, 1),
+])
+def test_wait_empty_selection_success_only_for_affected(repo, mode, failed, expected):
+    rid = "EMPTY-1"
+    Path(f"s-{rid}.json").write_text(json.dumps({
+        "mode": mode, "selected": [], "reason": "", "passed": 0, "failed": failed,
+        "skipped": 0, "run_id": rid,
+    }))
+    assert run_tests.main(["--summary", "s.json", "--wait", "--run", rid, "--timeout", "2"]) == expected

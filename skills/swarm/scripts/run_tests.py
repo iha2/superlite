@@ -149,7 +149,8 @@ def wait_background(a):  # O(timeout / POLL_SECONDS) polls
             return 2
         time.sleep(POLL_SECONDS)
     print(json.dumps(data, ensure_ascii=False, indent=1))
-    green = not data.get("failed") and bool(data.get("passed") or data.get("skipped"))
+    empty_affected = data.get("mode") == "affected" and data.get("selected") == [] and data.get("reason") == ""
+    green = not data.get("failed") and bool(data.get("passed") or data.get("skipped") or empty_affected)
     return 0 if green else 1
 
 
