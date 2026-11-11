@@ -550,3 +550,37 @@ def test_guard_finds_the_run_from_a_folder_below_the_project(human):
     env = {k: v for k, v in os.environ.items() if k != "CLAUDE_PROJECT_DIR"}
     r = subprocess.run([BASH, str(GUARD)], input=raw, capture_output=True, text=True, env=env)
     assert r.returncode == 2 and NEXT in r.stderr
+
+
+# ---- the run search stops at the repository: a run in a folder above it never gates it ----
+
+def _git(*args, cwd):
+    env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+           "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, env=env)
+
+
+def _repo(path):
+    path.mkdir(parents=True)
+    _git("init", "-q", "-b", "main", cwd=path)
+    _git("commit", "-q", "--allow-empty", "-m", "init", cwd=path)
+    return path
+
+
+def test_run_above_the_repo_does_not_gate_it(tmp_path):
+    make(tmp_path, "human")   # an old unapproved run in the folder that holds the repository
+    repo = _repo(tmp_path / "repo")
+    assert bash(repo, 'bash "$CLI" dispatch implementer t1').returncode == 0
+
+
+def test_linked_worktree_still_finds_its_hub_run(tmp_path):
+    # A linked worktree has a .git file, not a directory: the search goes on up to the main checkout's run.
+    hub = _repo(tmp_path / "hub")
+    wt = hub / ".claude" / "worktrees" / "wt"
+    _git("worktree", "add", "-q", "-b", "wt", str(wt), cwd=hub)
+    (hub / ".superlite").mkdir()
+    (hub / ".superlite" / "orchestrator.json").write_text('{"mode": "human", "approved": false}')
+    r = bash(wt, 'bash "$CLI" dispatch implementer t1')
+    assert r.returncode == 2 and NEXT in r.stderr
+    (hub / ".superlite" / "orchestrator.json").write_text('{"mode": "human", "approved": true}')
+    assert bash(wt, 'bash "$CLI" dispatch implementer t1').returncode == 0
