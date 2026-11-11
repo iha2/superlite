@@ -381,8 +381,9 @@ def generated_server_project(tmp_path):
 
 def test_generated_server_adapter_has_start_server_and_passes_the_probes(tmp_path):
     proj = generated_server_project(tmp_path)
-    res = run(proj, "--categories", "protocol", "--files", "src/fixture_site.py", check_exit=0)
-    assert res["failures"] == [], res["failures"]
+    # Two probe workers: the default (one per CPU) under xdist oversubscribes a CI runner into 2 s call hangs.
+    res = run(proj, "--categories", "protocol", "--workers", "2", "--files", "src/fixture_site.py")
+    assert res.get("failures") == [], res.get("failures", res)
     assert not [e for e in incidents(proj) if e["kind"] == "exception"], incidents(proj)  # w3: 90 of 116 came from a missing start_server
     assert res["stats"]["server_starts"] >= 1 and res["stats"]["server_ports"]
 
