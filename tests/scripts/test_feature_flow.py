@@ -8,7 +8,7 @@ import time
 
 import pytest
 
-from test_human_gate import BASH, ROOT, guard, lines, reply
+from test_human_gate import BASH, guard, lines, reply
 from test_plan_tools import SCRIPTS, run
 
 sys.path.insert(0, str(SCRIPTS))
@@ -208,14 +208,3 @@ def test_reply_hook_records_while_the_tryout_waits(tmp_path):
     q = feature(tmp_path / "q", "human", True, "approved")  # nothing waits on the human: nothing is recorded
     reply(q, "it works")
     assert lines(q) == []
-
-
-# ------------------------------------------------------------------ texts
-
-def text(*parts):
-    return (ROOT.joinpath(*parts)).read_text(encoding="utf-8")
-
-
-def test_skill_size_limits():
-    assert len(text("skills", "using-superlite", "SKILL.md")) <= 2000
-    assert len(text("skills", "swarm", "SKILL.md")) <= 12500

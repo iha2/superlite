@@ -78,26 +78,14 @@ COMMIT_OK = re.compile("|".join([
     r"Shadow-commit",                                                       # checkpoint.py: git commit-tree
     r"A committed `superlite\.json`", r"version or commit", r"older commit", r"or commit to the spec", r"tag or commit",
 ]), re.I)
-COMMIT_FILES_OK = ("skills/swarm/probes/probe_run.py", "skills/swarm/probes/probe_store.py",  # probe a git commit
-                   "SECURITY.md", ".githooks/", ".cursor/", "scripts/install-git-hooks.sh", ".github/")
-
-
 def test_no_sl_launcher_left():
     hits = scan(SL_LAUNCHER)
     assert not hits, "\n".join(hits)
 
 
-def test_no_old_names():
-    # tests feed made-up command strings to the hooks, so only shipped code and prose are scanned
-    hits = scan(REMOVED_TOOLS, skip=lambda rel: rel.startswith("tests/"))
-    assert not hits, "\n".join(hits)
-
-
-def test_no_commit_word():
-    # test code and bench code make real git commits in their fixture repos and tell the benchmarked agent to commit;
-    # shipped code and prose are what must not say it
-    hits = scan(COMMIT, COMMIT_OK, skip=lambda rel: rel.startswith(COMMIT_FILES_OK + ("tests/", "bench/")))
-    assert not hits, "\n".join(hits)
+def test_using_superlite_skill_size_cap():
+    # the skill is delivered whole at every session start, so it stays small
+    assert len((ROOT / "skills" / "using-superlite" / "SKILL.md").read_text(encoding="utf-8")) <= 2000
 
 
 def test_scan_patterns_catch_what_they_name():

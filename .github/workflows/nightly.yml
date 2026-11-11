@@ -1,0 +1,57 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  slow:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+      - name: Run slow tests
+        run: uv run pytest tests/scripts -m slow
+
+  # Hooks run under stock macOS /bin/bash 3.2 on users' Macs; Ubuntu's bash 5 hides bash 4+ syntax.
+  slow-macos-bash32:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+      - name: Run slow tests under /bin/bash 3.2
+        run: |
+          export PATH="/bin:$PATH"
+          bash --version | head -1 | grep -q 'version 3\.2' || { echo "bash on PATH is not 3.2"; bash --version; exit 1; }
+          uv run pytest tests/scripts -m slow
+
+  # Hooks need a bash; windows-latest ships Git for Windows, so run the steps under Git Bash.
+  slow-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+      - name: Run slow tests under Git Bash
+        run: |
+          export PATH="/c/Program Files/Git/bin:$PATH"
+          bash --version | head -1
+          uv run pytest tests/scripts -m slow

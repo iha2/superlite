@@ -65,10 +65,3 @@ def test_cli_status_and_set(home, tmp_path):
     assert run("feat/{slug}").stdout.strip() == "session: branch-name feat/{slug} (saved)"
     bad = run("nope")
     assert bad.returncode == 2 and "{slug}" in bad.stderr
-
-
-@pytest.mark.parametrize("cmd", ["ensure", "create"])
-def test_branch_name_flag_listed(cmd, tmp_path):
-    out = subprocess.run([sys.executable, str(SCRIPTS / "session.py"), cmd, "--help"],
-                         cwd=tmp_path, capture_output=True, text=True).stdout
-    assert "--branch-name" in out

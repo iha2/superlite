@@ -1,13 +1,19 @@
 """The global superlite home: explicit override, then the XDG data dir.
 Python (history.home) and bash (hooks/session-start) must agree, or history and the intro marker split across dirs."""
 import os
+import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
 from test_plan_tools import SCRIPTS
-from test_session_start import BASH, HOOK, ROOT
+
+ROOT = Path(__file__).resolve().parents[2]
+HOOK = ROOT / "hooks" / "session-start"
+_GIT_BASH = r"C:\Program Files\Git\bin\bash.exe"
+BASH = _GIT_BASH if os.name == "nt" and os.path.exists(_GIT_BASH) else shutil.which("bash")
 
 sys.path.insert(0, str(SCRIPTS))
 import history  # noqa: E402

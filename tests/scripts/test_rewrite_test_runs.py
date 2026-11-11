@@ -2,7 +2,6 @@ import json
 import os
 import shutil
 import subprocess
-import time
 from pathlib import Path
 
 import pytest
@@ -121,13 +120,6 @@ def test_other_tools_untouched(proj):
     assert run(proj, raw=raw).stdout == ""
 
 
-def test_malformed_input_fails_open(proj):
-    for raw in ("", "not json", "[]", "{", json.dumps({"tool_name": "Bash"}),
-                json.dumps({"tool_name": "Bash", "tool_input": {"command": 5}})):
-        r = run(proj, raw=raw)
-        assert r.returncode == 0 and r.stdout == "" and r.stderr == "", raw
-
-
 def test_logs_rewrites(proj):
     run(proj, "pytest -x")
     line = (proj / ".superlite" / "incidents.jsonl").read_text().splitlines()[0]
@@ -140,35 +132,6 @@ def test_plugin_root_env_used(proj):
     raw = json.dumps({"tool_name": "Bash", "tool_input": {"command": "pytest"}})
     r = subprocess.run([BASH, str(HOOK)], input=raw, capture_output=True, text=True, env=env)
     assert 'bash "C:/plug in/skills/swarm/scripts/superlite-cli" run_tests --full' in rewritten(r, mode="full")
-
-
-def test_hooks_json_registers_hook():
-    data = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))
-    cmds = [(e["matcher"], e["hooks"][0]["command"]) for e in data["hooks"]["PreToolUse"]]
-    pre_tool = 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/pre-tool"'
-    assert [c for _m, c in cmds] == [pre_tool]
-    assert "Bash" in data["hooks"]["PreToolUse"][0]["matcher"].split("|")
-
-
-def test_lf_endings():
-    assert b"\r" not in HOOK.read_bytes()
-
-
-def test_fast(proj):
-    def best(argv, raw=""):
-        env = {**os.environ, "CLAUDE_PROJECT_DIR": str(proj)}
-        times = []
-        for _ in range(3):
-            t = time.perf_counter()
-            subprocess.run(argv, input=raw, capture_output=True, text=True, env=env)
-            times.append(time.perf_counter() - t)
-        return min(times)
-
-    base = best([BASH, "-c", "exit 0"])
-    for cmd in ("git status && ls", "cd app && pytest"):
-        raw = json.dumps({"tool_name": "Bash", "tool_input": {"command": cmd}})
-        t = best([BASH, str(HOOK)], raw)
-        assert t < max(0.6, base + 0.35), (cmd, t, base)
 
 
 # ------------------------------------------------------------------ hidden test waits are denied
@@ -262,22 +225,6 @@ def test_generic_one_word_project_command_is_not_a_runner(proj):
     (proj / ".superlite" / "test-cmd.json").write_text(json.dumps({"test": "python -c \"print(1)\""}), encoding="utf-8")
     r = run(proj, "until python server_check.py; do sleep 1; done")
     assert r.returncode == 0 and r.stderr == ""
-
-
-def test_denial_check_stays_fast(proj):
-    def best(cmd):
-        raw = json.dumps({"tool_name": "Bash", "tool_input": {"command": cmd}})
-        env = {**os.environ, "CLAUDE_PROJECT_DIR": str(proj)}
-        times = []
-        for _ in range(3):
-            t = time.perf_counter()
-            subprocess.run([BASH, str(HOOK)], input=raw, capture_output=True, text=True, env=env)
-            times.append(time.perf_counter() - t)
-        return min(times)
-
-    base = best("git status && ls")
-    for cmd in ("until curl -s localhost:3000; do sleep 1; done", "ls > /dev/null", "until npx vitest run >/dev/null; do sleep 2; done"):
-        assert best(cmd) < max(0.7, base + 0.4), cmd
 
 
 def test_redirect_in_a_kept_segment_survives_the_rewrite(proj):

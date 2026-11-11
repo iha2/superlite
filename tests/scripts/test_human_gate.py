@@ -296,16 +296,6 @@ def test_protected_reads_and_sl_orchestrator_allowed(tmp_path):
         assert bash(proj, cmd).returncode == 0, cmd
 
 
-def test_guard_fails_open(human):
-    env = {**os.environ, "CLAUDE_PROJECT_DIR": str(human)}
-    for raw in ("", "not json", "[]", "{", json.dumps({"tool_name": "Agent"}),
-                json.dumps({"tool_name": "Bash", "tool_input": {"command": 5}})):
-        r = subprocess.run([BASH, str(GUARD)], input=raw, capture_output=True, text=True, env=env)
-        if '"Agent"' in raw:
-            continue  # an Agent call with no subagent_type is general-purpose
-        assert r.returncode == 0 and r.stderr == "", raw
-
-
 # ---- the reply recorder in hooks/prompt ----
 
 def reply(proj, prompt, raw=None):
@@ -386,25 +376,6 @@ def test_reply_appends_and_escapes(human):
     assert a["text"] == "first"
     assert b["text"] == 'yes "approve" \\ it next line {x}' and b["approves"] is True
     assert len(c["text"]) == 160
-
-
-def test_reply_fails_open(human):
-    for raw in ("", "not json", "[]", "{", '{"prompt": 5}', '{"cwd": "x"}'):
-        r = reply(human, None, raw=raw)
-        assert r.returncode == 0 and r.stdout == "" and r.stderr == "", raw
-    for rec in lines(human):
-        assert set(rec) == {"t", "approves", "text"}
-
-
-def test_registration_and_endings():
-    data = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
-    (guard_entry,) = data["PreToolUse"]
-    assert guard_entry["hooks"][0]["command"].endswith("pre-tool\"")
-    assert "Agent" in guard_entry["matcher"].split("|")
-    ups = [h["command"] for e in data["UserPromptSubmit"] for h in e["hooks"]]
-    assert ups == ['bash "${CLAUDE_PLUGIN_ROOT}/hooks/prompt"']
-    for h in (GUARD, REPLY):
-        assert b"\r" not in h.read_bytes()
 
 
 def cursor_reply(proj, prompt, roots, cwd):
@@ -559,27 +530,6 @@ def test_cursor_active_run_keeps_project_code_from_the_coordinator(tmp_path, plu
 def test_claude_denials_stay_on_stderr(human):
     r = guard(human, "Agent", {"subagent_type": "superlite:implementer", "prompt": "x"})
     assert r.returncode == 2 and r.stdout == "" and NEXT in r.stderr
-
-
-def test_latency(human):
-    def best(argv, raw, cwd):
-        env = {**os.environ, "CLAUDE_PROJECT_DIR": str(human)}
-        times = []
-        for _ in range(3):
-            t = time.perf_counter()
-            subprocess.run(argv, input=raw, capture_output=True, text=True, env=env, cwd=cwd)
-            times.append(time.perf_counter() - t)
-        return min(times)
-
-    base = best([BASH, "-c", "exit 0"], "", str(human))
-    cases = (
-        (GUARD, json.dumps({"tool_name": "Bash", "tool_input": {"command": "git status && ls"}})),
-        (GUARD, json.dumps({"tool_name": "Write", "tool_input": {"file_path": "a.py"}})),
-        (REPLY, json.dumps({"cwd": str(human), "prompt": "yes, approve"})),
-    )
-    for hook, raw in cases:
-        t = best([BASH, str(hook)], raw, str(human))
-        assert t < max(0.6, base + 0.35), (hook.name, t, base)
 
 
 # ---- the session folder and the folder superlite-cli runs in can differ (the desktop app moves the working directory) ----

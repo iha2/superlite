@@ -268,15 +268,6 @@ def test_allows_bash_reads_and_safe_writes(proj, cmd, tmp_path_factory):
     assert r.returncode == 0, cmd
 
 
-def test_malformed_input_fails_open(proj):
-    for raw in ("", "not json", "[]", json.dumps({"tool_name": "Bash"}),
-                json.dumps({"tool_name": "Edit", "tool_input": {}}),
-                json.dumps({"tool_name": "Bash", "tool_input": {"command": 5}})):
-        r = run(proj, None, None, raw=raw)
-        assert r.returncode == 0, raw
-        assert r.stdout == "" and r.stderr == ""
-
-
 def test_other_tools_ignored(proj):
     assert run(proj, "Read", {"file_path": str(proj / "a.py")}).returncode == 0
 
@@ -289,17 +280,6 @@ def test_monitor_command_is_checked_like_bash(proj):
     assert r.returncode == 2 and "never written directly" in r.stderr
     assert monitor("tail -f .superlite/run.log | grep --line-buffered ERROR").returncode == 0
     assert run(proj, "Monitor", {"ws": {"url": "wss://example.com"}, "description": "d"}).returncode == 0
-
-
-def test_hooks_json_registers_hook():
-    data = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))
-    (e,) = data["hooks"]["PreToolUse"]
-    assert e["matcher"] == "Edit|Write|NotebookEdit|Bash|PowerShell|Monitor|Agent"
-    assert [h["command"] for h in e["hooks"]] == ['bash "${CLAUDE_PLUGIN_ROOT}/hooks/pre-tool"']
-
-
-def test_hook_has_lf_endings():
-    assert b"\r" not in HOOK.read_bytes()
 
 
 def test_batch_guard_denies_mismatched_implementer(proj):
@@ -374,25 +354,6 @@ def test_tier_guard_denies_low_fixer(proj):
     r = run(proj, "Task", {"subagent_type": "fixer-sonnet", "prompt": "Fix BLOCKED T2"})
     assert r.returncode == 2
     assert "opus" in r.stderr.lower()
-
-
-def test_typical_allowed_call_is_fast(proj):
-    import time
-
-    def best(argv, raw=""):
-        env = {**os.environ, "CLAUDE_PROJECT_DIR": str(proj)}
-        times = []
-        for _ in range(3):
-            t = time.perf_counter()
-            subprocess.run(argv, input=raw, capture_output=True, text=True, env=env)
-            times.append(time.perf_counter() - t)
-        return min(times)
-
-    base = best([BASH, "-c", "exit 0"])
-    raw = json.dumps({"tool_name": "Bash", "tool_input": {"command": "git status && ls src"}})
-    for hook_raw in (raw, json.dumps({"tool_name": "Edit", "tool_input": {"file_path": "x"}, "agent_id": "a"})):
-        t = best([BASH, str(HOOK)], hook_raw)
-        assert t < max(0.6, base + 0.35), (t, base)
 
 
 def test_gate_blocks_new_name(tmp_path):

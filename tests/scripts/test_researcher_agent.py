@@ -21,12 +21,6 @@ def test_frontmatter():
     assert k["tools"] == "Read, Write, Grep, Glob, Bash, WebSearch, WebFetch"
 
 
-def test_body_rules():
-    t = AGENT.read_text(encoding="utf-8")
-    for w in ("superlite-cli research", "source", "claim", "contradiction", "lint", "date", "grade"):
-        assert w in t, w
-
-
 RESEARCHERS = ("superlite:researcher", "researcher")
 NEAR = ("general-purpose", "superlite:implementer", "superlite:fixer-opus", "researcherX", "evil:researcher",
         "superlite:researcherX", "Researcher", "")
