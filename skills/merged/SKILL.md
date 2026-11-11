@@ -34,7 +34,7 @@ Then check the local branch holds nothing the PR did not. If `git cat-file -e <h
 
 Look up the branch's checkout in `git worktree list --porcelain`.
 
-- Its checkout has uncommitted work (`git status --short` there is not empty), or `git rev-parse -q --verify refs/superlite/wip/<slug>` finds parked work: that work is not in the PR. Name it and ask once, "Stop and keep it" / "Discard it". On stop, stop.
+- Its checkout has uncommitted work (`git status --short` there is not empty), its session row in `session status` reports `stash:yes`, or `git rev-parse -q --verify refs/superlite/wip/<slug>` finds parked work: that work is not in the PR. Name it and ask once, "Stop and keep it" / "Discard it". On stop, stop.
 - The session is still listed in `session status`: first leave its worktree if you are in one (`ExitWorktree` with `action: "keep"` under Claude Code, else `cd` to the main checkout), then from the main checkout run `bash <skill-dir>/../swarm/scripts/superlite-cli session close --slug <slug> --keep-branch`. It puts the host back on the base branch and removes a worktree superlite cut. On an `ASK` line (exit 4, nothing changed), ask exactly what its `ask:` line says and do what the chosen `on ...:` line says. A Claude-created worktree is not removed by close: end it with `ExitWorktree` `remove`, as `superlite:shipping` step 7 says.
 - No session, but the branch is checked out: switch that checkout to the base branch (`git switch <base>`), or leave a linked worktree the way step 7 of `superlite:shipping` does.
 
