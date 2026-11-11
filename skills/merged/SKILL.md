@@ -28,7 +28,7 @@ Keep only PRs whose `headRepositoryOwner` is this repo's owner (`gh repo view --
 - `CLOSED`, not merged: ask once, "Keep the branch" / "Discard it". On keep, stop. On discard, skip the head check below and step 4: run steps 3, 5 and 6.
 - `MERGED`: use its `baseRefName` as the base and go on.
 
-Then check the local branch holds nothing the PR did not. If `git cat-file -e <headRefOid>` fails, run `git fetch origin pull/<number>/head` first; if it still fails, stop. Then `git rev-parse <branch>` must equal `headRefOid`, or `git log --oneline <headRefOid>..<branch>` must exit 0 and print nothing. If it lists commits or exits non-zero, name them (or the error) and stop: they were never in the PR.
+Then check the local branch holds nothing the PR did not. If `git cat-file -e <headRefOid>` fails, run `git fetch origin pull/<number>/head` first; if it still fails, stop. Then `git rev-parse --verify refs/heads/<branch>` must equal `headRefOid`, or `git log --oneline <headRefOid>..refs/heads/<branch>` must exit 0 and print nothing. If it lists commits or exits non-zero, name them (or the error) and stop: they were never in the PR.
 
 ## 3. Leave the branch
 
