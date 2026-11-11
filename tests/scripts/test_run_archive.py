@@ -4,6 +4,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "skills" / "swarm" / "scripts"))
 import run_archive  # noqa: E402
 import session_registry  # noqa: E402
@@ -142,6 +144,19 @@ def test_rid_overrides_id(tmp_path):
     assert json.loads((dest / "run.json").read_text())["id"] == "X1"
 
 
+def test_reserved_id_is_the_archive_id(tmp_path):
+    r = repo(tmp_path)
+    sl = live(r, progress__md="p")
+    runs = r / ".superlite" / "runs"
+    runs.mkdir(parents=True)
+    (runs / "X1").mkdir()
+    reserved = run_archive.reserve(sl, "s", now=NOW, rid="X1")
+    assert reserved.name == "X1-2"
+    dest = run_archive.archive(sl, "s", now=NOW, rid="X1", reserved=reserved)
+    assert dest == reserved
+    assert json.loads((dest / "run.json").read_text())["id"] == "X1-2"
+
+
 def _register(r, slug):
     session_registry.write(r, {"sessions": [{"slug": slug}], "active": slug})
 
@@ -198,3 +213,18 @@ def test_partial_move_failure_rolls_back(tmp_path, monkeypatch):
         pass
     assert sorted(p.name for p in sl.iterdir() if p.name != "runs") == ["a.md", "b.md", "c.md"]
     assert not list((tmp_path / ".superlite" / "runs").iterdir())
+
+
+def test_manifest_failure_rolls_back_all_files_and_metadata(tmp_path, monkeypatch):
+    sl = tmp_path / ".superlite"
+    sl.mkdir()
+    (sl / "progress.md").write_text("p")
+
+    def fail_replace(*_):
+        raise OSError("manifest write failed")
+
+    monkeypatch.setattr(run_archive.os, "replace", fail_replace)
+    with pytest.raises(OSError, match="manifest write failed"):
+        run_archive.archive(sl, "s", now=NOW)
+    assert (sl / "progress.md").read_text() == "p"
+    assert not list((sl / "runs").iterdir())

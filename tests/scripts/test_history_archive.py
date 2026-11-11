@@ -65,6 +65,19 @@ def test_record_run_new_id_is_recorded(env, monkeypatch):
     assert [r["run"] for r in lines(home / "history.jsonl")] == ["X1", "X2"]
 
 
+def test_global_history_dedupes_with_repository_identity(env, monkeypatch):
+    home, sl = env
+    other = sl.parent.parent / "other" / ".superlite"
+    other.mkdir(parents=True)
+    fake_rows(monkeypatch, [row()])
+    history.record_run("P.md", sl, "same")
+    history.record_run("P.md", other, "same")
+    rows = lines(home / "history.jsonl")
+    assert len(rows) == 2
+    assert {r["repository"] for r in rows} == {sl.parent.as_posix(), other.parent.as_posix()}
+    assert len(history.unique_rows(rows)) == 2
+
+
 def test_phase_build_default(env, monkeypatch):
     import proto
     monkeypatch.setattr(proto, "originating_run", lambda cwd: None)

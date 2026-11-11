@@ -192,6 +192,41 @@ def test_unregistered_linked_worktree_is_registered_in_place(repo, tmp_path):
     assert "already open here" in run("ensure", "--slug", "x", cwd=other).out
 
 
+def test_unregistered_linked_worktree_archives_leftovers(repo, tmp_path):
+    other = tmp_path.resolve() / "linked"
+    git(repo, "worktree", "add", "-q", "-b", "feat/y", str(other))
+    live = other / ".superlite"
+    live.mkdir()
+    (live / "progress.md").write_text("old run\n")
+    cp = run("ensure", "--slug", "x", cwd=other)
+    assert cp.returncode == 0, cp.both
+    (archive,) = sorted((repo / ".superlite" / "runs").iterdir())
+    assert (archive / "progress.md").read_text() == "old run\n"
+    assert not (live / "progress.md").exists()
+
+
+def test_linked_registration_failure_restores_leftovers(repo, tmp_path, monkeypatch):
+    import session_ensure as E
+    import session_registration as S
+    import session_registry as R
+
+    other = tmp_path.resolve() / "linked"
+    git(repo, "worktree", "add", "-q", "-b", "feat/y", str(other))
+    live = other / ".superlite"
+    live.mkdir()
+    (live / "progress.md").write_text("old run\n")
+    reg = R.read(repo)
+
+    def fail_write(*_):
+        raise OSError("registry write failed")
+
+    monkeypatch.setattr(S, "write", fail_write)
+    with pytest.raises(E.JournalError):
+        S.register_linked(repo, reg, other, "x")
+    assert (live / "progress.md").read_text() == "old run\n"
+    assert not list((repo / ".superlite" / "runs").glob("*"))
+
+
 def test_slug_collisions_get_suffix(repo):
     run("ensure", "--slug", "demo", cwd=repo)
     session.mark_run(repo, "finished")
@@ -658,6 +693,39 @@ def test_ensure_branch_registers_current_branch_in_place(repo):
     assert (repo / "app.py").read_text() == "one\nEDITED\nthree\n"
     assert row_of(repo, "rev")["branch"] == "feature"
     assert last(cp) == f"SESSION worktree={repo.as_posix()} slug=rev branch=feature"
+
+
+def test_branch_registration_archives_leftovers(repo):
+    git(repo, "switch", "-q", "-c", "feature")
+    live = repo / ".superlite"
+    live.mkdir()
+    (live / "progress.md").write_text("old run\n")
+    cp = run("ensure", "--slug", "rev", "--branch", "feature", cwd=repo)
+    assert cp.returncode == 0, cp.both
+    (archive,) = sorted((live / "runs").iterdir())
+    assert (archive / "progress.md").read_text() == "old run\n"
+    assert not (live / "progress.md").exists()
+
+
+def test_branch_registration_failure_restores_leftovers(repo, monkeypatch):
+    import session_ensure as E
+    import session_registration as S
+    import session_registry as R
+
+    git(repo, "switch", "-q", "-c", "feature")
+    live = repo / ".superlite"
+    live.mkdir()
+    (live / "progress.md").write_text("old run\n")
+    reg = R.read(repo)
+
+    def fail_write(*_):
+        raise OSError("registry write failed")
+
+    monkeypatch.setattr(S, "write", fail_write)
+    with pytest.raises(E.JournalError):
+        S.register_in_place(repo, reg, repo, repo, "rev", "feature")
+    assert (live / "progress.md").read_text() == "old run\n"
+    assert not list((live / "runs").glob("*"))
 
 
 def test_ensure_branch_parallel_worktree_checks_out_existing_branch(repo):

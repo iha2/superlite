@@ -20,6 +20,7 @@ import session_registry as R  # noqa: E402
 import session_wip as W  # noqa: E402
 import claude_create  # noqa: E402
 import host_harness as harness  # noqa: E402
+import session_registration as registration  # noqa: E402
 import state  # noqa: E402
 from worktree_home import harness_worktree, session_dir  # noqa: E402,F401  (harness_worktree re-exported)
 from journal import Journal, JournalError  # noqa: E402
@@ -47,6 +48,13 @@ def _undo_stash(cwd: Path, oid: str):
         if not R.restore_stash(cwd, oid):
             print(f"session: uncommitted work kept in stash {oid}; apply it by hand", file=sys.stderr)
     return undo
+
+
+def _restore_held(live: Path, held: Path, moved: list) -> None:
+    for source, target in reversed(moved):
+        if target.exists() or target.is_symlink():
+            shutil.move(str(target), str(source))
+    shutil.rmtree(held, ignore_errors=True)
 
 
 # ---- park and enter
@@ -185,7 +193,7 @@ def _ensure(root: Path, here: Path, want: str, a) -> int:
                      row.get("branch") or ("HEAD" if row.get("detached") else branch_for(row["slug"])))
         return 0
     if row is None and not same(here, host) and not exist:
-        return _register_linked(root, reg, here, want)
+        return registration.register_linked(root, reg, here, want)
     active_row = find_row(reg, reg["active"]) if reg.get("active") else None
     slug = free_slug(root, reg, want)
     if slug != want:
@@ -225,7 +233,7 @@ def _ensure_branch(root: Path, reg: dict, here: Path, row: dict | None, want: st
         session_line(here, row["slug"], exist)
         return 0
     if row is None if not same(here, host) else not reg.get("active"):
-        slug = register_in_place(root, reg, host, here, want, exist)
+        slug = registration.register_in_place(root, reg, host, here, want, exist)
         session_line(here, slug, exist)
         return 0
     return None
@@ -236,49 +244,9 @@ def _redirect_to_owner(root: Path, reg: dict, host: Path, owner: str, want: str,
     at_base = same(there, host) and exist == (reg.get("base") or default_base(root))  # an idle main checkout
     held = row_at(reg, there, host)
     if held is None and not at_base and (not same(there, host) or not reg.get("active")):
-        slug = register_in_place(root, reg, host, there, want, exist)  # a session before the redirect
+        slug = registration.register_in_place(root, reg, host, there, want, exist)  # a session before the redirect
         return print_redirect(owner, slug, exist)
     return print_redirect(owner, held["slug"] if held else want, exist)
-
-
-def _register_linked(root: Path, reg: dict, here: Path, want: str) -> int:
-    """An unregistered linked worktree asking for a session: adopt it where it is. Git is never changed."""
-    slug = free_slug(root, reg, want)
-    cur = current_branch(here)
-    head = git("rev-parse", "HEAD", cwd=here).stdout.strip()
-    detached = cur == "HEAD"
-    branch = None if detached else claude_create.adopt_branch(here, slug, cur)
-    upsert_row(reg, {"slug": slug, "branch": branch, "worktree": here.as_posix(),
-                     "store": store_path(root, slug).as_posix(), "has_stash": False, "status": "parallel",
-                     "owned": False, "adopted_branch": True, "harness": harness_worktree(here, branch),
-                     "run": "open", "created_at": now_ms(), "topic": want,
-                     **({"detached": True, "head": head} if detached else {}),
-                     **base_row(root, reg, head if detached else branch)})
-    hide_all(root)
-    write(root, reg)
-    print(f"session: registered {slug} where it is ({here.as_posix()}) on {branch or 'detached ' + head[:7]}")
-    session_line(here, slug, branch or "HEAD")
-    return 0
-
-
-def register_in_place(root: Path, reg: dict, host: Path, path: Path, want: str, exist: str) -> str:  # O(N)
-    """Register the checkout at `path`, already on `exist`, as an open session where it is; returns its slug."""
-    slug = free_slug(root, reg, want)
-    if slug != want:
-        print(f"session: slug {want} taken; using {slug}")
-    hide_all(root)
-    at_host = same(path, host)
-    reg["base"] = reg.get("base") or default_base(root)
-    upsert_row(reg, {"slug": slug, "branch": exist, "worktree": path.as_posix(),
-                     "store": store_path(root, slug).as_posix(), "has_stash": False,
-                     "status": "active" if at_host else "parallel", "owned": False, "adopted_branch": True,
-                     "run": "open", "created_at": now_ms(), "topic": want, **base_row(root, reg, exist)})
-    if at_host:
-        reg["active"] = slug
-        reg["host_worktree"] = path.as_posix()
-    write(root, reg)
-    print(f"session: registered {slug} in place on {exist} ({path.as_posix()})")
-    return slug
 
 
 def _move_gate(root: Path, reg: dict, host: Path, old_slug: str, wt_old: Path, base: str, a):
@@ -416,7 +384,9 @@ def _archive_unregistered(live: Path, j: Journal, archived: list) -> Path | None
         j.undo(lambda: run_archive.restore(dest, live), "archive")
     held = Path(tempfile.mkdtemp(prefix="superlite-ensure-")) if run_entries(live) else None
     if held:  # config files stay live: set them aside, enter wipes the folder
-        move_run_state(live, held)
+        moved = []
+        j.undo(lambda: _restore_held(live, held, moved), "preserved run state")
+        move_run_state(live, held, moved)
     return held
 
 
@@ -451,7 +421,7 @@ def _create(root: Path, slug: str, a) -> int:
         return 2
     here = toplevel(start_dir(a))
     if a.worktree and harness.under_claude_code() and not same(here, host):  # the rerun inside Claude's worktree
-        return _register_linked(root, reg, here, slug)
+        return registration.register_linked(root, reg, here, slug)
     if branch_exists(root, branch):
         print(f"session: branch {branch} already exists; pick another --slug", file=sys.stderr)
         return 2

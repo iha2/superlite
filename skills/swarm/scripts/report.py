@@ -324,6 +324,33 @@ def report_text(plan_path, sl_dir) -> str:  # O(M + B + n*(n + e))
     return summary(c, md.as_posix())
 
 
+def archived_metrics_dir(plan_path, sl_dir) -> Path | None:
+    """Newest archived metrics for this checkout and plan, if the live run has been finished."""
+    checkout = Path(sl_dir).resolve().parent
+    try:
+        import run_archive
+        target = Path(plan_path).resolve()
+        best = None
+        for meta_path in run_archive.runs_dir(checkout).glob("*/run.json"):
+            meta = base.read_json(meta_path, None)
+            if not isinstance(meta, dict) or not isinstance(meta.get("checkout"), str) or not isinstance(meta.get("plan"), str):
+                continue
+            if Path(meta["checkout"]).resolve() != checkout:
+                continue
+            saved_plan = Path(meta["plan"])
+            if saved_plan.resolve() != target and (checkout / saved_plan).resolve() != target:
+                continue
+            metrics_path = meta_path.parent / "metrics.jsonl"
+            if not metrics_path.is_file():
+                continue
+            key = (str(meta.get("archived_at") or ""), str(meta.get("id") or ""))
+            if best is None or key > best[0]:
+                best = (key, meta_path.parent)
+        return best[1] if best else None
+    except (OSError, ValueError, base.GitError):
+        return None
+
+
 def main(argv=None):  # O(M + B + n*(n + e))
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--plan", help="the plan of the build to report on")
@@ -340,10 +367,13 @@ def main(argv=None):  # O(M + B + n*(n + e))
         return 0
     if not a.plan:
         ap.error("--plan is required (or --list / --show NAME)")
-    if not (Path(a.dir) / "metrics.jsonl").is_file():
-        print(f"report: no metrics.jsonl in {a.dir} (--dir is the {state.DIR_NAME} folder itself)", file=sys.stderr)
-        return 2
-    c, md = write_report(a.plan, a.dir)
+    sl_dir = Path(a.dir)
+    if not (sl_dir / "metrics.jsonl").is_file():
+        sl_dir = archived_metrics_dir(a.plan, sl_dir)
+        if sl_dir is None:
+            print(f"report: no metrics.jsonl in {a.dir} (--dir is the {state.DIR_NAME} folder itself)", file=sys.stderr)
+            return 2
+    c, md = write_report(a.plan, sl_dir)
     sys.stdout.write(json.dumps(c, indent=1) + "\n" if a.json else render(c) if a.full else summary(c, md.as_posix()))
     return 0
 

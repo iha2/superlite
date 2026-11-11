@@ -129,6 +129,35 @@ def test_failed_enter_restores_leftovers(repo, monkeypatch):
     assert not list((sl / "runs").glob("*-unfinished")) if (sl / "runs").exists() else True
 
 
+def test_failed_preserved_state_move_restores_everything(repo, monkeypatch):
+    import shutil
+    import session_ensure as E
+    import session_registry as R
+
+    sl = repo / ".superlite"
+    sl.mkdir()
+    (sl / "progress.md").write_text("stray\n")
+    (sl / "test-cmd.json").write_text("{}\n")
+    (sl / "agent-specs.json").write_text("{}\n")
+
+    def partial_move(src, dest, moved=None):
+        source = R.run_entries(src)[0]
+        dest.mkdir(parents=True, exist_ok=True)
+        target = dest / source.name
+        shutil.move(str(source), str(target))
+        moved.append((source, target))
+        raise OSError("preserved move failed")
+
+    monkeypatch.setattr(E, "move_run_state", partial_move)
+    with R.registry_lock(repo):
+        reg = R.read(repo)
+        with pytest.raises(E.JournalError):
+            E.start_in_host(repo, reg, repo, "new", "main")
+    assert (sl / "progress.md").read_text() == "stray\n"
+    assert (sl / "test-cmd.json").is_file() and (sl / "agent-specs.json").is_file()
+    assert not list((sl / "runs").glob("*-unfinished")) if (sl / "runs").exists() else True
+
+
 def test_nonzero_enter_restores_leftovers(repo, monkeypatch, capsys):
     sys.path.insert(0, str(SESSION.parent))
     import session_ensure as E

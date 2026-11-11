@@ -17,8 +17,8 @@ ROW SCHEMA (v1), one JSON object per line:
   imports), slack_min (predicted slack in minutes, or actual slack_s / 60 for imports),
   tier (haiku|sonnet), agent_type, model, prime_bytes, duration_s, tokens {in,out,cache_read,cache_write},
   cost_usd, tool_calls, first_time_pass (true|false|null), rework_s, rework_cost, pred_min,
-  phase ("proto" | "build"; absent on older rows; `run` is the run archive's id).
-Recording the same (run, task) twice is a no-op; stats and fits read through unique_rows (content duplicates count once).
+  phase ("proto" | "build"; absent on older rows; `run` is the run archive's id), repository (hub checkout path).
+Recording the same (repository, run, task) twice is a no-op; stats and fits read through unique_rows (content duplicates count once per repository).
 STATS (stats.json): {v, updated, rows, bands: {band: S}, tiers: {tier: S}, bands_by_tier: {tier|band: S}} with
   S = {n, ftp_n, ftp_rate, mean_s, p90_s, mean_cost}. Same rows, same stats (sorted keys, no clock in S).
 Stdlib only.
@@ -123,11 +123,12 @@ def derive(rows: list) -> dict:  # O(R log R)
 
 def _content_key(r: dict) -> tuple:
     tk = r.get("tokens") if isinstance(r.get("tokens"), dict) else {}
-    return (r.get("date"), r.get("task"), r.get("duration_s"), tk.get("in"), tk.get("out"), r.get("model"))
+    return (r.get("repository"), r.get("date"), r.get("task"), r.get("duration_s"),
+            tk.get("in"), tk.get("out"), r.get("model"))
 
 
 def unique_rows(rows: list[dict]) -> list[dict]:  # O(R)
-    """Rows with content duplicates dropped, first kept: same date, task, duration, tokens in/out and model, any run id."""
+    """Content duplicates per repository, first kept: date, task, duration, tokens in/out and model, any run id."""
     seen: set = set()
     out = []
     for r in rows:
@@ -228,13 +229,23 @@ def run_rows(plan_path, sl_dir=state.DIR_NAME, run_id=None) -> list:  # O(M + B 
 
 
 def _fresh(rows: list, have: list) -> list:  # O(R + n)
-    known = {(r.get("run"), r.get("task")) for r in have}
-    return [r for r in rows if (r.get("run"), r.get("task")) not in known]
+    known = {(r.get("repository"), r.get("run"), r.get("task")) for r in have}
+    return [r for r in rows if (r.get("repository"), r.get("run"), r.get("task")) not in known]
+
+
+def repository_id(sl_dir) -> str:
+    """Canonical hub checkout path, shared by linked worktrees and distinct across local repositories."""
+    checkout = Path(sl_dir).resolve().parent
+    try:
+        return state.hub_root(checkout).resolve().as_posix()
+    except (base.GitError, OSError, IndexError, ValueError):
+        return checkout.as_posix()
 
 
 def record_run(plan_path, sl_dir=state.DIR_NAME, run_id=None) -> list:  # O(R + n*w)
     """Append this run's rows (global and project) and refresh both stats files."""
-    rows = run_rows(plan_path, sl_dir, run_id)
+    repo = repository_id(sl_dir)
+    rows = [dict(r, repository=repo) for r in run_rows(plan_path, sl_dir, run_id)]
     proj = Path(sl_dir) / "history.jsonl"
     new = _fresh(rows, read_rows())  # a row already recorded for this (run, task) is not recorded again
     if new:

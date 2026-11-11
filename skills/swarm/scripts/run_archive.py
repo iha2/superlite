@@ -34,6 +34,11 @@ def runs_dir(checkout: Path) -> Path:
 
 
 def _rollback(dest: Path, moved: list[Path]) -> None:
+    for name in ("run.json", "run.json.tmp"):
+        try:
+            (dest / name).unlink(missing_ok=True)
+        except OSError:
+            pass
     for p in reversed(moved):
         try:
             shutil.move(str(dest / p.name), str(p))
@@ -45,27 +50,48 @@ def _rollback(dest: Path, moved: list[Path]) -> None:
         pass
 
 
+def reserve(sl: Path, slug: str | None = None, unfinished: bool = False, now: datetime | None = None,
+            rid: str | None = None) -> Path | None:
+    """Reserve the final collision-free archive folder, or return None when there are no run files."""
+    if not entries(sl):
+        return None
+    now = (now or datetime.now()).replace(microsecond=0)
+    base_id = rid or run_id(slug, now, unfinished)
+    root = runs_dir(Path(sl).parent)
+    root.mkdir(parents=True, exist_ok=True)
+    candidate, n = base_id, 1
+    while True:
+        dest = root / candidate
+        try:
+            dest.mkdir()
+            return dest
+        except FileExistsError:
+            n += 1
+            candidate = f"{base_id}-{n}"
+
+
+def cancel_reservation(dest: Path | None) -> None:
+    if dest is not None:
+        try:
+            Path(dest).rmdir()
+        except OSError:
+            pass
+
+
 def archive(sl: Path, slug: str | None = None, unfinished: bool = False, plan: str | None = None,
-            now: datetime | None = None, rid: str | None = None) -> Path | None:
+            now: datetime | None = None, rid: str | None = None, reserved: Path | None = None) -> Path | None:
     """Move the run files of live folder `sl` into <hub>/.superlite/runs/<id>/ with run.json; None if nothing to move.
     Takes no registry lock (session ensure already holds it)."""
     files = entries(sl)
     if not files:
+        cancel_reservation(reserved)
         return None
     now = (now or datetime.now()).replace(microsecond=0)
     checkout = Path(sl).parent
-    base_id = rid or run_id(slug, now, unfinished)
-    root = runs_dir(checkout)
-    root.mkdir(parents=True, exist_ok=True)
-    rid, n = base_id, 1
-    while True:
-        dest = root / rid
-        try:
-            dest.mkdir()
-            break
-        except FileExistsError:
-            n += 1
-            rid = f"{base_id}-{n}"
+    dest = Path(reserved) if reserved is not None else reserve(sl, slug, unfinished, now, rid)
+    if dest is None:
+        return None
+    rid = dest.name
     names = sorted(p.name for p in files)
     moved: list[Path] = []
     done = False
@@ -73,16 +99,17 @@ def archive(sl: Path, slug: str | None = None, unfinished: bool = False, plan: s
         for p in files:
             shutil.move(str(p), str(dest / p.name))
             moved.append(p)
+        meta = {"id": rid, "slug": slug or "run", "checkout": Path(checkout).resolve().as_posix(), "plan": plan,
+                "archived_at": now.isoformat(timespec="seconds"),
+                "status": "unfinished" if unfinished else "finished", "files": names}
+        tmp = dest / "run.json.tmp"
+        tmp.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8", newline="\n")
+        os.replace(tmp, dest / "run.json")
         done = True
-    finally:  # partial move: put back what moved so no run is split across two folders
+    finally:
         if not done:
+            # A failed manifest write is the same transaction failure as a partial move.
             _rollback(dest, moved)
-    meta = {"id": rid, "slug": slug or "run", "checkout": Path(checkout).resolve().as_posix(), "plan": plan,
-            "archived_at": now.isoformat(timespec="seconds"),
-            "status": "unfinished" if unfinished else "finished", "files": names}
-    tmp = dest / "run.json.tmp"
-    tmp.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8", newline="\n")
-    os.replace(tmp, dest / "run.json")
     return dest
 
 

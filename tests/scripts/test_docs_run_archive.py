@@ -34,3 +34,11 @@ def test_sessions_doc_runs_stationary():
 
 def test_readme_mentions_runs():
     assert ".superlite/runs/" in read("README.md")
+
+
+def test_start_handoff_does_not_repeat_session_ensure():
+    start = read("commands/start.md")
+    assert "session was ensured above" in start
+    assert "skip that command's initial ensure step" in start
+    for path in ("commands/small.md", "commands/review.md"):
+        assert "When invoked independently (not from `/superlite:start`)" in read(path)

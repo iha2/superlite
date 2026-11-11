@@ -242,24 +242,26 @@ def _shown(path):  # path relative to the cwd when inside it, else absolute
     return full.relative_to(cwd).as_posix() if full.is_relative_to(cwd) else full.as_posix()
 
 
-def run_ids(sl_dir):  # O(1) + registry read; (slug, archive id) fixed once, so history rows and the archive share it
-    """The session slug of this checkout and the archive id this run will get; (None, None) when unavailable."""
+def run_ids(sl_dir):  # O(files) + registry read; reserve the final id before history refers to it
+    """The session slug, final archive id and reserved folder; unavailable values are None."""
     try:
         import run_archive
         slug = run_archive.current_slug(sl_dir.parent)
-        return slug, run_archive.run_id(slug, datetime.now())
+        base_id = run_archive.run_id(slug, datetime.now())
+        reserved = run_archive.reserve(sl_dir, slug, rid=base_id)
+        return slug, reserved.name if reserved else base_id, reserved
     except (ImportError, OSError, ValueError) as e:
         print(f"run: archive id not made ({e})", file=sys.stderr)
-        return None, None
+        return None, None, None
 
 
-def archive_run(root, sl_dir, slug, plan, rid):  # O(files); fail open, only the ledger's own `.superlite` folder is archived
+def archive_run(root, sl_dir, slug, plan, rid, reserved=None):  # O(files); fail open, only the ledger's own run folder is archived
     """Move the run's files into `<hub>/.superlite/runs/<id>`; None when nothing moved or it failed."""
-    if root.name != state.DIR_NAME:
+    if root.name != state.DIR_NAME or rid is None:
         return None
     try:
         import run_archive
-        return run_archive.archive(sl_dir, slug, plan=plan, rid=rid)
+        return run_archive.archive(sl_dir, slug, plan=plan, rid=rid, reserved=reserved)
     except (ImportError, OSError, ValueError) as e:
         print(f"run: not archived ({e})", file=sys.stderr)
         return None
@@ -275,28 +277,34 @@ def main(argv=None):  # O(R*w + I*w)
     sys.stdout.reconfigure(encoding="utf-8")
     root = Path(a.ledger).resolve().parent  # .superlite, or the ledger's directory
     sl_dir = root if root.name == state.DIR_NAME else root / state.DIR_NAME
-    slug, rid = run_ids(sl_dir)
-    sys.stdout.write(summary(a.ledger, a.log, a.lint_log or str(Path(a.ledger).with_name("lint-log.jsonl")), a.plan, None, rid))
-    import exclusive  # the run is done: peer plugins may load again
-    widget = card_line(a.plan, root, a.ledger)  # before the cleanup, which removes the checkpoint state the card counts
-    clean_checkpoints(a.ledger)  # after the summary, which reads the checkpoint state
-    try:  # fail open: no registry, no git, unreadable sessions.json -> no line. Mark first: release looks at open runs.
-        import session
-        marked = session.mark_run(sl_dir.parent, "finished")
-        if marked:
-            print(f"session: {marked} finished")
-    except Exception:
-        pass
-    print(exclusive.release(sl_dir))
-    dest = archive_run(root, sl_dir, slug, a.plan, rid)  # after release: the archive empties the folder
-    if dest:
-        print(f"run: archived to {_shown(dest)}")
-    if widget:
-        if dest:  # the card moved with the run
-            import run_widget
-            widget = run_widget.widget_line(dest / run_widget.AFTER, Path.cwd())
-        print(widget)
-    return 0
+    slug, rid, reserved = run_ids(sl_dir)
+    try:
+        sys.stdout.write(summary(a.ledger, a.log, a.lint_log or str(Path(a.ledger).with_name("lint-log.jsonl")),
+                                 a.plan, None, rid))
+        import exclusive  # the run is done: peer plugins may load again
+        widget = card_line(a.plan, root, a.ledger)  # before cleanup, which removes checkpoint state the card counts
+        clean_checkpoints(a.ledger)  # after the summary, which reads the checkpoint state
+        try:  # fail open: no registry, no git, unreadable sessions.json -> no line. Mark first: release looks at open runs.
+            import session
+            marked = session.mark_run(sl_dir.parent, "finished")
+            if marked:
+                print(f"session: {marked} finished")
+        except Exception:
+            pass
+        print(exclusive.release(sl_dir))
+        dest = archive_run(root, sl_dir, slug, a.plan, rid, reserved)  # after release: the archive empties the folder
+        if dest:
+            print(f"run: archived to {_shown(dest)}")
+        if widget:
+            if dest:  # the card moved with the run
+                import run_widget
+                widget = run_widget.widget_line(dest / run_widget.AFTER, Path.cwd())
+            print(widget)
+        return 0
+    finally:
+        if reserved:
+            import run_archive
+            run_archive.cancel_reservation(reserved)
 
 
 if __name__ == "__main__":
