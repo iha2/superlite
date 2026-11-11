@@ -42,7 +42,7 @@ Look up the branch's checkout in `git worktree list --porcelain`.
 
 `git fetch --prune origin`, then fast-forward only:
 
-- The base is checked out in a clean checkout: `git merge --ff-only origin/<base>` there.
+- The base is checked out in a clean, unoccupied checkout (`session status` lists no session hosted there, even one whose run is finished): `git merge --ff-only origin/<base>` there. If another session hosts that checkout, report it and skip this step without changing its files.
 - The base is not checked out anywhere: `git fetch origin <base>:<base>`.
 - The base is checked out with uncommitted work, or the fast-forward fails (local base has commits origin does not): report it and skip this step. Never merge, rebase or reset the base.
 
