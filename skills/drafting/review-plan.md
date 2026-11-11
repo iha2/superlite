@@ -17,13 +17,26 @@ If you do not, revise and ask again.
 3. `## What will be built`: a table `| Part | What it does (one sentence) | Size (S/M/L) | Built by |`. "Built by" in plain words
    (a fast helper for routine parts, a careful helper for logic-heavy parts), never agent type names.
 4. `## How it fits together`: a mermaid diagram of the parts and how they connect (architecture or context), at most 12 nodes.
-5. `## How it gets built`: a mermaid diagram of the build flow: what runs in parallel and what must wait (waves or lanes),
+5. `## Key code changes`: 1 to 4 fenced snippets, about 15 lines each, in the target language: a before/after of the
+   critical change, or a sketch of the main idea (a new signature, a data shape, the key branch). One plain sentence above
+   each says why it matters. Illustrative only: the machine plan's stubs and tests stay the contract.
+6. `## How it gets built`: a mermaid diagram of the build flow: what runs in parallel and what must wait (waves or lanes),
    at most 12 nodes. Optionally a mermaid `gantt` of the rough schedule.
-6. `## Decisions you can change`: each open choice with its default, for example `Storage: files on disk (default) | a database`.
-7. `## Risks`: what could go wrong and what we do about it.
-8. `## Out of scope`: what this will not do.
-9. `## How we will know it works`: acceptance checks a human can verify.
-10. `## Rough time and cost`: a range from the sizes, labelled rough until the machine plan is linted.
+7. `## Decisions you can change`: each open choice with its default, for example `Storage: files on disk (default) | a database`.
+8. `## Risks`: what could go wrong and what we do about it.
+9. `## Out of scope`: what this will not do.
+10. `## How we will know it works`: acceptance checks a human can verify.
+11. `## Rough time and cost`: a range from the sizes, labelled rough until the machine plan is linted.
+
+## Diagrams innomd can draw
+
+The human reads the review plan in innomd, which shows raw mermaid source for syntax it cannot draw (tested on innomd 0.5.1).
+
+- Use: `flowchart TD`, `flowchart LR`, `sequenceDiagram`, `gantt`, `classDiagram`; node shapes `([ ])`, `{ }`, `[( )]`,
+  `(( ))`; edge labels `-->|yes|`; `-.->` and `==>`; quoted labels.
+- Never: `flowchart TB` (use `TD`), `subgraph` (put the wave or lane in the label: `A["Wave 1: Counting"]`),
+  `stateDiagram` (a `flowchart LR` with labelled edges), `erDiagram` (a `classDiagram` or a table).
+- Keep labels to about 35 characters and the graph narrow.
 
 ## Example (shortened)
 
@@ -54,15 +67,19 @@ flowchart LR
   N --> P[Printed result]
 ```
 
+## Key code changes
+The counter splits on whitespace, so tabs and newlines between words count once:
+
+```python
+def count(text: str) -> tuple[int, int, int]:
+    return text.count("\n"), len(text.split()), len(text)
+```
+
 ## How it gets built
 ```mermaid
-flowchart TB
-  subgraph W1["Wave 1, in parallel"]
-    A[Counting]
-    B[Command line]
-  end
-  A --> T[Tests: wait for both]
-  B --> T
+flowchart TD
+  A["Wave 1: Counting"] --> T["Tests: wait for both"]
+  B["Wave 1: Command line"] --> T
 ```
 
 ## Decisions you can change
@@ -87,12 +104,12 @@ About 3 to 6 minutes and $1 to $2 (rough, until linted).
 - Plain words a non-programmer can follow; short sentences; every table row one sentence.
 - Name parts by what they do for the human, not by file or function.
 - Keep each diagram at 12 nodes or fewer, with labels in plain words.
-- Quote every `subgraph` title and any label with spaces or punctuation (`subgraph W1["Wave 1, in parallel"]`), so the diagram renders.
+- Quote any label with spaces or punctuation (`A["Wave 1: Counting"]`), so the diagram renders.
 - Say what you assumed; keep decisions as `default | alternative`.
 - Keep scope and parts exactly what the machine plan will contain. After the approval the human is not asked again: a later change
   to scope or to an interface the human saw becomes a `Ruling: [scope] ...`, listed at finish under "Changed from the approved plan".
 
 ## Do not
-- No code, no `%% taskgraph`, no `Produces`/`Consumes` lines, no `e.g.` examples, no file paths, no agent or model names.
+- No full implementations, no `%% taskgraph`, no `Produces`/`Consumes` lines, no `e.g.` examples, no file paths, no agent or model names.
 - No more than two pages; no placeholders ("TBD").
 - Do not lint, dispatch or build before the yes (`lint --stable`, `dispatch`, `wave0` and `build_prime` refuse).
