@@ -85,6 +85,25 @@ def _d(cls: str, slug, path, detail: str) -> dict:
     return {"class": cls, "slug": slug, "path": str(path) if path else None, "detail": detail}
 
 
+def _sandbox_drift(root: Path, row: dict) -> list[dict]:
+    """Row entries against the folders under <checkout>/.superlite/sandboxes/<slug>/; reads only."""
+    import session_sandboxes  # lazy: optional module
+    slug = row["slug"]
+    out = []
+    wt = row.get("worktree")
+    base = ident.native(wt) if wt else root
+    for e in session_sandboxes.open_entries(row) if row.get("sandboxes") else []:
+        rel = e.get("path")
+        if rel and not (base / rel).is_dir():
+            out.append(_d("sandbox-missing", slug, rel, f"sandbox {e.get('topic')} is open but its folder is gone"))
+    known = {e.get("topic") for e in row.get("sandboxes") or []}
+    top = base / state.DIR_NAME / "sandboxes" / slug
+    for d in sorted(top.iterdir()) if top.is_dir() else []:
+        if d.is_dir() and d.name not in known:
+            out.append(_d("sandbox-orphan", slug, d, f"sandbox folder {d.name} has no session row entry"))
+    return out
+
+
 def drift(root: Path, reg: dict) -> list[dict]:  # O(N * W)
     out = []
     at_map = sr.worktree_map(root)
@@ -100,6 +119,7 @@ def drift(root: Path, reg: dict) -> list[dict]:  # O(N * W)
             out.append(_d("pruned", slug, wt, f"worktree missing, branch {br} present"))
         elif not exists and not wt_ok:
             out.append(_d("gone", slug, wt, "branch and worktree missing"))
+        out.extend(_sandbox_drift(root, row))
         oid = row.get("stash_oid")
         if oid and oid not in stash_oids and not _wip_exists(root, slug):
             out.append(_d("lost-wip", slug, wt, f"stash {oid[:7]} missing and no {WIP_PREFIX}{slug}"))

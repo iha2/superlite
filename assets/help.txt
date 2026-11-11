@@ -16,8 +16,8 @@
              clickable HTML prototype you edit in the browser, then builds
              what you kept.          /superlite:mvp a habit tracker
    feature   A change to existing code. Opus researches the code and writes
-             a feature plan you validate. A small prototype is built in its
-             own worktree and you try it (a second stop, feature mode only).
+             a feature plan you validate. A small prototype is built in a
+             sandbox folder and you try it (a second stop, feature mode only).
              Then it is ported into your code: frozen interfaces, seam
              checks, the prototype's acceptance tests. The report shows both.
              /superlite:feature add CSV export to the report page

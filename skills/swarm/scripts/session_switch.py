@@ -16,6 +16,7 @@ if str(HERE) not in sys.path:
 import gitignore  # noqa: E402
 import session_archive as A  # noqa: E402
 import session_registry as R  # noqa: E402
+import session_sandboxes  # noqa: E402
 import session_wip as W  # noqa: E402
 import state  # noqa: E402
 import worktree_home  # noqa: E402
@@ -29,6 +30,13 @@ from session_registry import (  # noqa: E402
 
 read_reg = R.read
 write_reg = R.write
+
+
+def _sandbox_entries(row: dict) -> list[dict]:  # O(entries)
+    try:
+        return session_sandboxes.open_entries(row)
+    except (OSError, ValueError, TypeError, AttributeError):
+        return []
 
 
 def cmd_status(a) -> int:  # O(N)
@@ -52,6 +60,9 @@ def cmd_status(a) -> int:  # O(N)
               f"worktree {s.get('worktree') or '(removed)'} | {stash} | run:{s.get('run') or 'open'}"
               + (" | harness" if s.get("harness") else " | adopted" if s.get("adopted_branch") else "")
               + (f" | {name}:+{behind}" if behind else ""))
+        for e in _sandbox_entries(s):
+            print(f"session:   sandbox {e.get('topic')} {e.get('status')} {e.get('path') or '-'} "
+                  f"run {e.get('run_id') or '-'}")
     return 0
 
 

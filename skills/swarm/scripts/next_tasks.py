@@ -175,6 +175,8 @@ def _glob_rx(g):  # O(len)
     while i < len(g):
         if g.startswith("**/", i):
             out, i = out + "(?:.*/)?", i + 3
+        elif g.startswith("**", i):  # trailing/bare `**`: any depth
+            out, i = out + ".*", i + 2
         elif g[i] == "*":
             out, i = out + "[^/]*", i + 1
         else:

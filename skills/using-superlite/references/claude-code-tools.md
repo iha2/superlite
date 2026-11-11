@@ -9,7 +9,7 @@ Claude Code is the reference harness: superlite's skills speak its vocabulary, s
 | Continue an agent | `SendMessage` to that agent |
 | Ask the user | `AskUserQuestion` (up to 4 questions per call) |
 | Plan or todo list | the harness's plan/todo tools (one item per wave) |
-| Create a worktree (`session: create EnterWorktree name=<n>` / `proto: create ...`) | `EnterWorktree` with `name`, then rerun the same command inside it (authorised in AGENTS.md); end with `ExitWorktree` `remove` or `keep` |
+| Create a worktree (`session: create EnterWorktree name=<n>`) | `EnterWorktree` with `name`, then rerun the same command inside it (authorised in AGENTS.md); end with `ExitWorktree` `remove` or `keep` |
 | Enter a superlite-cut worktree (`session: enter EnterWorktree path=<abs>`) | `EnterWorktree` with `path`; leave with `ExitWorktree` (`action: "keep"`: superlite removes the worktree itself) |
 | Open a plan or spec for the user (`open_in_harness`) | desktop app: `mcp__ccd_view__show_pane` with `pane: "file"` and the path; terminal CLI: a markdown link `[path](path)`; if neither works, path + five-line summary |
 

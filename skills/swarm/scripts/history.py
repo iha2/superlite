@@ -17,7 +17,8 @@ ROW SCHEMA (v1), one JSON object per line:
   imports), slack_min (predicted slack in minutes, or actual slack_s / 60 for imports),
   tier (haiku|sonnet), agent_type, model, prime_bytes, duration_s, tokens {in,out,cache_read,cache_write},
   cost_usd, tool_calls, first_time_pass (true|false|null), rework_s, rework_cost, pred_min,
-  phase ("proto" | "build"; absent on older rows; `run` is the run archive's id), repository (hub checkout path).
+  phase ("proto" | "build"; absent on older rows; `run` is the run archive's id), run_id (feature run id or null), sandbox
+  (repo-relative open sandbox or null), repository (hub checkout path).
 Recording the same (repository, run, task) twice is a no-op; stats and fits read through unique_rows (content duplicates count once per repository).
 STATS (stats.json): {v, updated, rows, bands: {band: S}, tiers: {tier: S}, bands_by_tier: {tier|band: S}} with
   S = {n, ftp_n, ftp_rate, mean_s, p90_s, mean_cost}. Same rows, same stats (sorted keys, no clock in S).
@@ -33,6 +34,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import base  # noqa: E402
+import sandbox  # noqa: E402
 import state  # noqa: E402
 
 MARKERS = [("tsconfig.json", "typescript"), ("package.json", "javascript"), ("go.mod", "go"), ("Cargo.toml", "rust"),
@@ -139,13 +141,23 @@ def unique_rows(rows: list[dict]) -> list[dict]:  # O(R)
     return out
 
 
-def phase_of(sl_dir) -> str:  # O(W) file reads + 2 git spawns
-    """`proto` when this checkout is a prototype some run of the repo started, else `build`."""
+def feature_state(sl_dir) -> dict:  # O(file)
+    d = base.read_json(Path(sl_dir) / "feature.json", None)
+    return d if isinstance(d, dict) else {}
+
+
+def phase_of(sl_dir) -> str:  # O(file)
+    """`proto` while a prototype sandbox is open here, or (legacy) this checkout is the state's worktree, else `build`."""
     try:
-        import proto
-        return "proto" if proto.originating_run(Path(sl_dir).resolve().parent) else "build"
-    except (ImportError, OSError, ValueError, base.GitError):  # fail open: a missing git or unreadable state is a build row
-        return "build"
+        if sandbox.open_sandbox(Path(sl_dir)):
+            return "proto"
+        st = feature_state(sl_dir)
+        wt = st.get("worktree")
+        if wt and st.get("status") == "building" and Path(wt).resolve() == Path(sl_dir).resolve().parent:
+            return "proto"
+    except (OSError, ValueError):  # fail open: unreadable state is a build row
+        pass
+    return "build"
 
 
 def write_stats(rows: list, path) -> dict:  # O(R log R)
@@ -209,6 +221,8 @@ def run_rows(plan_path, sl_dir=state.DIR_NAME, run_id=None) -> list:  # O(M + B 
     prime = {t: (sl / name).stat().st_size if (sl / name).is_file() else None for t, name in (("sonnet", "prime.md"), ("haiku", "prime-haiku.md"))}
     rid = run_id or datetime.now().strftime("%Y%m%d-%H%M%S")
     phase = phase_of(sl)
+    st = feature_state(sl)
+    sb = sandbox.open_sandbox(sl)
     rows = []
     for r in recs:
         task = plan.by_id.get(r["task"])
@@ -217,7 +231,7 @@ def run_rows(plan_path, sl_dir=state.DIR_NAME, run_id=None) -> list:  # O(M + B 
         f = flags.get(r["task"], {})
         tier = tiers.get(r["task"]) or ("haiku" if r["model"] == "haiku" else "sonnet")
         tk = r["tokens"]
-        rows.append({"v": 1, "date": date.today().isoformat(), "run": rid, "phase": phase, "source": "run", "language": lang, "task": r["task"],
+        rows.append({"v": 1, "date": date.today().isoformat(), "run": rid, "phase": phase, "run_id": st.get("run_id"), "sandbox": sb, "source": "run", "language": lang, "task": r["task"],
                      "kind": r["kind"], "loc": r["loc"], "components": r["components"], "tests": r["tests"], "focus": cats,
                      "band": band_of(r["kind"], r["loc"], r["tests"]), "critical_path": f.get("critical_path"),
                      "slack_min": f.get("slack_min"), "tier": tier, "agent_type": r["agent_type"], "model": r["model"],

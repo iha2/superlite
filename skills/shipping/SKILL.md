@@ -53,7 +53,7 @@ If it prints an `ASK` line (exit 4, nothing changed), ask exactly what its `ask:
 
 ## 7. Worktree cleanup
 
-A flow removes every worktree superlite cut before it ends: `superlite-cli session close` / `proto discard` remove them (`session: closed <slug>; removed its worktree`). Leave the worktree first (`ExitWorktree` with `action: "keep"` under Claude Code, else `cd` to the main checkout); `ExitWorktree` never removes a superlite-cut worktree. Claude-created worktrees (`session: create` / `proto: create` then `EnterWorktree name=`, the desktop app, `claude --worktree`) end with `ExitWorktree` `remove` (or `keep`) or the app's cleanup; `session close` and `proto discard` only archive and unregister them, and superlite never removes them or their branch. Never remove one this flow did not cut.
+A flow removes every worktree superlite cut before it ends: `superlite-cli session close` removes them (`session: closed <slug>; removed its worktree`). Leave the worktree first (`ExitWorktree` with `action: "keep"` under Claude Code, else `cd` to the main checkout); `ExitWorktree` never removes a superlite-cut worktree. Claude-created worktrees (`session: create` then `EnterWorktree name=`, the desktop app, `claude --worktree`) end with `ExitWorktree` `remove` (or `keep`) or the app's cleanup; `session close` only archives and unregister them, and superlite never removes them or their branch. Never remove one this flow did not cut.
 
 ### Other harnesses (fallback)
 
@@ -64,7 +64,7 @@ Without `EnterWorktree`: `cd` back to the main checkout, then `git worktree remo
 - Kept, and `git status --short` in that worktree is empty: remove the worktree. Leave the branch.
 - Kept, with uncommitted work: leave the worktree and name its path. Do not use `--force`.
 
-A prototype sandbox is removed with `superlite-cli proto discard` at feature finish, not with this step.
+A prototype sandbox folder is deleted with `superlite-cli proto discard` at feature finish (or by `session close`), not with this step.
 
 ## Never
 

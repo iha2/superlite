@@ -1,32 +1,33 @@
 #!/usr/bin/env python3
-"""The feature flow's prototype: its own git worktree, the human's try-out, then discard.
+"""The feature flow's prototype: a sandbox folder in this checkout, the human's try-out, then discard.
 
-    proto.py start --topic T [--run CMD] [--reach TEXT] [--plan P.feature.md] [--level L1|L2] [--path DIR] [--base REF]
+    proto.py start --topic T [--run CMD] [--reach TEXT] [--plan P.feature.md] [--level L1|L2]
     proto.py tryout [--run CMD] [--reach TEXT] [--start]  |  tryout --approve [--by NAME] [--ruling TEXT]
     proto.py status [--json]
-    proto.py discard [--keep-branch]
+    proto.py discard
 
-State: `.superlite/feature.json` {topic, plan, worktree, branch, base, run, reach, level, status, started, tryout_time,
-tryout_approved, tryout_by, tryout_approved_time, proto_report}. status is building (the prototype build runs in the
-worktree), tryout (shown to the human, waiting for the reply), approved, or discarded. `start` cuts the worktree
-`.claude/worktrees/<topic>-proto` on branch `superlite/<topic>-proto` from the user's HEAD (the user's checkout is never
-touched; uncommitted changes are not in the prototype); run again on the same topic it reopens the prototype for a fix
-round (status building). The prototype build keeps its own `.superlite` inside the worktree, so its plan, lint, dispatch
-and report run there, ungated by this file. `tryout` prints the run command, how to reach the prototype and the feature
-plan's acceptance checks, and sets status tryout; `--start` also launches the run command in the background (log in
+State: `.superlite/feature.json` {topic, plan, sandbox, session, run_id, run, reach, level, status, rounds, started,
+tryout_time, tryout_approved, tryout_by, tryout_approved_time, proto_report}. status is building (the prototype build
+runs in the sandbox), tryout (shown to the human, waiting for the reply), approved, or discarded. `start` makes the
+folder `.superlite/sandboxes/<session>/<topic>/` in this checkout (no worktree, no branch; the prototype sees the
+checkout's uncommitted code) and records the session row's slug and the run id (`current-run.json`); run again on the same
+topic it reopens the prototype for a fix round (status building, same run id). The prototype build shares this
+checkout's `.superlite`, so its plan, lint, dispatch and report run here. Every state change updates the session row's
+`sandboxes` list (never fatal). `tryout` prints the run command, how to reach the prototype and the feature plan's
+acceptance checks, and sets status tryout; `--start` also launches the run command in the background (log in
 `.superlite/proto-run.log`). `tryout --approve` records the try-out approval. Human mode (orchestrator.json mode human): it
 needs a real typed human reply that approves ("it works", "approve", ...) newer than the prototype's last checkpoint (the
-later of the try-out time and the worktree's checkpoints.json), read from `.superlite/human-replies.jsonl` written by
+later of the try-out time and this checkout's checkpoints.json), read from `.superlite/human-replies.jsonl` written by
 hooks/prompt; else exit 3 with a BLOCKED line. The coordinator sends `--approve` when it understands that reply as approval. AI mode or no orchestrator file: `--ruling TEXT` is appended to
 `.superlite/progress.md` as a `Ruling:` line. While the status is tryout in human mode the integration build is gated:
 orchestrator.gate refuses lint --stable, dispatch, wave0 and build_prime, and hooks/pre-tool denies agent
-dispatch. `discard` saves the prototype's report headline into feature.json (for the report's two parts), then removes
-the worktree and the branch (`--keep-branch` keeps the branch). Stdlib only, no language assumed.
+dispatch. `discard` saves the prototype's report headline into feature.json (for the report's two parts), removes the
+sandbox and archives the build's run files (proto_discard). A legacy feature.json with `worktree` (and no `sandbox`) still
+works; its discard removes the worktree and the branch. Stdlib only, no language assumed.
 """
 import argparse
 import json
 import re
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -36,16 +37,14 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 import base  # noqa: E402
-import claude_create  # noqa: E402
-import host_harness as harness  # noqa: E402
-import ident  # noqa: E402
 import orchestrator  # noqa: E402
+import run_archive  # noqa: E402
+import sandbox  # noqa: E402
+import session_sandboxes  # noqa: E402
 import state  # noqa: E402
-import worktree_home  # noqa: E402
 
 FILE = "feature.json"
 STATUSES = ("building", "tryout", "approved", "discarded")
-PENDING = "proto-pending.json"  # Claude Code: the create line's topic, resolved plan and expected worktree, until --adopt
 NO_REPLY = ("BLOCKED: no human reply since the prototype was shown; show how to try it, ask the human to reply "
             "\"it works\" or list the changes, end your turn")
 TOPIC = re.compile(r"^[a-z0-9][a-z0-9-]{0,40}$")
@@ -87,13 +86,27 @@ def tryout_pending(sl) -> bool:  # O(file)
     return bool(st and st["status"] == "tryout" and human_mode(sl))
 
 
+def run_dir_of(st: dict) -> Path | None:  # O(1)
+    """The `.superlite` folder the prototype build shares: the sandbox's checkout, else a legacy worktree's own."""
+    if st.get("sandbox"):
+        return Path(st["sandbox"]).parents[2]
+    return state.run_dir(Path(st["worktree"])) if st.get("worktree") else None
+
+
+def sandbox_rel(st: dict) -> str | None:  # O(1)
+    """The sandbox as a repo-relative posix path (absolute when it is outside the checkout)."""
+    if not st.get("sandbox"):
+        return None
+    sb = Path(st["sandbox"])
+    return sb.relative_to(sb.parents[3]).as_posix()
+
+
 def last_checkpoint_ms(st: dict) -> float:
-    """The prototype's last checkpoint: the later of the try-out time and the worktree's checkpoints.json."""
+    """The prototype's last checkpoint: the later of the try-out time and the build's checkpoints.json."""
     t = st.get("tryout_time") or 0
-    if not st.get("worktree"):
-        return t
-    cp = state.path(Path(st["worktree"]), "checkpoints.json")
-    return max(t, cp.stat().st_mtime * 1000) if cp.is_file() else t
+    sl = run_dir_of(st)
+    cp = sl / "checkpoints.json" if sl else None
+    return max(t, cp.stat().st_mtime * 1000) if cp and cp.is_file() else t
 
 
 def acceptance_checks(plan) -> list[str]:  # O(P)
@@ -117,18 +130,37 @@ def newest_feature_plan() -> str | None:  # O(F log F)
 
 
 def proto_report(st: dict) -> dict | None:  # O(file)
-    """The prototype build's report headline: saved at discard, else read live from the worktree."""
+    """The prototype build's report headline: saved at discard, else read live, else the archived run of its run id."""
     if st.get("proto_report"):
         return st["proto_report"]
-    if not st.get("worktree"):
+    sl = run_dir_of(st)
+    if sl is None:
         return None
-    c = base.read_json(state.path(Path(st["worktree"]), "report.json"), None)
+    c = base.read_json(sl / "report.json", None)
     if not isinstance(c, dict):
-        c = _archived_report(Path(st["worktree"]))
-    return {"headline": c.get("headline"), "cost_split": c.get("cost_split"), "tasks": len(c.get("tasks") or [])} if isinstance(c, dict) else None
+        c = _archived_report(sl.parent, st.get("run_id")) if st.get("sandbox") else _archived_report_legacy(sl.parent)
+    if not isinstance(c, dict):
+        return None
+    out = {"headline": c.get("headline"), "cost_split": c.get("cost_split"), "tasks": len(c.get("tasks") or [])}
+    if st.get("sandbox"):
+        out.update(run_id=st.get("run_id"), sandbox=sandbox_rel(st))
+    return out
 
 
-def _archived_report(worktree: Path) -> dict | None:  # O(archives)
+def _archived_report(checkout: Path, rid) -> dict | None:  # O(archives)
+    """report.json of the archived run whose run.json id is `rid` (two runs of one checkout share the archive)."""
+    if not rid:
+        return None
+    runs = run_archive.runs_dir(checkout)
+    for meta in runs.glob("*/run.json") if runs.is_dir() else ():
+        m = base.read_json(meta, None)
+        if isinstance(m, dict) and m.get("id") == rid:
+            rep = base.read_json(meta.parent / "report.json", None)
+            return rep if isinstance(rep, dict) else None
+    return None
+
+
+def _archived_report_legacy(worktree: Path) -> dict | None:  # O(archives)
     """report.json of the newest archived run (hub `.superlite/runs/*/run.json`, by archived_at) of this checkout."""
     try:
         runs = state.hub_root(worktree) / state.DIR_NAME / "runs"
@@ -149,7 +181,8 @@ def _archived_report(worktree: Path) -> dict | None:  # O(archives)
 def status_line(st: dict | None, sl=None) -> str:
     if not st:
         return f"proto: none (no {state.DIR_NAME}/feature.json)"
-    s = f"proto: {st['topic']} {st['status']}, worktree {st['worktree']} on {st['branch']}"
+    where = f"sandbox {sandbox_rel(st)}" if st.get("sandbox") else f"worktree {st.get('worktree')} on {st.get('branch')}"
+    s = f"proto: {st['topic']} {st['status']}, {where}"
     if st["status"] == "approved":
         s += f"; try-out approved {iso(st.get('tryout_approved_time'))} by {st.get('tryout_by', '?')}"
     elif st["status"] == "tryout":
@@ -158,56 +191,33 @@ def status_line(st: dict | None, sl=None) -> str:
     return s
 
 
-def pending(sl) -> dict | None:  # O(file)
-    d = base.read_json(Path(sl) / PENDING, None)
-    return d if isinstance(d, dict) and d.get("topic") else None
-
-
-def originating_run(cwd: Path) -> Path | None:  # O(W) file reads + 2 git spawns
-    """The run folder, among every checkout of this repo, whose feature.json names the current checkout as its
-    prototype (the hub or the session worktree that ran `proto start`), or None."""
+def record_row(st: dict, **extra) -> None:  # O(registry)
+    """Mirror the prototype onto its session row's `sandboxes` list; never fatal (`session reconcile` reports drift)."""
+    if not st.get("sandbox"):
+        return
     try:
-        r = base.git("rev-parse", "--show-toplevel", cwd=cwd, check=False)
-        top = Path(r.stdout.strip()) if r.returncode == 0 and r.stdout.strip() else None
-        text = base.git("worktree", "list", "--porcelain", cwd=top, check=False).stdout if top else ""
-    except base.GitError:
+        sb = Path(st["sandbox"])
+        session_sandboxes.record(sb.parents[3], st["topic"], path=sandbox_rel(st), run_id=st.get("run_id"),
+                                 status=st["status"], **extra)
+    except (OSError, ValueError, KeyError, TypeError, IndexError, base.GitError):
+        pass
+
+
+def run_id_for(sl: Path, topic: str, session: str) -> str | None:  # O(file)
+    """The id in current-run.json (created when missing), kept across fix rounds."""
+    try:
+        cur = run_archive.read_current_run(sl) or run_archive.ensure_run(sl, topic, session)[0]
+        return cur["id"]
+    except (OSError, ValueError, KeyError, TypeError):
         return None
-    for ln in text.splitlines():
-        if not ln.startswith("worktree "):
-            continue
-        other = Path(ident.git_path(ln[len("worktree "):]))
-        if ident.same_path(other, top):
-            continue
-        sl = other / state.DIR_NAME
-        for st in (read_state(sl), pending(sl)):
-            if st and st.get("worktree") and ident.same_path(Path(st["worktree"]), top):
-                return sl
-    return None
 
 
-def cmd_adopt(a, sl) -> int:
-    """Complete the originating run's feature.json (else the hub's) for the Claude-created worktree this runs in."""
-    cwd = Path.cwd()
-    top = Path(git("rev-parse", "--show-toplevel", cwd=cwd).stdout.strip())
-    hub = state.hub_root(top)
-    if top.resolve() == hub.resolve():
-        print("proto: --adopt runs inside the worktree EnterWorktree created, not in the hub", file=sys.stderr)
-        return 2
-    pend = pending(sl) or {}
-    pend = pend if pend.get("topic") == a.topic and ident.same_path(Path(pend.get("worktree") or "."), top) else {}
-    branch = git("rev-parse", "--abbrev-ref", "HEAD", cwd=top).stdout.strip()
-    ref = a.base or pend.get("base") or git("rev-parse", "--abbrev-ref", "HEAD", cwd=hub).stdout.strip()
-    st = {"v": 1, "topic": a.topic, "plan": a.plan or pend.get("plan") or newest_feature_plan(), "worktree": top.as_posix(),
-          "branch": branch, "base": ref, "run": a.run or pend.get("run"), "reach": a.reach or pend.get("reach"),
-          "level": a.level or pend.get("level") or "L1", "status": "building", "rounds": 1,
-          "started": now_ms(), "tryout_time": None, "tryout_approved": False, "adopted": True}
-    write_state(sl, st)
-    if pend:
-        (Path(sl) / PENDING).unlink(missing_ok=True)
-    print(status_line(st))
-    print(f"proto: build the prototype there with its own plan (at most {MAX_PROTO_TASKS} tasks): "
-          f"superlite-cli plan_tools lint --stable --plan {top.as_posix()}/docs/plans/<date>-{a.topic}.proto.md")
-    return 0
+def sandbox_for(root: Path, topic: str) -> tuple[str, Path] | None:  # O(1)
+    """(session slug, sandbox folder) for `topic`, or None when the path would leave `<root>/.superlite/sandboxes`."""
+    session = sandbox.session_of(root)
+    sb = Path(sandbox.path_for(root, session, topic))
+    home = (root / state.DIR_NAME / "sandboxes").resolve()
+    return (session, sb) if sb.resolve().is_relative_to(home) and sb.resolve() != home else None
 
 
 def cmd_start(a, sl) -> int:
@@ -215,51 +225,35 @@ def cmd_start(a, sl) -> int:
         print("proto: --topic must be a short slug (a-z, 0-9, -)", file=sys.stderr)
         return 2
     st = read_state(sl)
-    if st and st["topic"] == a.topic and st["status"] != "discarded" and Path(st["worktree"]).is_dir():  # fix round
+    live = st and (Path(st["sandbox"]).is_dir() if st.get("sandbox") else Path(st.get("worktree") or "-").is_dir())
+    if st and st["topic"] == a.topic and st["status"] != "discarded" and live:  # fix round
         st.update(status="building", **{k: v for k, v in (("run", a.run), ("reach", a.reach)) if v})
         st["rounds"] = st.get("rounds", 1) + 1
         write_state(sl, st)
+        record_row(st)
         print(status_line(st) + f" (fix round {st['rounds']})")
         return 0
     if st and st["status"] not in ("discarded", "approved") and st["topic"] != a.topic:
         print(f"proto: prototype {st['topic']} is still open; run superlite-cli proto discard first", file=sys.stderr)
         return 2
-    if a.adopt:
-        return cmd_adopt(a, sl)
     root = Path(git("rev-parse", "--show-toplevel").stdout.strip())
-    base_ref = a.base or git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
-    if harness.under_claude_code() and not a.path and claude_create.hub_on_base(root, base_ref):
-        print(claude_create.create_line(f"{a.topic}-proto", base_ref).replace("session: ", "proto: ", 1))
-        plan = a.plan or newest_feature_plan()  # resolved here: the new checkout lacks an uncommitted plan
-        base.write_json(sl / PENDING, {"topic": a.topic, "plan": Path(plan).resolve().as_posix() if plan else None,
-                                       "worktree": (worktree_home.home_path(state.hub_root(root)) / f"{a.topic}-proto").as_posix(),
-                                       "base": base_ref, "run": a.run, "reach": a.reach, "level": a.level})
-        return 0
-    wt = Path(a.path) if a.path else worktree_home.proto_dir(root, a.topic)
-    branch = f"superlite/{a.topic}-proto"
-    if wt.exists():
-        print(f"proto: {wt} already exists; pass --path or remove it", file=sys.stderr)
+    made = sandbox_for(root, a.topic)
+    if not made:
+        print("proto: the sandbox path leaves the sandboxes folder", file=sys.stderr)
         return 2
-    worktree_home.hide_all(root)
-    wt.parent.mkdir(parents=True, exist_ok=True)
-    if git("check-ignore", "-q", str(wt), cwd=root, check=False).returncode != 0 and wt.is_relative_to(root):
-        import gitignore
-        gitignore.ensure(str(root), [])  # appends the common block (.superlite/ among it), never rewrites a line
-    has_branch = git("rev-parse", "--verify", "-q", f"refs/heads/{branch}", check=False).returncode == 0
-    git("worktree", "add", *([str(wt), branch] if has_branch else ["-b", branch, str(wt), base_ref]))
-    dirty = bool(git("status", "--porcelain", "--untracked-files=no", cwd=root, check=False).stdout.strip())
-    st = {"v": 1, "topic": a.topic, "plan": a.plan or newest_feature_plan(), "worktree": wt.as_posix(), "branch": branch,
-          "base": base_ref, "run": a.run, "reach": a.reach, "level": a.level or "L1", "status": "building", "rounds": 1,
-          "started": now_ms(), "tryout_time": None, "tryout_approved": False}
+    session, sb = made
+    if sb.exists():
+        print(f"proto: {sb.as_posix()} already exists; run superlite-cli proto discard or remove it", file=sys.stderr)
+        return 2
+    sb.mkdir(parents=True)
+    st = {"v": 1, "topic": a.topic, "plan": a.plan or newest_feature_plan(), "sandbox": sb.as_posix(), "session": session,
+          "run_id": run_id_for(sl, a.topic, session), "run": a.run, "reach": a.reach, "level": a.level or "L1",
+          "status": "building", "rounds": 1, "started": now_ms(), "tryout_time": None, "tryout_approved": False}
     write_state(sl, st)
+    record_row(st)
     print(status_line(st))
     print(f"proto: build the prototype there with its own plan (at most {MAX_PROTO_TASKS} tasks): "
-          f"superlite-cli plan_tools lint --stable --plan {wt.as_posix()}/docs/plans/<date>-{a.topic}.proto.md")
-    if dirty:
-        print("proto: note: your uncommitted changes are not in the prototype (it is cut from HEAD)")
-    enter = harness.enter_line(wt.resolve(), Path.cwd()) if harness.under_claude_code() else None
-    if enter:
-        print(enter)
+          f"superlite-cli plan_tools lint --stable --plan {sandbox_rel(st)}/docs/plans/<date>-{a.topic}.proto.md")
     return 0
 
 
@@ -286,6 +280,7 @@ def cmd_tryout(a, sl) -> int:  # O(P + R)
         if rep:
             st["proto_report"] = rep
         write_state(sl, st)
+        record_row(st)
         print(status_line(st, sl))
         return 0
     for k in ("run", "reach"):
@@ -296,7 +291,8 @@ def cmd_tryout(a, sl) -> int:  # O(P + R)
     if rep:
         st["proto_report"] = rep
     write_state(sl, st)
-    wt = st["worktree"]
+    record_row(st)
+    wt = st.get("sandbox") or st["worktree"]
     print(status_line(st, sl))
     print(f"run: cd \"{wt}\" && {st.get('run') or '<the run command: pass --run>'}")
     if st.get("reach"):
@@ -323,7 +319,13 @@ def cmd_discard(a, sl) -> int:
     if not st or st["status"] == "discarded":
         print("proto: nothing to discard")
         return 0
-    rep = proto_report(st)
+    if st.get("sandbox"):
+        import proto_discard  # imports proto, so not at module level
+        done = proto_discard.discard_open(sl) or read_state(sl) or st
+        record_row(done, ended=iso(done.get("discarded") or now_ms()))
+        print(status_line(done))
+        return 0
+    rep = proto_report(st)  # legacy worktree prototype
     if rep:
         st["proto_report"] = rep
     if st.get("adopted"):  # Claude owns the worktree and its branch
@@ -335,11 +337,10 @@ def cmd_discard(a, sl) -> int:
     if Path(st["worktree"]).is_dir():
         git("worktree", "remove", "--force", st["worktree"])
     git("worktree", "prune", check=False)
-    if not a.keep_branch:
-        git("branch", "-D", st["branch"], check=False)
-    st.update(status="discarded", discarded=now_ms(), branch_kept=bool(a.keep_branch))
+    git("branch", "-D", st["branch"], check=False)
+    st.update(status="discarded", discarded=now_ms(), branch_kept=False)
     write_state(sl, st)
-    print(status_line(st) + (" (branch kept)" if a.keep_branch else ""))
+    print(status_line(st))
     return 0
 
 
@@ -350,32 +351,22 @@ def main(argv=None):  # O(P + R) + git spawns
     s.add_argument("--topic", required=True)
     s.add_argument("--plan", help="the feature plan (default: the newest docs/plans/*.feature.md)")
     s.add_argument("--level", choices=["L1", "L2"], default=None, help="L1 stubs (default), L2 an isolated environment")
-    s.add_argument("--path", help="the worktree folder (default .claude/worktrees/<topic>-proto)")
-    s.add_argument("--base", help="the ref to cut from (default: the current branch)")
-    s.add_argument("--adopt", action="store_true", help="record the worktree EnterWorktree created (run inside it)")
     t = sub.add_parser("tryout")
     t.add_argument("--start", action="store_true", help="also launch the run command in the background")
     t.add_argument("--approve", action="store_true", help="record the try-out approval; send this when you understand the reply as approval")
     t.add_argument("--by", default="human")
     t.add_argument("--ruling", help="AI mode: the acceptance-check result, recorded as a Ruling: line")
     for p in (s, t):
-        p.add_argument("--run", help="how to stand the prototype up, run in the worktree")
+        p.add_argument("--run", help="how to stand the prototype up, run in the sandbox")
         p.add_argument("--reach", help="how to reach it: a URL and port, a command, or example calls")
     st = sub.add_parser("status")
     st.add_argument("--json", action="store_true")
     d = sub.add_parser("discard")
-    d.add_argument("--keep-branch", action="store_true")
     for p in (s, t, st, d):
         p.add_argument("--dir", help="the run-state folder itself (default: this checkout's)")
     a = ap.parse_args(argv)
     sys.stdout.reconfigure(encoding="utf-8")
     sl = Path(a.dir) if a.dir else state.run_dir(Path.cwd())
-    if not a.dir and read_state(sl) is None:  # inside a Claude-created prototype: its feature.json is the originating run's
-        origin = originating_run(Path.cwd())
-        if origin:
-            sl = origin
-        elif a.cmd == "start" and a.adopt:
-            sl = state.run_dir(state.hub_root(Path.cwd()))
     if a.cmd == "start":
         return cmd_start(a, sl)
     if a.cmd == "tryout":
@@ -383,7 +374,10 @@ def main(argv=None):  # O(P + R) + git spawns
     if a.cmd == "discard":
         return cmd_discard(a, sl)
     cur = read_state(sl)
-    print(json.dumps(cur, indent=1) if a.json else status_line(cur, sl))
+    if a.json or not cur or not cur.get("sandbox"):
+        print(json.dumps(cur, indent=1) if a.json else status_line(cur, sl))
+    else:
+        print(status_line(cur, sl) + f"; session {cur.get('session')}, run {cur.get('run_id')}")
     return 0
 
 

@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import session_sandboxes  # noqa: E402
 import state  # noqa: E402
 
 
@@ -124,6 +125,15 @@ def ahead_of(root: Path | None, reg: dict, row: dict) -> tuple[int, str | None]:
     return (int(n) if n and n.isdigit() else 0), cur
 
 
+def proto_part(row: dict) -> str:  # O(entries)
+    """' | proto:<topic> <status>' per open prototype sandbox of the row; '' when none or unreadable."""
+    try:
+        entries = session_sandboxes.open_entries(row)
+    except (OSError, ValueError, TypeError, AttributeError):
+        return ""
+    return "".join(f" | proto:{e.get('topic')} {e.get('status')}" for e in entries)
+
+
 def moved_line(root: Path | None, reg: dict) -> str | None:  # O(N)
     """Moved-out notice for a main checkout with no session: the most recently moved row."""
     if not root:
@@ -155,6 +165,7 @@ def line_for(cwd: Path) -> str | None:  # O(N)
     status = row.get("status") or ("active" if slug == active else "?")
     stash = "stash:yes" if row.get("has_stash") else "stash:no"
     out = f"superlite session: {slug} | branch {branch} | worktree {wt} | {status} | {stash} | run:{run_of(row)}"
+    out += proto_part(row)
     n, cur = ahead_of(root, reg, row)
     if n > 0:
         out += f" | main:+{n}"

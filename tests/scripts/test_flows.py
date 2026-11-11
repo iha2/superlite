@@ -112,8 +112,9 @@ def test_flow_feature(repo):
                "# Feat\n\n**Goal:** a feature.\n\n## Acceptance checks\n- it works\n")
     r = repo.cli("proto", "start", "--topic", "feat", "--run", "echo hi")
     assert r.code == 0, r.err
-    sandbox = repo.root / ".claude" / "worktrees" / "feat-proto"
-    assert sandbox.is_dir() and "superlite/feat-proto" in repo.git("branch", "--list")
+    boxes = list((repo.root / ".superlite" / "sandboxes").glob("*/feat"))
+    assert len(boxes) == 1 and boxes[0].is_dir() and "feat-proto" not in repo.git("branch", "--list")
+    sandbox = boxes[0]
     assert repo.cli("proto", "tryout").code == 0
     assert repo.state("feature.json")["status"] == "tryout"
     r = repo.cli("proto", "tryout", "--approve", "--ruling", "[acceptance] ok - fine - none")

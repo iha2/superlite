@@ -141,13 +141,14 @@ def test_create_worktree_in_new_home(hub):
     assert git(hub, "status", "--porcelain").strip() == ""
 
 
-def test_proto_start_default_home(hub):
+def test_proto_start_makes_a_sandbox(hub):
     (hub / "docs" / "plans").mkdir(parents=True)
     cp = run("proto.py", "start", "--topic", "x", cwd=hub)
     assert cp.returncode == 0, cp.both
-    wt = hub / ".claude" / "worktrees" / "x-proto"
-    assert wt.is_dir() and "superlite/x-proto" in git(hub, "branch", "--list")
-    assert git(hub, "status", "--porcelain").strip() == ""
+    boxes = list((hub / ".superlite" / "sandboxes").glob("*/x"))
+    assert len(boxes) == 1 and boxes[0].is_dir()  # a sandbox folder, no worktree and no branch
+    assert "x-proto" not in git(hub, "branch", "--list") and not (hub / ".claude" / "worktrees" / "x-proto").exists()
+    assert git(hub, "status", "--porcelain", "--", ".", ":!.superlite").strip() == ""  # tracked code untouched
 
 
 def test_old_home_rows_still_close(hub):
