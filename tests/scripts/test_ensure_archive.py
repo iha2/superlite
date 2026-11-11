@@ -62,6 +62,27 @@ def test_open_here_archives_unfinished(repo):
     assert (d / "progress.md").exists() and (d / "run.json").exists()
 
 
+@pytest.mark.parametrize("with_branch", [False, True])
+def test_in_flow_ensure_preserves_active_run(repo, with_branch):
+    assert run("ensure", "--slug", "demo", cwd=repo).returncode == 0
+    sl = repo / ".superlite"
+    progress = sl / "progress.md"
+    progress.write_text("current run\n")
+    orchestrator = sl / "orchestrator.json"
+    orchestrator.write_text('{"mode":"human","approved":false}\n')
+    args = ["ensure", "--slug", "demo", "--in-flow"]
+    if with_branch:
+        args.extend(["--branch", git(repo, "branch", "--show-current").strip()])
+
+    cp = run(*args, cwd=repo)
+
+    assert cp.returncode == 0, cp.err
+    assert "already open here" in cp.out
+    assert progress.read_text() == "current run\n"
+    assert orchestrator.read_text() == '{"mode":"human","approved":false}\n'
+    assert runs(repo) == []
+
+
 def test_unregistered_leftovers_archived(repo):
     sl = repo / ".superlite"
     sl.mkdir()
