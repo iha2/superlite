@@ -79,6 +79,18 @@ def test_open_sandbox_with_relative_run_dir(repo, monkeypatch):
     assert sandbox.open_sandbox(Path(state.DIR_NAME)) == SB
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="symlinked directories may require elevated privileges")
+def test_open_sandbox_relative_and_absolute_symlinked_run_dir_match(repo, monkeypatch):
+    target = repo / "nested" / state.DIR_NAME
+    sb = target / "sandboxes" / "host" / "x"
+    target.mkdir(parents=True)
+    (target / "feature.json").write_text(json.dumps({"status": "building", "sandbox": sb.as_posix()}))
+    (repo / state.DIR_NAME).symlink_to(target, target_is_directory=True)
+    monkeypatch.chdir(repo)
+    assert sandbox.open_sandbox(Path(state.DIR_NAME)) == sandbox.open_sandbox(target) == \
+        f"{state.DIR_NAME}/sandboxes/host/x"
+
+
 def test_open_sandbox_discarded_none(repo):
     assert sandbox.open_sandbox(feature(repo, status="discarded", sandbox=(repo / SB).as_posix())) is None
 
