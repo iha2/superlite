@@ -20,9 +20,12 @@ def tree_hash(root: str) -> str:  # O(F + B): untracked files and their bytes
         h.update(_git(root, "diff", "HEAD", "--binary"))
         names = sorted(p for p in _git(root, "ls-files", "--others", "--exclude-standard", "-z").split(b"\0") if p)
         for name in names:
+            h.update(len(name).to_bytes(8, "big"))
             h.update(name)
             with open(os.path.join(root, os.fsdecode(name)), "rb") as fh:
-                h.update(fh.read())
+                data = fh.read()
+            h.update(len(data).to_bytes(8, "big"))
+            h.update(data)
         return h.hexdigest()[:16]
     except (OSError, subprocess.SubprocessError):
         return ""
