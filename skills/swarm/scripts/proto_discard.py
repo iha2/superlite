@@ -49,6 +49,15 @@ def _legacy(checkout: Path, st: dict) -> None:
     st["branch_kept"] = False
 
 
+def drain_tests(sl: Path) -> bool:
+    import run_tests
+    live = Path(sl) / "test-summary.json"
+    if run_tests.pending_runs(live) and run_tests.wait_all(live) != 0:
+        print("proto: tests still running; retry when they finish", file=sys.stderr)
+        return False
+    return True
+
+
 def discard_open(sl: Path, reason: str = "discard") -> dict | None:
     """Discard the open prototype in run folder `sl`; the saved state, or None when none is open."""
     sl = Path(sl)
@@ -56,6 +65,9 @@ def discard_open(sl: Path, reason: str = "discard") -> dict | None:
     st = proto.read_state(sl)
     if not st or st["status"] == "discarded":
         return None
+    run_sl = proto.run_dir_of(st) or sl
+    if not drain_tests(run_sl):
+        return {"status": "tests-running"}
     rep = proto.proto_report(st)  # before the run files move
     if rep:
         st["proto_report"] = rep

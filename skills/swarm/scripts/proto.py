@@ -325,9 +325,13 @@ def cmd_discard(a, sl) -> int:
     if not st or st["status"] == "discarded":
         print("proto: nothing to discard")
         return 0
+    import proto_discard
+    if not proto_discard.drain_tests(run_dir_of(st) or sl):
+        return 2
     if st.get("sandbox"):
-        import proto_discard  # imports proto, so not at module level
         done = proto_discard.discard_open(sl) or read_state(sl) or st
+        if done.get("status") == "tests-running":
+            return 2
         record_row(done, ended=iso(done.get("discarded") or now_ms()))
         print(status_line(done))
         return 0

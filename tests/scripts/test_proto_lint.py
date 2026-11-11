@@ -37,7 +37,8 @@ def no_sandbox(monkeypatch):
 
 
 def test_outside_path_named(fake_sandbox, tmp_path):
-    out = proto_lint.check("docs/plans/x.proto.md", {"T2": ["src/app.py"]}, tmp_path / ".superlite")
+    out = proto_lint.check("docs/plans/x.proto.md", {"T2": ["src/app.py"]}, tmp_path / ".superlite",
+                           wave0_id="T1")
     assert out == [f"SANDBOX: T2 writes src/app.py outside {SB}"]
 
 
@@ -51,22 +52,41 @@ def test_no_open_sandbox_no_check(no_sandbox, tmp_path):
 
 def test_inside_paths_ok(fake_sandbox, tmp_path):
     assert proto_lint.check("docs/plans/x.proto.md", {"T1": [f"{SB}/a.py", f"{SB}/t/b.py"]},
-                            tmp_path / ".superlite") == []
+                            tmp_path / ".superlite", wave0_id="T1") == []
 
 
 @pytest.mark.parametrize("bad", [f"{SB}/../../../../src/a.py", f"{SB}/../y/a.py", "/etc/passwd", "../x.py",
                                  f"{SB}\\..\\..\\a.py", "C:/win/a.py"])
 def test_traversal_and_absolute_rejected(fake_sandbox, tmp_path, bad):
-    out = proto_lint.check("docs/plans/x.proto.md", {"T1": [bad]}, tmp_path / ".superlite")
+    out = proto_lint.check("docs/plans/x.proto.md", {"T1": [bad]}, tmp_path / ".superlite", wave0_id="T1")
     assert len(out) == 1 and "SANDBOX: T1 writes" in out[0]
 
 
 def test_relative_to_sandbox_ok(fake_sandbox, tmp_path):
     sl = tmp_path / ".superlite"
     plan = tmp_path / SB / "docs" / "plans" / "x.proto.md"
-    assert proto_lint.check(str(plan), {"T1": [f"{SB}/src/app.py", f"{SB}/tests/t.py"]}, sl) == []
-    out = proto_lint.check(str(plan), {"T1": ["src/app.py", "**"]}, sl)
+    assert proto_lint.check(str(plan), {"T1": [f"{SB}/src/app.py", f"{SB}/tests/t.py"]}, sl, wave0_id="T1") == []
+    out = proto_lint.check(str(plan), {"T1": ["src/app.py", "**"]}, sl, wave0_id="T1")
     assert len(out) == 2
+
+
+def test_proto_plan_requires_explicit_wave0(fake_sandbox, tmp_path):
+    out = proto_lint.check("docs/plans/x.proto.md", {"T1": [f"{SB}/src/app.py"]}, tmp_path / ".superlite")
+    assert out == ["SANDBOX: plan needs an explicit in-sandbox Wave 0 task"]
+
+
+@pytest.mark.parametrize("claim", [f"{SB}/linked/*.py", f"{SB}/**"])
+def test_symlink_components_in_glob_claim_rejected(fake_sandbox, tmp_path, claim):
+    target = tmp_path / "src"
+    target.mkdir()
+    link = tmp_path / SB / "linked"
+    link.parent.mkdir(parents=True)
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlink creation is not permitted")
+    out = proto_lint.check("docs/plans/x.proto.md", {"T1": [claim]}, tmp_path / ".superlite", wave0_id="T1")
+    assert len(out) == 1 and "outside" in out[0]
 
 
 def test_proto_plan_outside_fails_lint(fake_sandbox, tmp_path, capsys, monkeypatch):
@@ -76,6 +96,25 @@ def test_proto_plan_outside_fails_lint(fake_sandbox, tmp_path, capsys, monkeypat
     rc = plan_lint.cmd_lint(_args(p))
     out = capsys.readouterr().out
     assert rc != 0 and f"SANDBOX: T1 writes src/app.py outside {SB}" in out
+
+
+def test_proto_plan_without_wave0_fails_lint(fake_sandbox, tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    p = make_plan(tmp_path, [{"id": "T1", "time": 2, "owns": f"{SB}/src/app.py"}],
+                  header="**Ignore:** .env", name="x.proto.md")
+    rc = plan_lint.cmd_lint(_args(p))
+    out = capsys.readouterr().out
+    assert rc != 0 and "plan needs an explicit in-sandbox Wave 0 task" in out
+
+
+def test_proto_plan_wave0_owns_only_sandbox_paths(fake_sandbox, tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    p = make_plan(tmp_path, [{"id": "T1", "title": "Wave 0 skeleton", "time": 2,
+                              "owns": f"{SB}/pyproject.toml"}], header="**Ignore:** .env", name="x.proto.md")
+    p.write_text(p.read_text().replace("**Owns:**", "**Kind:** Mechanical\n**Owns:**"), encoding="utf-8")
+    rc = plan_lint.cmd_lint(_args(p))
+    out = capsys.readouterr().out
+    assert "SANDBOX" not in out, out
 
 
 def test_non_proto_plan_lint_unaffected(fake_sandbox, tmp_path, capsys, monkeypatch):

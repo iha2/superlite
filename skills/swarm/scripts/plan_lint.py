@@ -195,8 +195,15 @@ class _Lint:
     def sandbox(self) -> None:
         """A .proto.md plan owns only paths inside the open prototype sandbox."""
         path = str(self.plan.path or "")
-        for msg in proto_lint.check(path, {t.id: t.owns for t in self.plan.tasks}, pt.run_dir(path)) if path else []:
-            self.add(msg, [msg.split()[1]])
+        import wave0
+        explicit_wave0 = next((t.id for t in self.plan.tasks if wave0.is_wave0(t)), None)
+        for msg in proto_lint.check(path, {t.id: t.owns for t in self.plan.tasks}, pt.run_dir(path),
+                                    wave0_id=explicit_wave0) if path else []:
+            task_id = msg.split()[1] if len(msg.split()) > 1 else ""
+            if task_id in {t.id for t in self.plan.tasks}:
+                self.add(msg, [task_id])
+            else:
+                self.add(msg, scope="plan")
 
     def interfaces(self) -> None:
         """Every Consumes item has a Produces line with the same parameters and return type."""

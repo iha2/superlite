@@ -11,6 +11,8 @@ import pytest
 SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "swarm" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 import proto_discard  # noqa: E402
+import proto  # noqa: E402
+import run_tests  # noqa: E402
 import session_registry  # noqa: E402
 import state  # noqa: E402
 
@@ -73,6 +75,28 @@ def test_discard_none_without_state(repo):
     assert proto_discard.discard_open(repo / SL) is None
 
 
+def test_discard_refuses_while_background_tests_are_running(repo, monkeypatch, capsys):
+    sl, sb = open_proto(repo)
+    state = (sl / "feature.json").read_bytes()
+    monkeypatch.setattr(run_tests, "pending_runs", lambda _: [Path("worker.log")])
+    monkeypatch.setattr(run_tests, "wait_all", lambda _: 2)
+    result = proto_discard.discard_open(sl)
+    assert result == {"status": "tests-running"}
+    assert (sl / "feature.json").read_bytes() == state
+    assert sb.is_dir() and runs(repo) == []
+    assert "tests still running; retry" in capsys.readouterr().err
+
+
+def test_proto_command_refuses_while_background_tests_are_running(repo, monkeypatch, capsys):
+    sl, sb = open_proto(repo)
+    state = (sl / "feature.json").read_bytes()
+    monkeypatch.setattr(run_tests, "pending_runs", lambda _: [Path("worker.log")])
+    monkeypatch.setattr(run_tests, "wait_all", lambda _: 2)
+    assert proto.main(["discard", "--dir", str(sl)]) == 2
+    assert (sl / "feature.json").read_bytes() == state and sb.is_dir() and runs(repo) == []
+    assert "tests still running; retry" in capsys.readouterr().err
+
+
 def test_legacy_worktree_discard(repo):
     wt = repo.parent / "wt"
     git(repo, "worktree", "add", "-q", "-b", "proto-x", str(wt))
@@ -82,6 +106,18 @@ def test_legacy_worktree_discard(repo):
     assert st["status"] == "discarded" and st["branch_kept"] is False
     assert not wt.exists()
     assert "proto-x" not in git(repo, "branch").stdout
+
+
+def test_legacy_discard_reads_report_from_its_worktree(repo):
+    wt = repo.parent / "wt"
+    git(repo, "worktree", "add", "-q", "-b", "proto-report", str(wt))
+    (repo / SL / "report.json").write_text(json.dumps({"headline": "wrong checkout"}))
+    (wt / SL).mkdir()
+    (wt / SL / "report.json").write_text(json.dumps({"headline": "prototype report", "tasks": [1]}))
+    (repo / SL / "feature.json").write_text(json.dumps(
+        {"topic": "x", "worktree": wt.as_posix(), "branch": "proto-report", "status": "building"}))
+    st = proto_discard.discard_open(repo / SL)
+    assert st["proto_report"]["headline"] == "prototype report"
 
 
 def test_discard_records_session(repo):

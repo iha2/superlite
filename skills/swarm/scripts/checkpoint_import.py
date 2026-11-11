@@ -2,6 +2,7 @@
 
 IMPORT_DRIVER = r"""
 import importlib, importlib.util, json, os, sys, traceback
+from pathlib import Path
 sys.dont_write_bytecode = True
 root = os.path.abspath(sys.argv[1])
 dir_name = sys.argv[2]
@@ -9,12 +10,12 @@ files = sys.argv[3:]
 sys.path.insert(0, root)
 if os.path.isdir(os.path.join(root, "src")):
     sys.path.insert(1, os.path.join(root, "src"))
-sandbox_prefix = os.path.abspath(os.path.join(root, dir_name, "sandboxes"))
+sandbox_prefix = Path(os.path.abspath(os.path.join(root, dir_name, "sandboxes"))).as_posix()
 sandbox_roots = []
 for rel in files:
-    path = os.path.abspath(os.path.join(root, rel))
-    if path.startswith(sandbox_prefix + os.sep):
-        parts = os.path.relpath(path, sandbox_prefix).split(os.sep)
+    path = Path(os.path.abspath(os.path.join(root, rel)))
+    if path.as_posix().startswith(sandbox_prefix + "/"):
+        parts = os.path.relpath(path, sandbox_prefix).replace("\\", "/").split("/")
         if len(parts) >= 3:
             folder = os.path.join(sandbox_prefix, *parts[:2])
             source = os.path.join(folder, "src")
@@ -24,10 +25,10 @@ for rel in files:
 sys.path[:0] = sandbox_roots
 failures = []
 for rel in files:
-    path = os.path.join(root, rel)
+    path = Path(os.path.join(root, rel))
     module_root = root
-    if path.startswith(sandbox_prefix + os.sep):
-        parts_from_root = os.path.relpath(path, sandbox_prefix).split(os.sep)
+    if path.as_posix().startswith(sandbox_prefix + "/"):
+        parts_from_root = os.path.relpath(path, sandbox_prefix).replace("\\", "/").split("/")
         if len(parts_from_root) >= 3:
             folder = os.path.join(sandbox_prefix, *parts_from_root[:2])
             module_root = os.path.join(folder, "src")

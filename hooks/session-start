@@ -58,6 +58,16 @@ if [ -f "${PLUGIN_ROOT}/.claude-plugin/plugin.json" ]; then
   re_ver='"version"[[:space:]]*:[[:space:]]*"([^"]+)"'
   [[ $pj =~ $re_ver ]] && version="${BASH_REMATCH[1]}"
 fi
+upgrade_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+upgrade_marker="${upgrade_root}/.superlite/upgrade-scan-${version:-unknown}"
+if [ -d "${upgrade_root}/.superlite" ] && [ ! -e "$upgrade_marker" ]; then
+  if upgrade_context="$("$py" "${PLUGIN_ROOT}/skills/swarm/scripts/session.py" reconcile --legacy-only --root "$upgrade_root" 2>/dev/null)"; then
+    : > "$upgrade_marker" 2>/dev/null || true
+    if [ -n "$upgrade_context" ]; then
+      content="${content}"$'\n\n'"${upgrade_context}"
+    fi
+  fi
+fi
 # Same rule as history.home() in skills/swarm/scripts/history.py: change both together.
 re_abs='^/'  # absolute, as os.path.isabs: /x; on Windows (Git Bash, Cygwin) also C:\x and C:/x
 case ${OSTYPE:-} in msys*|cygwin*|win*) re_abs='^(/|[A-Za-z]:[\\/])' ;; esac

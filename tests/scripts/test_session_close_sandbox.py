@@ -14,6 +14,7 @@ SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "swarm" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 import proto_discard  # noqa: E402
+import run_tests  # noqa: E402
 import session_archive  # noqa: E402
 import session_ensure as E  # noqa: E402
 import session_reconcile as rec  # noqa: E402
@@ -65,6 +66,24 @@ def test_close_with_open_sandbox_discards_first(repo, calls):
     assert rc == 0
     assert calls[0] == ("discard", "session close")
     assert calls.index(("archive",)) > 0
+
+
+def test_close_refuses_when_prototype_tests_do_not_drain(repo, monkeypatch, capsys):
+    E.cmd_ensure(Namespace(slug="s1", root=str(repo), branch=None, move=None, untracked=None))
+    sb = repo / ".superlite" / "sandboxes" / "s1" / "export"
+    sb.mkdir(parents=True)
+    state = repo / ".superlite" / "feature.json"
+    state.write_text(json.dumps({"topic": "export", "session": "s1", "run_id": "r1",
+                                 "sandbox": sb.as_posix(), "status": "building"}))
+    before = state.read_bytes()
+    session_sandboxes.record(repo, "export", session="s1", path=".superlite/sandboxes/s1/export", status="building")
+    monkeypatch.setattr(run_tests, "pending_runs", lambda _: [Path("worker.log")])
+    monkeypatch.setattr(run_tests, "wait_all", lambda _: 2)
+    rc = E.cmd_close(Namespace(slug="s1", root=str(repo), keep_branch=False, untracked=None))
+    assert rc == 2
+    assert state.read_bytes() == before and sb.is_dir()
+    assert session_archive.read(repo, "s1") is None
+    assert "tests still running; retry" in capsys.readouterr().err
 
 
 def test_close_archives_updated_sandbox_entry(repo, calls, monkeypatch):
@@ -135,6 +154,14 @@ def test_reconcile_orphan_without_session_row(repo, calls):
     f.mkdir(parents=True)
     ds = _sb_drift(repo, _reg([]))
     assert [(d["class"], d["slug"]) for d in ds] == [("sandbox-orphan", "removed-session")]
+
+
+def test_reconcile_skips_legacy_worktree_root_in_sandboxes(repo, calls):
+    wt = repo / ".superlite" / "sandboxes" / "old-proto"
+    wt.parent.mkdir(parents=True, exist_ok=True)
+    git(repo, "worktree", "add", "-q", "-b", "old-proto", str(wt))
+    assert (wt / ".git").is_file()
+    assert _sb_drift(repo, _reg([])) == []
 
 
 def test_reconcile_missing_folder(repo, calls):
