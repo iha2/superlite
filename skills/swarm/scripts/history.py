@@ -16,7 +16,9 @@ ROW SCHEMA (v1), one JSON object per line:
   of the task's package), band (see band_of), critical_path (bool; predicted for source=run, actual for
   imports), slack_min (predicted slack in minutes, or actual slack_s / 60 for imports),
   tier (haiku|sonnet), agent_type, model, prime_bytes, duration_s, tokens {in,out,cache_read,cache_write},
-  cost_usd, tool_calls, first_time_pass (true|false|null), rework_s, rework_cost, pred_min.
+  cost_usd, tool_calls, first_time_pass (true|false|null), rework_s, rework_cost, pred_min,
+  phase ("proto" | "build"; absent on older rows; `run` is the run archive's id).
+Recording the same (run, task) twice is a no-op; stats and fits read through unique_rows (content duplicates count once).
 STATS (stats.json): {v, updated, rows, bands: {band: S}, tiers: {tier: S}, bands_by_tier: {tier|band: S}} with
   S = {n, ftp_n, ftp_rate, mean_s, p90_s, mean_cost}. Same rows, same stats (sorted keys, no clock in S).
 Stdlib only.
@@ -119,8 +121,34 @@ def derive(rows: list) -> dict:  # O(R log R)
             "bands_by_tier": {k: _stat(v) for k, v in sorted(both.items())}}
 
 
+def _content_key(r: dict) -> tuple:
+    tk = r.get("tokens") if isinstance(r.get("tokens"), dict) else {}
+    return (r.get("date"), r.get("task"), r.get("duration_s"), tk.get("in"), tk.get("out"), r.get("model"))
+
+
+def unique_rows(rows: list[dict]) -> list[dict]:  # O(R)
+    """Rows with content duplicates dropped, first kept: same date, task, duration, tokens in/out and model, any run id."""
+    seen: set = set()
+    out = []
+    for r in rows:
+        k = _content_key(r)
+        if k not in seen:
+            seen.add(k)
+            out.append(r)
+    return out
+
+
+def phase_of(sl_dir) -> str:  # O(W) file reads + 2 git spawns
+    """`proto` when this checkout is a prototype some run of the repo started, else `build`."""
+    try:
+        import proto
+        return "proto" if proto.originating_run(Path(sl_dir).resolve().parent) else "build"
+    except (ImportError, OSError, ValueError, base.GitError):  # fail open: a missing git or unreadable state is a build row
+        return "build"
+
+
 def write_stats(rows: list, path) -> dict:  # O(R log R)
-    st = derive(rows)
+    st = derive(unique_rows([r for r in rows if r.get("phase") != "proto"]))
     full = dict(st, updated=datetime.now().isoformat(timespec="seconds"))
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -179,6 +207,7 @@ def run_rows(plan_path, sl_dir=state.DIR_NAME, run_id=None) -> list:  # O(M + B 
     lang = detect_language(Path(sl).resolve().parent)
     prime = {t: (sl / name).stat().st_size if (sl / name).is_file() else None for t, name in (("sonnet", "prime.md"), ("haiku", "prime-haiku.md"))}
     rid = run_id or datetime.now().strftime("%Y%m%d-%H%M%S")
+    phase = phase_of(sl)
     rows = []
     for r in recs:
         task = plan.by_id.get(r["task"])
@@ -187,7 +216,7 @@ def run_rows(plan_path, sl_dir=state.DIR_NAME, run_id=None) -> list:  # O(M + B 
         f = flags.get(r["task"], {})
         tier = tiers.get(r["task"]) or ("haiku" if r["model"] == "haiku" else "sonnet")
         tk = r["tokens"]
-        rows.append({"v": 1, "date": date.today().isoformat(), "run": rid, "source": "run", "language": lang, "task": r["task"],
+        rows.append({"v": 1, "date": date.today().isoformat(), "run": rid, "phase": phase, "source": "run", "language": lang, "task": r["task"],
                      "kind": r["kind"], "loc": r["loc"], "components": r["components"], "tests": r["tests"], "focus": cats,
                      "band": band_of(r["kind"], r["loc"], r["tests"]), "critical_path": f.get("critical_path"),
                      "slack_min": f.get("slack_min"), "tier": tier, "agent_type": r["agent_type"], "model": r["model"],
@@ -198,12 +227,22 @@ def run_rows(plan_path, sl_dir=state.DIR_NAME, run_id=None) -> list:  # O(M + B 
     return rows
 
 
+def _fresh(rows: list, have: list) -> list:  # O(R + n)
+    known = {(r.get("run"), r.get("task")) for r in have}
+    return [r for r in rows if (r.get("run"), r.get("task")) not in known]
+
+
 def record_run(plan_path, sl_dir=state.DIR_NAME, run_id=None) -> list:  # O(R + n*w)
     """Append this run's rows (global and project) and refresh both stats files."""
     rows = run_rows(plan_path, sl_dir, run_id)
-    if rows:
-        append_rows(rows)
-        append_rows(rows, Path(sl_dir) / "history.jsonl")
+    proj = Path(sl_dir) / "history.jsonl"
+    new = _fresh(rows, read_rows())  # a row already recorded for this (run, task) is not recorded again
+    if new:
+        append_rows(new)
+    new_proj = _fresh(rows, read_rows(proj))
+    if new_proj:
+        append_rows(new_proj, proj)
+    rows = new
     write_stats(read_rows(), home() / "stats.json")
     write_stats(read_rows(Path(sl_dir) / "history.jsonl"), Path(sl_dir) / "stats.json")
     return rows

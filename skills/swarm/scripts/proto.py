@@ -123,7 +123,27 @@ def proto_report(st: dict) -> dict | None:  # O(file)
     if not st.get("worktree"):
         return None
     c = base.read_json(state.path(Path(st["worktree"]), "report.json"), None)
+    if not isinstance(c, dict):
+        c = _archived_report(Path(st["worktree"]))
     return {"headline": c.get("headline"), "cost_split": c.get("cost_split"), "tasks": len(c.get("tasks") or [])} if isinstance(c, dict) else None
+
+
+def _archived_report(worktree: Path) -> dict | None:  # O(archives)
+    """report.json of the newest archived run (hub `.superlite/runs/*/run.json`, by archived_at) of this checkout."""
+    try:
+        runs = state.hub_root(worktree) / state.DIR_NAME / "runs"
+        mine = worktree.resolve()
+        best = None
+        for meta in runs.glob("*/run.json") if runs.is_dir() else ():
+            m = base.read_json(meta, None)
+            if not isinstance(m, dict) or not m.get("checkout") or Path(m["checkout"]).resolve() != mine:
+                continue
+            rep = base.read_json(meta.parent / "report.json", None)
+            if isinstance(rep, dict) and (best is None or str(m.get("archived_at") or "") > best[0]):
+                best = (str(m.get("archived_at") or ""), rep)
+        return best[1] if best else None
+    except (OSError, ValueError, base.GitError):
+        return None
 
 
 def status_line(st: dict | None, sl=None) -> str:

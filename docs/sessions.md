@@ -10,6 +10,7 @@ A **session** is one line of work: a branch `superlite/sessions/<slug>`, parked 
 | Branch | `superlite/sessions/<slug>` (or the branch recorded for the slug) — one checkout only |
 | Slugs | `a-z`, `0-9`, `-`; `host` is reserved |
 | Live run | Host’s `.superlite/` while that session is active |
+| `runs/` | `<hub>/.superlite/runs/`: archived runs, never moved by sessions |
 
 ## Why
 

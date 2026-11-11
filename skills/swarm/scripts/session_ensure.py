@@ -14,6 +14,7 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
+import run_archive  # noqa: E402
 import session_archive as A  # noqa: E402
 import session_registry as R  # noqa: E402
 import session_wip as W  # noqa: E402
@@ -153,6 +154,12 @@ def cmd_ensure(a) -> int:  # O(tree)
         return guarded("ensure", lambda: _ensure(root, here, want, a))
 
 
+def _say_archived(root: Path, dest: Path | None) -> None:
+    if dest is not None:
+        shown = dest.relative_to(root) if dest.is_relative_to(root) else dest
+        print(f"run: archived leftovers to {shown.as_posix()}")
+
+
 def _ensure(root: Path, here: Path, want: str, a) -> int:
     reg = read(root)
     host = root
@@ -173,6 +180,7 @@ def _ensure(root: Path, here: Path, want: str, a) -> int:
     if is_open(row) and (not exist or row.get("branch") == exist) and (
             row["slug"] == want or row.get("topic") == want or not same(here, host)):
         print(f"session: {row['slug']} already open here")
+        _say_archived(root, run_archive.archive(state.run_dir(here), row["slug"], unfinished=True))
         session_line(row.get("worktree") or here, row["slug"],
                      row.get("branch") or ("HEAD" if row.get("detached") else branch_for(row["slug"])))
         return 0
@@ -207,6 +215,7 @@ def _ensure_branch(root: Path, reg: dict, here: Path, row: dict | None, want: st
         return _redirect_to_owner(root, reg, host, owner, want, exist)
     if is_open(row):
         print(f"session: {row['slug']} already open here")
+        _say_archived(root, run_archive.archive(state.run_dir(here), row["slug"], unfinished=True))
         session_line(row.get("worktree") or here, row["slug"], row.get("branch") or exist)
         return 0
     if row is not None and row.get("branch") == exist:  # its own finished branch: reopen, WIP stays
@@ -371,7 +380,8 @@ def start_in_host(root: Path, reg: dict, host: Path, slug: str, base: str, mode:
         return 2
     hide_all(root)
     reg["base"] = reg.get("base") or base  # the registry base is set once; each row keeps its own
-    live, held = state.run_dir(host), None
+    live = state.run_dir(host)
+    held, archived = None, []
     row = {"slug": slug, "branch": branch, "worktree": host.as_posix(), "has_stash": False, "run": "open",
            "created_at": now_ms(), **({"topic": topic} if topic else {}), **base_row(root, {**reg, "base": base}, existing),
            **({"adopted_branch": True} if existing else {})}
@@ -379,20 +389,35 @@ def start_in_host(root: Path, reg: dict, host: Path, slug: str, base: str, mode:
         with Journal() as j:
             if reg.get("active"):
                 _park_first(root, reg, host, keep, note, j)
-            elif run_entries(live):  # leftovers of an unregistered run: keep them, never wipe
-                held = Path(tempfile.mkdtemp(prefix="superlite-ensure-"))
-                move_run_state(live, held)
+            elif run_entries(live):  # leftovers of an unregistered run: archive them, the new run starts empty
+                held = _archive_unregistered(live, j, archived)
             if not branch_exists(root, branch):
                 j.step("create the branch")
                 git("branch", branch, base, cwd=root)
                 j.undo(lambda: git("branch", "-D", branch, cwd=root, check=False), "branch")
             live.mkdir(parents=True, exist_ok=True)
             j.step("enter the session")
-            return enter_session(root, reg, host, row, j)
+            rc = enter_session(root, reg, host, row, j)
+        for dest in archived:  # the session did not start: put the leftovers back, say nothing
+            _say_archived(root, dest) if rc == 0 else run_archive.restore(dest, live)
+        return rc
     finally:
         if held is not None:
             move_run_state(held, live)
             shutil.rmtree(held, ignore_errors=True)
+
+
+def _archive_unregistered(live: Path, j: Journal, archived: list) -> Path | None:
+    """Archive an unregistered run's leftovers; return the folder holding config files set aside, if any."""
+    j.step("archive the leftovers")
+    dest = run_archive.archive(live, None, unfinished=True)
+    if dest is not None:
+        archived.append(dest)
+        j.undo(lambda: run_archive.restore(dest, live), "archive")
+    held = Path(tempfile.mkdtemp(prefix="superlite-ensure-")) if run_entries(live) else None
+    if held:  # config files stay live: set them aside, enter wipes the folder
+        move_run_state(live, held)
+    return held
 
 
 def _park_first(root: Path, reg: dict, host: Path, keep: bool, note: str | None, j: Journal) -> None:

@@ -239,12 +239,26 @@ def test_concurrent_ensure_same_slug_makes_one_session(repo):
     assert [s["slug"] for s in reg_of(repo)["sessions"]] == ["demo"]
 
 
+def _assert_leftover_archived(repo):
+    """Leftover run files are archived (not lost) under runs/<id>-run-unfinished/."""
+    dirs = sorted((repo / ".superlite" / "runs").glob("*-unfinished"))
+    assert len(dirs) == 1, dirs
+    meta = json.loads((dirs[0] / "run.json").read_text(encoding="utf-8"))
+    assert meta["status"] == "unfinished", meta
+    found = [f for f in dirs[0].rglob("notes.txt")]
+    live = (repo / ".superlite" / "notes.txt")
+    assert found or live.exists(), "leftover lost"
+    assert not live.exists() or live.read_text() == "keep\n"
+    if found:
+        assert found[0].read_text() == "keep\n"
+
+
 def test_leftover_run_files_without_active_survive_ensure(repo):
     (repo / ".superlite").mkdir()
     (repo / ".superlite" / "notes.txt").write_text("keep\n")
     cp = run("ensure", "--slug", "demo", cwd=repo)
     assert cp.returncode == 0, cp.both
-    assert (repo / ".superlite" / "notes.txt").read_text() == "keep\n"
+    _assert_leftover_archived(repo)
 
 
 def test_failed_switch_keeps_dirty_work_and_leftovers(repo):
@@ -258,7 +272,7 @@ def test_failed_switch_keeps_dirty_work_and_leftovers(repo):
     (repo / "app.py").write_text("dirty\n")
     (repo / ".superlite" / "notes.txt").write_text("keep\n")
     run("ensure", "--slug", "b", cwd=repo)
-    assert (repo / ".superlite" / "notes.txt").read_text() == "keep\n"
+    _assert_leftover_archived(repo)
     assert "dirty" in (repo / "app.py").read_text() or git(repo, "stash", "list").strip()
 
 

@@ -96,7 +96,7 @@ Hooks write `.superlite/metrics.jsonl`; details in `metrics.md`. `lint` and `dis
 
 ## Freeze, rulings, finish
 
-After a green suite: freeze. Archive `.superlite/incidents.jsonl` and `progress.md` next to the plan. Run `bash "$CLI" finish --plan $PLAN`; print its rulings in your closing message under "Rulings I made", each with its cost. Its last block is the report summary: print it before any merge or PR option; full: `<plan>.report.md`. Then invoke `superlite:shipping`.
+After a green suite: freeze. `finish` moves the run's files into `.superlite/runs/<id>/`. Run `bash "$CLI" finish --plan $PLAN`; print its rulings in your closing message under "Rulings I made", each with its cost. Its last block is the report summary: print it before any merge or PR option; full: `<plan>.report.md`. Then invoke `superlite:shipping`.
 
 ## Stop conditions
 

@@ -116,9 +116,11 @@ def test_finish_reports_the_mode_and_the_approval_time(tmp_path):
     assert "orchestrator: not set (ungated)" in finish(tmp_path)
     orch(tmp_path, "set", "human")
     assert "orchestrator: human, awaiting approval" in finish(tmp_path)
-    approve_human(tmp_path, "dana")
+    orch(tmp_path, "set", "human")  # the finish above archived the mode file
+    cp = approve_human(tmp_path, "dana")
+    assert cp.returncode == 0, cp.both
+    st = json.loads((tmp_path / ".superlite" / "orchestrator.json").read_text(encoding="utf-8"))  # finish archives it
     out = finish(tmp_path)
-    st = json.loads((tmp_path / ".superlite" / "orchestrator.json").read_text(encoding="utf-8"))
     assert f"orchestrator: human, approved {st['approved_time']} by dana" in out
     orch(tmp_path, "set", "ai")
     assert "orchestrator: AI" in finish(tmp_path)
