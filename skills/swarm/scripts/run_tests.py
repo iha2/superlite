@@ -407,8 +407,9 @@ def serial_addopts():  # O(size of pyproject) -> ["-o", "addopts=..."] when xdis
     try:
         import tomllib
         ini = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["tool"]["pytest"]["ini_options"]
-        toks = shlex.split(ini.get("addopts", ""))
-    except (OSError, ValueError, KeyError, ImportError):
+        raw = ini.get("addopts", "")  # TOML allows a string or a list of strings
+        toks = [t for t in raw if isinstance(t, str)] if isinstance(raw, list) else shlex.split(raw)
+    except (OSError, ValueError, KeyError, ImportError, AttributeError, TypeError):
         return []
     keep, i = [], 0
     while i < len(toks):

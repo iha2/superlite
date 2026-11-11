@@ -182,14 +182,15 @@ def is_full_trigger(path: str, root: str = ".") -> bool:  # O(map)
 CODE_EXTS = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")
 LANG_EXTS = {"python": (".py",), "typescript": CODE_EXTS, "javascript": CODE_EXTS, "node": CODE_EXTS, "go": (".go",),
              "rust": (".rs",), "csharp": (".cs",), "dotnet": (".cs",)}
-# Runners whose tests live inside source files or in non-test_* names (Rust inline and tests/*.rs, .NET FooTests.cs):
-# a change to their code runs the whole suite.
-OPAQUE_RUNNERS = {"rust": (".rs",), "csharp": (".cs",), "dotnet": (".cs",)}
 
 
 def _is_test(p: str) -> bool:
-    """A test FILE by name: test_*.<ext>, *_test.<ext>, *.test.<ext>, *.spec.<ext> (spec only with a code extension)."""
-    name = Path(p.replace("\\", "/")).name
+    """A test FILE by name: test_*.<ext>, *_test.<ext>, *.test.<ext>, *.spec.<ext> (spec only with a code extension),
+    Rust integration tests (tests/<name>.rs) and .NET test classes (FooTests.cs, FooTest.cs)."""
+    p = p.replace("\\", "/")
+    name = Path(p).name
+    if re.search(r"(^|/)tests/[^/]+\.rs$", p) or re.match(r"^.+Tests?\.cs$", name):
+        return True
     if re.match(r"^(test_.*|.*_test)\.[^.]+$", name) or re.search(r"\.test\.[^./]+$", name):
         return not name.endswith((".md", ".json", ".jsonl", ".txt"))
     m = re.search(r"\.spec(\.[^./]+)$", name)
@@ -305,10 +306,6 @@ def select_affected(root: str, changed: list[str]) -> dict:  # O(changed * tests
         if is_full_trigger(p, root):
             return {"full": True, "selected": [], "reasons": {}, "untested": [], "trigger": p}
     lang = _language(root)
-    exts = OPAQUE_RUNNERS.get(lang or "")
-    opaque = next((p for p in paths if p.endswith(exts)), None) if exts else None
-    if opaque:  # these runners' tests are not addressable by file name: run them all
-        return {"full": True, "selected": [], "reasons": {}, "untested": [], "trigger": f"{lang} code {opaque}"}
     rmap = _read_map(root)
     keep = _collectable(root, lang)
     tests = [t for t in _walk_tests(root) if keep(t)]
@@ -328,7 +325,7 @@ def select_affected(root: str, changed: list[str]) -> dict:  # O(changed * tests
         return texts[t]
 
     for p in paths:
-        is_test = _is_test(p)
+        is_test = _is_test(p) or (lang == "rust" and p.endswith(".rs") and "#[cfg(test)]" in text(p))  # inline Rust tests
         hits = [(p, "changed")] if is_test and keep(p) and (Path(root) / p).is_file() else []
         if not is_test:
             hits += _related_hits(root, p, keep)
@@ -348,6 +345,32 @@ def _go_package(p: str) -> str:  # pkg/foo_test.go -> ./pkg, root_test.go -> ., 
     return "./" + d if d else "."
 
 
+def _rust_target(p: str, root: Path) -> tuple[str, ...]:  # tests/foo.rs -> --test foo, inline tests -> --lib or --bins
+    if not p.endswith(".rs"):
+        return (p,)
+    if re.search(r"(^|/)tests/[^/]+\.rs$", p):
+        return ("--test", Path(p).stem)
+    return ("--lib",) if (root / "src" / "lib.rs").is_file() else ("--bins",)
+
+
+def _runner_args(runner: str, paths: list[str], root: Path) -> list[str]:
+    """Selected test files -> what the runner (the command's first two words) takes: `go test x_test.go` drops the
+    package's other files, cargo and dotnet take targets and filters, not paths. Any other command gets the paths."""
+    paths = [p.replace("\\", "/") for p in paths]
+    if not paths:
+        return paths
+    if runner == "go test":
+        return list(dict.fromkeys(_go_package(p) for p in paths))
+    if runner == "cargo test":
+        return [t for pair in dict.fromkeys(_rust_target(p, root) for p in paths) for t in pair]
+    if runner == "dotnet test":
+        classes = [Path(p).stem for p in paths if p.endswith(".cs")]
+        rest = [p for p in paths if not p.endswith(".cs")]
+        flt = ["--filter", '"' + "|".join(f"FullyQualifiedName~{c}" for c in dict.fromkeys(classes)) + '"'] if classes else []
+        return rest + flt
+    return paths
+
+
 def resolve(root=".", paths=()):  # O(m + f)
     """-> {"language", "python": bool, "command": str|None, "junit": str, "env": {}, "setup": str, "source"} or None."""
     root = Path(root)
@@ -359,10 +382,9 @@ def resolve(root=".", paths=()):  # O(m + f)
         return None
     if cfg.get("test") is None and cfg.get("language") == "python":
         return {"language": "python", "python": True, "command": None, "junit": "", "env": {}, "setup": "", "source": src}
-    if cfg.get("language") == "go" and paths:  # `go test x_test.go` drops the package's other files: test packages
-        paths = list(dict.fromkeys(_go_package(p) for p in paths))
-    files = " ".join(f'"{p}"' if " " in p else p for p in paths)
     template = cfg.get("test_file") or cfg["test"]
+    paths = _runner_args(" ".join(template.split()[:2]), list(paths), root)
+    files = " ".join(f'"{p}"' if " " in p else p for p in paths)
     command = template.replace("{files}", files) if paths else cfg["test"]
     if paths and "{files}" not in template:  # a test_file without {files} runs everything
         command = template

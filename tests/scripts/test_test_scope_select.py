@@ -181,23 +181,40 @@ def test_changed_files_bad_base_raises(tmp_path):
         testcmd.changed_files(str(tmp_path), "0123456789abcdef0123456789abcdef01234567")
 
 
-@pytest.mark.parametrize("marker, code, test", [
-    ("Cargo.toml", "src/lib.rs", "tests/integration.rs"),
-    ("app.csproj", "src/Cart.cs", "tests/CartTests.cs"),
-])
-def test_opaque_runner_code_change_runs_everything(tmp_path, marker, code, test):
-    write(tmp_path, marker, "")
-    write(tmp_path, code, "")
-    write(tmp_path, test, "")
-    r = testcmd.select_affected(str(tmp_path), [code])
-    assert r["full"] is True and r["trigger"].endswith(code)
-
-
-def test_opaque_runner_doc_change_selects_nothing(tmp_path):
+def test_rust_selects_integration_and_inline_tests_not_everything(tmp_path):
     write(tmp_path, "Cargo.toml", "")
-    write(tmp_path, "README.md", "")
-    r = testcmd.select_affected(str(tmp_path), ["README.md"])
-    assert r["full"] is False and r["selected"] == []
+    write(tmp_path, "src/lib.rs", "pub mod cart;\n")
+    write(tmp_path, "src/cart.rs", "pub fn total() {}\n#[cfg(test)]\nmod tests {}\n")
+    write(tmp_path, "src/other.rs", "")
+    write(tmp_path, "tests/checkout.rs", "use app::cart::total;\n")
+    write(tmp_path, "tests/unrelated.rs", "")
+    r = testcmd.select_affected(str(tmp_path), ["src/cart.rs"])
+    assert r["full"] is False
+    assert r["reasons"] == {"src/cart.rs": "changed", "tests/checkout.rs": "mention"}
+    assert testcmd.resolve(str(tmp_path), r["selected"])["command"] == "cargo test --lib --test checkout"
+
+
+def test_rust_binary_crate_inline_tests_run_bins(tmp_path):
+    write(tmp_path, "Cargo.toml", "")
+    write(tmp_path, "src/main.rs", "#[cfg(test)]\nmod tests {}\n")
+    assert testcmd.resolve(str(tmp_path), ["src/main.rs"])["command"] == "cargo test --bins"
+
+
+def test_dotnet_selects_test_classes_by_filter(tmp_path):
+    write(tmp_path, "app.csproj", "")
+    write(tmp_path, "src/Cart.cs", "class Cart {}\n")
+    write(tmp_path, "tests/CartTests.cs", "new Cart();\n")
+    write(tmp_path, "tests/OrderTest.cs", "new Order();\n")
+    r = testcmd.select_affected(str(tmp_path), ["src/Cart.cs"])
+    assert r["full"] is False and r["selected"] == ["tests/CartTests.cs"]
+    cmd = testcmd.resolve(str(tmp_path), ["tests/CartTests.cs", "tests/OrderTest.cs"])["command"]
+    assert cmd == 'dotnet test --filter "FullyQualifiedName~CartTests|FullyQualifiedName~OrderTest"'
+
+
+def test_custom_runner_command_gets_paths_unchanged(tmp_path):
+    write(tmp_path, ".superlite/test-cmd.json", json.dumps(
+        {"language": "rust", "test": "make check", "test_file": "make check ARGS={files}"}))
+    assert testcmd.resolve(str(tmp_path), ["tests/a.rs"])["command"] == "make check ARGS=tests/a.rs"
 
 
 def test_go_selection_tests_packages(tmp_path):

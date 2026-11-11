@@ -19,7 +19,7 @@ If you wrote code before the test, delete it and restart from the test. Do not k
 ## Scope of runs
 
 - Run only focused tests inside a task: the new test, then its file or module.
-- Do not run the full suite inside a task. Shipping runs the finish test run; inside a task use `bash <skill-dir>/../swarm/scripts/superlite-cli run_tests --affected --files <touched files> --background`, then `--wait` (`--fast PATHS` is the manual fallback). When working inline, run `--affected` once at the end and read its one-line summary.
+- Do not run the full suite inside a task. Shipping runs the finish test run; inside a task use `bash <skill-dir>/../swarm/scripts/superlite-cli run_tests --affected --files <touched files> --background`, then `--wait --run <id>` with the id from its `wait:` line, never a bare `--wait` (`--fast PATHS` is the manual fallback). When working inline, run `--affected` once at the end and read its one-line summary.
 
 ## Bugfixes
 

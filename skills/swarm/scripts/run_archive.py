@@ -12,7 +12,7 @@ import base  # noqa: E402
 import session_registry  # noqa: E402
 import state  # noqa: E402
 
-KEEP = {"runs", "research", "test-cmd.json", "test-map.json","agent-specs.json", "host-models.json", "peers.json"}
+KEEP = {"runs", "research", "test-cmd.json", "test-map.json", "agent-specs.json", "host-models.json", "peers.json"}
 CURRENT_RUN = "current-run.json"
 CURRENT_ID = re.compile(r"^\d{8}-\d{6}-[a-z0-9][a-z0-9-]{0,40}(?:-\d+)?$")
 

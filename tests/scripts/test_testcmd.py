@@ -180,5 +180,8 @@ def test_pytest_runs_serially_when_addopts_ask_for_xdist_that_is_missing(tmp_pat
     real = importlib.util.find_spec
     monkeypatch.setattr(importlib.util, "find_spec", lambda n, *a: None if n == "xdist" else real(n, *a))
     assert run_tests.serial_addopts() == ["-o", "addopts=--strict-markers"]
+    (tmp_path / "pyproject.toml").write_text(  # the TOML list form gives the same serial command
+        '[tool.pytest.ini_options]\naddopts = ["-n", "auto", "--dist", "loadfile", "--strict-markers"]\n', encoding="utf-8")
+    assert run_tests.serial_addopts() == ["-o", "addopts=--strict-markers"]
     monkeypatch.setattr(importlib.util, "find_spec", lambda n, *a: object() if n == "xdist" else real(n, *a))
     assert run_tests.serial_addopts() == []
