@@ -166,3 +166,15 @@ def test_wait_empty_selection_success_only_for_affected(repo, mode, failed, expe
         "skipped": 0, "run_id": rid,
     }))
     assert run_tests.main(["--summary", "s.json", "--wait", "--run", rid, "--timeout", "2"]) == expected
+
+
+def test_wait_all_drains_background_runs(repo, capsys):
+    Path("s-R1.log").write_text("")
+    Path("s-R2.log").write_text("")
+    Path("s-R1.json").write_text("{}")
+    assert [p.name for p in run_tests.pending_runs("s.json")] == ["s-R2.json"]
+    assert run_tests.main(["--summary", "s.json", "--wait", "--all", "--timeout", "0"]) == 2
+    assert "s-R2.json" in capsys.readouterr().err
+    Path("s-R2.json").write_text("{}")
+    assert run_tests.main(["--summary", "s.json", "--wait", "--all", "--timeout", "0"]) == 0
+    assert "drained" in capsys.readouterr().out

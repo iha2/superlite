@@ -6,6 +6,7 @@ parse its junit XML or output, print one summary line.
                  [--summary PATH] [--background]
                  [--expect SECONDS]
     run_tests.py --wait [--run ID] [--timeout S] [--patient] [--summary PATH]
+    run_tests.py --wait --all [--timeout S] [--summary PATH]   (until every background run is done; finish runs this)
 
 --affected runs only the tests testcmd.select_affected picks for the changed files (git changes since
 --base, default the last `- start <sha>` in the ledger, else HEAD; --files replaces git). The summary has
@@ -111,6 +112,28 @@ def start_background(a, argv):  # O(len argv) + one detached spawn
     base.spawn_background(child, mine.with_suffix(".log"))
     print(f"wait: run_tests --wait --run {run_id}")
     print(f"summary: {mine}")  # last: callers read the final line as the summary path
+    return 0
+
+
+def pending_runs(summary):  # O(runs) background runs next to `summary` whose own summary is not written yet
+    p = Path(summary)
+    return sorted(log.with_suffix(p.suffix) for log in p.parent.glob(f"{p.stem}-*.log")
+                  if not log.with_suffix(p.suffix).exists())
+
+
+def wait_all(summary, timeout=None):  # O(timeout / POLL_SECONDS) polls -> 0 drained, 2 timed out
+    """Block until every background run started next to `summary` has written its own summary."""
+    limit = timeout if timeout is not None else DEFAULT_WAIT
+    deadline = time.monotonic() + limit
+    left = pending_runs(summary)
+    while left and time.monotonic() < deadline:
+        time.sleep(POLL_SECONDS)
+        left = pending_runs(summary)
+    if left:
+        print(f"run_tests: TIMEOUT: {len(left)} background run(s) still going after {limit:.0f}s: "
+              + ", ".join(x.name for x in left), file=sys.stderr)
+        return 2
+    print("drained: no background test runs left")
     return 0
 
 
@@ -278,6 +301,7 @@ def main(argv=None):  # O(X + T*d + B + F log F) + pytest run + one incident app
                     help="start a detached run, print `summary: <path>`, exit 0")
     ap.add_argument("--wait", action="store_true", help="wait for the latest background run's summary")
     ap.add_argument("--run", default=None, metavar="ID", help="with --wait: wait for this run id (the `wait:` line), not the newest")
+    ap.add_argument("--all", action="store_true", help="with --wait: wait until every background run has finished")
     ap.add_argument("--timeout", type=float, default=None, help=f"--wait limit in seconds (default {DEFAULT_WAIT:.0f})")
     ap.add_argument("--expect", type=float, default=None, metavar="SECONDS",
                     help="expected test time; the hang probe starts at 3x this (default: last green run, else config fallback)")
@@ -287,7 +311,7 @@ def main(argv=None):  # O(X + T*d + B + F log F) + pytest run + one incident app
     argv = list(sys.argv[1:] if argv is None else argv)
     a = ap.parse_args(argv)
     if a.wait:
-        return wait_background(a)
+        return wait_all(a.summary, a.timeout) if a.all else wait_background(a)
     global RUN_ID
     RUN_ID = a.run_id or new_run_id()
     if a.reuse and (a.full or not (a.fast or a.affected)) and try_reuse(a):

@@ -311,3 +311,19 @@ def test_finish_uses_marker_id_for_archive_and_history(repo, calls, capsys, monk
     assert seen == [marker["id"]]
     assert json.loads((arch / "current-run.json").read_text())["id"] == marker["id"]
     assert json.loads((arch / "run.json").read_text())["id"] == marker["id"]
+
+
+def test_finish_waits_for_background_test_runs_before_archiving(repo, calls, capsys, monkeypatch):
+    import run_tests
+    sl = repo / ".superlite"
+    (sl / "test-summary-R1.log").write_text("")
+    seen = []
+
+    def fake_wait(summary, timeout=None):  # the run finishes while finish waits
+        seen.append(Path(summary).name)
+        (sl / "test-summary-R1.json").write_text("{}")
+        return 0
+    monkeypatch.setattr(run_tests, "wait_all", fake_wait)
+    run_main(capsys)
+    (arch,) = runs_of(repo)
+    assert seen == ["test-summary.json"] and (arch / "test-summary-R1.json").is_file()
