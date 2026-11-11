@@ -71,7 +71,7 @@ def park_active(root: Path, reg: dict, host: Path, slug: str, keep_untracked: bo
 
 
 def enter_session(root: Path, reg: dict, host: Path, row: dict, j: Journal | None = None,
-                  restore_state: bool = True) -> int:  # O(S + diff)
+                  restore_state: bool = True) -> int:
     """Switch the host to row's branch, restore its run files and its stash; mark it active."""
     slug, branch = row["slug"], row["branch"]
     if not branch_exists(root, branch):
@@ -152,12 +152,6 @@ def cmd_ensure(a) -> int:  # O(tree)
     here, root = toplevel(start), hub_root(start)
     with registry_lock(root):
         return guarded("ensure", lambda: _ensure(root, here, want, a))
-
-
-def _say_archived(root: Path, dest: Path | None) -> None:
-    if dest is not None:
-        shown = dest.relative_to(root) if dest.is_relative_to(root) else dest
-        print(f"run: archived leftovers to {shown.as_posix()}")
 
 
 def _ensure(root: Path, here: Path, want: str, a) -> int:
