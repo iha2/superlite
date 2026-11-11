@@ -14,6 +14,7 @@ import argparse
 import fnmatch
 import json
 import os
+import posixpath
 import re
 import subprocess
 import sys
@@ -153,11 +154,18 @@ def _git(root: str, *args: str) -> list[str] | None:  # O(output)
     return [x.replace("\\", "/") for x in r.stdout.decode("utf-8", "replace").split("\0") if x]
 
 
+class BaseUnreadable(Exception):
+    """Inside a repo, git could not diff against the base (unknown or shallow-missing SHA, no HEAD yet)."""
+
+
 def changed_files(root: str, base: str | None) -> list[str]:  # O(changes)
-    """Paths changed vs `base` (default HEAD) plus untracked non-ignored files; sorted, posix; [] outside a repo."""
+    """Paths changed vs `base` (default HEAD) plus untracked non-ignored files; sorted, posix; [] outside a repo.
+    Raises BaseUnreadable when inside a repo the diff fails, so a bad base never reads as "nothing changed"."""
     tracked = _git(root, "diff", "--name-only", "-z", base or "HEAD", "--")
     if tracked is None:
-        return []
+        if _git(root, "rev-parse", "--git-dir") is None:
+            return []
+        raise BaseUnreadable(f"cannot diff against {base or 'HEAD'}")
     untracked = _git(root, "ls-files", "-z", "--others", "--exclude-standard") or []
     return sorted(set(tracked) | set(untracked))
 
@@ -174,6 +182,9 @@ def is_full_trigger(path: str, root: str = ".") -> bool:  # O(map)
 CODE_EXTS = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")
 LANG_EXTS = {"python": (".py",), "typescript": CODE_EXTS, "javascript": CODE_EXTS, "node": CODE_EXTS, "go": (".go",),
              "rust": (".rs",), "csharp": (".cs",), "dotnet": (".cs",)}
+# Runners whose tests live inside source files or in non-test_* names (Rust inline and tests/*.rs, .NET FooTests.cs):
+# a change to their code runs the whole suite.
+OPAQUE_RUNNERS = {"rust": (".rs",), "csharp": (".cs",), "dotnet": (".cs",)}
 
 
 def _is_test(p: str) -> bool:
@@ -185,17 +196,22 @@ def _is_test(p: str) -> bool:
     return bool(m and m.group(1) in CODE_EXTS)
 
 
-def _ini_testpaths(text: str, section: str):
-    sec = None
+def _ini_testpaths(text: str, section: str):  # the value with its indented continuation lines, or None
+    sec, vals = None, None
     for line in text.splitlines():
+        if vals is not None:
+            if not (line[:1].isspace() and line.strip()):
+                break
+            vals += [] if line.strip().startswith(("#", ";")) else line.split()
+            continue
         m = re.match(r"^\s*\[([^\]]+)\]\s*$", line)
         if m:
             sec = m.group(1).strip()
             continue
         m = re.match(r"^\s*testpaths\s*[=:]\s*(.*)$", line)
         if sec == section and m:
-            return m.group(1).split()
-    return None
+            vals = m.group(1).split()
+    return vals or None
 
 
 def pytest_testpaths(root: str) -> list[str]:  # O(config files); [] when none is configured
@@ -219,9 +235,11 @@ def pytest_testpaths(root: str) -> list[str]:  # O(config files); [] when none i
     return []
 
 
-def _collectable(root: str):  # -> predicate: does the project's runner collect this test path
-    spec = resolve(root)
-    lang = (spec or {}).get("language")
+def _language(root: str):
+    return (resolve(root) or {}).get("language")
+
+
+def _collectable(root: str, lang):  # -> predicate: does the project's runner collect this test path
     exts = LANG_EXTS.get(lang or "")
     if lang == "go":
         exts = None
@@ -286,8 +304,13 @@ def select_affected(root: str, changed: list[str]) -> dict:  # O(changed * tests
     for p in paths:
         if is_full_trigger(p, root):
             return {"full": True, "selected": [], "reasons": {}, "untested": [], "trigger": p}
+    lang = _language(root)
+    exts = OPAQUE_RUNNERS.get(lang or "")
+    opaque = next((p for p in paths if p.endswith(exts)), None) if exts else None
+    if opaque:  # these runners' tests are not addressable by file name: run them all
+        return {"full": True, "selected": [], "reasons": {}, "untested": [], "trigger": f"{lang} code {opaque}"}
     rmap = _read_map(root)
-    keep = _collectable(root)
+    keep = _collectable(root, lang)
     tests = [t for t in _walk_tests(root) if keep(t)]
     texts: dict[str, str] = {}
     reasons: dict[str, str] = {}
@@ -305,16 +328,24 @@ def select_affected(root: str, changed: list[str]) -> dict:  # O(changed * tests
         return texts[t]
 
     for p in paths:
-        if _is_test(p):
-            if keep(p) and (Path(root) / p).is_file():
-                add(p, "changed")
-            continue
-        hits = _related_hits(root, p, keep) + _mention_hits(p, tests, text) + _map_hits(root, p, rmap, tests, keep)
+        is_test = _is_test(p)
+        hits = [(p, "changed")] if is_test and keep(p) and (Path(root) / p).is_file() else []
+        if not is_test:
+            hits += _related_hits(root, p, keep)
+        hits += _mention_hits(p, tests, text) + _map_hits(root, p, rmap, tests, keep)  # a changed test still selects its dependents
         for t, why in hits:
             add(t, why)
-        if not hits:
+        if not hits and not is_test:
             untested.append(p)
     return {"full": False, "selected": sorted(reasons), "reasons": dict(sorted(reasons.items())), "untested": untested}
+
+
+def _go_package(p: str) -> str:  # pkg/foo_test.go -> ./pkg, root_test.go -> ., a package argument stays as is
+    p = p.replace("\\", "/")
+    if not p.endswith(".go"):
+        return p
+    d = posixpath.dirname(p)
+    return "./" + d if d else "."
 
 
 def resolve(root=".", paths=()):  # O(m + f)
@@ -328,6 +359,8 @@ def resolve(root=".", paths=()):  # O(m + f)
         return None
     if cfg.get("test") is None and cfg.get("language") == "python":
         return {"language": "python", "python": True, "command": None, "junit": "", "env": {}, "setup": "", "source": src}
+    if cfg.get("language") == "go" and paths:  # `go test x_test.go` drops the package's other files: test packages
+        paths = list(dict.fromkeys(_go_package(p) for p in paths))
     files = " ".join(f'"{p}"' if " " in p else p for p in paths)
     template = cfg.get("test_file") or cfg["test"]
     command = template.replace("{files}", files) if paths else cfg["test"]

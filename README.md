@@ -87,7 +87,7 @@ A read-only view, offered when you approve the plan (reply `approve map`), or op
 
 ## Install
 
-You need Claude Code, git, Python 3.10 or newer (the tools are Python; the project you build can be in any language), and `bash` (Git Bash on Windows). `uv` is optional.
+You need Claude Code, git, Python 3.12 or newer (the tools are Python; the project you build can be in any language), and `bash` (Git Bash on Windows). `uv` is optional.
 
 ```
 /plugin marketplace add iha2/superlite

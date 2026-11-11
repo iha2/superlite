@@ -166,3 +166,67 @@ def test_other_language_dropped_for_python(tmp_path):
     write(tmp_path, "web/a.test.ts", "import a\n")
     r = testcmd.select_affected(str(tmp_path), ["src/a.py"])
     assert r["selected"] == ["tests/test_a.py"]
+
+
+@pytest.mark.skipif(not shutil.which("git"), reason="git missing")
+def test_changed_files_bad_base_raises(tmp_path):
+    def git(*a):
+        subprocess.run(["git", "-c", "user.email=a@b", "-c", "user.name=n", *a], cwd=tmp_path, check=True, capture_output=True)
+
+    git("init", "-q")
+    write(tmp_path, "a.py", "1")
+    git("add", ".")
+    git("commit", "-qm", "i")
+    with pytest.raises(testcmd.BaseUnreadable):
+        testcmd.changed_files(str(tmp_path), "0123456789abcdef0123456789abcdef01234567")
+
+
+@pytest.mark.parametrize("marker, code, test", [
+    ("Cargo.toml", "src/lib.rs", "tests/integration.rs"),
+    ("app.csproj", "src/Cart.cs", "tests/CartTests.cs"),
+])
+def test_opaque_runner_code_change_runs_everything(tmp_path, marker, code, test):
+    write(tmp_path, marker, "")
+    write(tmp_path, code, "")
+    write(tmp_path, test, "")
+    r = testcmd.select_affected(str(tmp_path), [code])
+    assert r["full"] is True and r["trigger"].endswith(code)
+
+
+def test_opaque_runner_doc_change_selects_nothing(tmp_path):
+    write(tmp_path, "Cargo.toml", "")
+    write(tmp_path, "README.md", "")
+    r = testcmd.select_affected(str(tmp_path), ["README.md"])
+    assert r["full"] is False and r["selected"] == []
+
+
+def test_go_selection_tests_packages(tmp_path):
+    write(tmp_path, "go.mod", "module x\n")
+    spec = testcmd.resolve(str(tmp_path), ["pkg/foo_test.go", "pkg/bar_test.go", "root_test.go"])
+    assert spec["command"] == "go test ./pkg ."
+
+
+def test_changed_test_still_selects_mapped_and_mentioning_tests(tmp_path):
+    write(tmp_path, "tests/test_helpers.py", "")
+    write(tmp_path, "tests/test_api.py", "x")
+    write(tmp_path, "tests/test_ui.py", "from test_helpers import h\n")
+    write(tmp_path, ".superlite/test-map.json", json.dumps({"tests/test_helpers.py": ["tests/test_api.py"]}))
+    r = testcmd.select_affected(str(tmp_path), ["tests/test_helpers.py"])
+    assert r["reasons"] == {"tests/test_api.py": "map", "tests/test_helpers.py": "changed", "tests/test_ui.py": "mention"}
+
+
+def test_deleted_test_still_selects_its_mapped_tests(tmp_path):
+    write(tmp_path, "tests/test_api.py", "x")
+    write(tmp_path, ".superlite/test-map.json", json.dumps({"tests/test_helpers.py": ["tests/test_api.py"]}))
+    r = testcmd.select_affected(str(tmp_path), ["tests/test_helpers.py"])
+    assert r["selected"] == ["tests/test_api.py"] and r["untested"] == []
+
+
+@pytest.mark.parametrize("ini, want", [
+    ("[pytest]\ntestpaths = tests/unit\n    tests/integration\n", ["tests/unit", "tests/integration"]),
+    ("[pytest]\ntestpaths =\n    tests/unit\n    # skipped\n    tests/integration\nother = 1\n", ["tests/unit", "tests/integration"]),
+    ("[pytest]\ntestpaths = a b\n\n    c\n", ["a", "b"]),
+])
+def test_ini_testpaths_continuation_lines(tmp_path, ini, want):
+    write(tmp_path, "pytest.ini", ini)
+    assert testcmd.pytest_testpaths(str(tmp_path)) == want

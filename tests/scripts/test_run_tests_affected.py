@@ -50,6 +50,15 @@ def test_affected_nothing(repo, monkeypatch, capsys):
     assert s["selected"] == [] and s["untested"] == []
 
 
+def test_unreadable_base_runs_the_whole_suite(repo, monkeypatch, capsys):
+    def bad(root, base):
+        raise testcmd.BaseUnreadable("cannot diff against deadbeef")
+    monkeypatch.setattr(testcmd, "changed_files", bad)
+    rc, s = go("--affected", "--base", "deadbeef")
+    assert rc == 0 and s["passed"] == 1 and s["reason"] == "full: cannot diff against deadbeef"
+    assert "running the whole suite" in capsys.readouterr().err
+
+
 def test_affected_trigger_full(repo, monkeypatch):
     (repo / "conftest.py").write_text("")
     fake(monkeypatch, ["conftest.py"], {"full": True, "selected": [], "reasons": {}, "untested": [],

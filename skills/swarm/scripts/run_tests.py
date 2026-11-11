@@ -343,7 +343,12 @@ def select_for(a):  # -> (paths, extra summary fields, nothing_selected)
     if a.files:
         changed = sorted({f.replace("\\", "/") for chunk in a.files for f in nt.csv(chunk)})
     else:
-        changed = testcmd.changed_files(".", a.base or default_base(a.ledger))
+        base = a.base or default_base(a.ledger)
+        try:
+            changed = testcmd.changed_files(".", base)
+        except testcmd.BaseUnreadable as e:  # never read a failed diff as "nothing changed": run everything
+            print(f"run_tests: {e}; running the whole suite", file=sys.stderr)
+            return [], {"selected": [], "reason": f"full: {e}", "changed_count": 0, "untested": []}, False
     sel = testcmd.select_affected(".", changed)
     selected = list(sel.get("selected") or [])
     if sel.get("full"):
