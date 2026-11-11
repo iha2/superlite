@@ -11,11 +11,11 @@ The PR is merged on the remote. Bring the local repo up to date and remove what 
 
 Take the first that works:
 
-- the argument: a session slug (branch `superlite/sessions/<slug>`), a branch name, or a PR number (`gh pr view <n> --json headRefName`)
+- the argument: a session slug, a branch name, or a PR number (`gh pr view <n> --json headRefName`). Resolve a slug through `bash <skill-dir>/../swarm/scripts/superlite-cli session status --json` or `<hub>/.superlite/session-store/<slug>/session.json` and use its recorded branch; only fall back to `superlite/sessions/<slug>` when no session metadata exists.
 - the current branch, when it is not the base branch
-- otherwise run `bash <skill-dir>/../swarm/scripts/superlite-cli session status` and `git branch --list 'superlite/sessions/*'`, and ask once (one AskUserQuestion) which one was merged
+- otherwise list live sessions, archived session manifests and local branches, and ask once (one AskUserQuestion) which one was merged
 
-Find the base branch the way `superlite:shipping` step 2 does. The slug is the branch name after `superlite/sessions/`; a branch without that prefix has no slug unless `session status` lists it.
+Find the base branch the way `superlite:shipping` step 2 does. Retain the slug resolved from an argument. For a branch selected by argument, PR, current checkout or the user's answer, find the slug by matching its branch in live session rows or archived `<hub>/.superlite/session-store/*/session.json` manifests. Only infer the slug from the `superlite/sessions/` prefix when no matching metadata exists; otherwise a branch without matching metadata or that prefix has no slug.
 
 ## 2. Confirm the merge
 
