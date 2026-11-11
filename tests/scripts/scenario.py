@@ -53,7 +53,8 @@ def _make_template() -> Path:
     atexit.register(shutil.rmtree, tpl, True)
     env = {**os.environ, **GIT_ENV}
     for argv in (["git", "init", "-q", "-b", "main"], ["git", "config", "user.name", "t"],
-                 ["git", "config", "user.email", "t@example.com"], ["git", "config", "commit.gpgsign", "false"]):
+                 ["git", "config", "user.email", "t@example.com"], ["git", "config", "commit.gpgsign", "false"],
+                 ["git", "config", "maintenance.auto", "false"]):
         subprocess.run(argv, cwd=tpl, env=env, check=True, capture_output=True)
     (tpl / "README.md").write_text("scenario repo\n", encoding="utf-8")
     subprocess.run(["git", "add", "-A"], cwd=tpl, env=env, check=True, capture_output=True)
