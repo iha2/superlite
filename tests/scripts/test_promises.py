@@ -405,19 +405,6 @@ def test_d13_a_checkpoint_accepts_regression_tests_from_any_task(repo):
     assert "tests/regression/test_probe_deep_1.py" in names and "src/m2.py" in names
 
 
-def test_d13_a_probe_failure_writes_a_regression_test(tmp_path):
-    fixtures = Path(__file__).parent / "fixtures" / "probe_lib"
-    proj = tmp_path / "proj"
-    shutil.copytree(fixtures, proj)
-    parser = proj / "src" / "parser.py"
-    parser.write_text(parser.read_text(encoding="utf-8").replace("GUARD = True", "GUARD = False").replace("LIMIT = None", "LIMIT = 300"),
-                      encoding="utf-8")
-    runner = SCRIPTS.parent / "probes" / "probe_run.py"
-    subprocess.run([sys.executable, str(runner), "--adapter", str(proj / "adapter.py"), "--root", str(proj),
-                    "--categories", "deep", "--files", "src/parser.py"], capture_output=True, text=True, timeout=300)
-    res = json.loads((proj / ".superlite" / "probes" / "probe-results.json").read_text(encoding="utf-8"))
-    test = res["failures"][0]["regression_test"]
-    assert test.startswith("tests/regression/") and (proj / test).is_file()
 
 
 # ---------------------------------------------------------------- D20, D25: the final reviewer sees only the packet

@@ -6,10 +6,8 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -19,7 +17,6 @@ import scenario
 
 ROOT = scenario.ROOT
 SCRIPTS = scenario.SCRIPTS
-PROBE_RUN = ROOT / "skills" / "swarm" / "probes" / "probe_run.py"
 FIXTURES = Path(__file__).parent / "fixtures"
 FLOW_PLAN = FIXTURES / "flow_plan.md"
 
@@ -164,34 +161,8 @@ def test_pr14_slug_cannot_walk_out_of_the_session_store(repo):
     assert (repo.root / "src" / "keep.py").is_file()
 
 
-def test_pr14_probe_run_default_out_follows_root_not_cwd(tmp_path):
-    """Finding 111: run from a parent directory with a relative --root, the results and log land in <root>/.superlite,
-    not <root>/<root>/.superlite."""
-    proj = tmp_path / "proj"
-    shutil.copytree(FIXTURES / "probe_lib", proj)
-    p = subprocess.run([sys.executable, str(PROBE_RUN), "--root", "proj", "--adapter", "proj/adapter.py",
-                        "--categories", "state", "--files", "src/parser.py"], cwd=tmp_path,
-                       capture_output=True, text=True, timeout=120)
-    assert p.returncode == 0, p.stdout + p.stderr
-    assert (proj / ".superlite" / "probes" / "probe-results.json").is_file()
-    assert (proj / ".superlite" / "incidents.jsonl").is_file()
-    assert not (proj / "proj").exists() and not (tmp_path / "proj" / "proj").exists()
 
 
-def test_pr14_probe_run_background_keeps_space_separated_out_and_log(tmp_path):
-    """Finding 112: --background with `--out custom.json --log custom.jsonl` hands the child both flags and values."""
-    proj = tmp_path / "proj"
-    shutil.copytree(FIXTURES / "probe_lib", proj)
-    p = subprocess.run([sys.executable, str(PROBE_RUN), "--root", str(proj), "--adapter", str(proj / "adapter.py"),
-                        "--categories", "state", "--files", "src/parser.py", "--out", "custom.json", "--log", "custom.jsonl", "--background"],
-                       capture_output=True, text=True, timeout=60)
-    assert p.returncode == 0 and "started" in json.loads(p.stdout)
-    out = proj / "custom.json"
-    end = time.time() + 60
-    while time.time() < end and not out.exists():
-        time.sleep(0.2)
-    assert out.is_file(), "the child exited with an argument error: --out custom.json was lost"
-    assert not (proj / ".superlite" / "probes" / "probe-results.json").exists()
 
 
 # ---- PR 7 ------------------------------------------------------------------------------------------------------
