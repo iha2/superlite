@@ -51,6 +51,7 @@ Each run starts its own session automatically (`superlite-cli session ensure`): 
 | `/superlite:status`, `/superlite:stop`, `/superlite:resume` | Watch, stop or resume a build |
 | `/superlite:agents`, `/superlite:tail` | Watch a run: the agent map pane, or the same run as a terminal feed without the mod |
 | `/superlite:review`, `/superlite:report`, `/superlite:finish` | Review a branch, read build reports, finish the branch |
+| `/superlite:merged [slug\|branch\|PR]` | After the PR merges: confirm it with `gh`, update local main, close the session, delete the local branch |
 | `/superlite:setup`, `/superlite:intro`, `/superlite:help [section]` | First-run check, the intro screen, the detailed help |
 
 Plain words work just as well; the commands are shortcuts.

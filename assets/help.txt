@@ -98,6 +98,8 @@
                                     report at the level you pick.
    /superlite:report [plan] [full]  Build reports: summary, full, history.
    /superlite:finish                Verify, then offer merge or PR options.
+   /superlite:merged [slug|PR]      After the PR merges: update main, close
+                                    the session, delete the local branch.
    /superlite:setup                 First-run check: toolchain, test command,
                                     model tiers, plugin conflicts.
 
