@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -63,10 +64,12 @@ def live(repo):
 def test_cycle(repo, home):
     ok = lambda cp: (cp.returncode == 0) or pytest.fail(cp.out + cp.err)
     ok(cli(repo, "session", "ensure", "--slug", "first", home=home))
+    marker = json.loads((repo / ".superlite" / "current-run.json").read_text())
     ledger(repo, "Ruling: a - b - c\n")
     ok(cli(repo, "finish", "--ledger", ".superlite/progress.md", "--log", ".superlite/incidents.jsonl", home=home))
     (a,) = archives(repo)
-    assert a.endswith("-first") and live(repo) == []
+    assert a == marker["id"] and live(repo) == []
+    assert (repo / ".superlite" / "runs" / a / "current-run.json").is_file()
 
     ok(cli(repo, "session", "ensure", "--slug", "second", home=home))
     ledger(repo, "second work\n")

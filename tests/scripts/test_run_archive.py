@@ -109,6 +109,34 @@ def test_copy_failure_removes_partial_archive(tmp_path, monkeypatch, failure):
     assert not list((sl / "runs").iterdir())
 
 
+def test_ensure_run_writes_marker_without_copy_on_clean_start(tmp_path):
+    sl = tmp_path / ".superlite"
+    marker, dest, previous = run_archive.ensure_run(sl, "topic", "topic", now=NOW)
+    assert dest is None and previous is None
+    assert marker == {"id": "20261110-140309-topic", "topic": "topic", "slug": "topic",
+                      "started_at": "2026-11-10T14:03:09"}
+    assert run_archive.read_current_run(sl) == marker
+
+
+def test_ensure_run_same_topic_is_idempotent(tmp_path):
+    sl = tmp_path / ".superlite"
+    marker, dest, _ = run_archive.ensure_run(sl, "topic", "topic", now=NOW)
+    assert dest is None
+    (sl / "progress.md").write_text("continued")
+    repeated, repeated_dest, _ = run_archive.ensure_run(sl, "topic", "topic", now=NOW)
+    assert repeated == marker and dest is None and repeated_dest is None
+    assert (sl / "progress.md").read_text() == "continued"
+    assert not (sl / "runs").exists()
+
+
+def test_ensure_run_legacy_orchestrator_is_not_copied(tmp_path):
+    sl = live(tmp_path, orchestrator__json='{"mode":"human"}')
+    marker, dest, _ = run_archive.ensure_run(sl, "topic", "topic", now=NOW)
+    assert dest is None
+    assert (sl / "orchestrator.json").is_file()
+    assert run_archive.read_current_run(sl) == marker
+
+
 def test_plan_recorded(tmp_path):
     r = repo(tmp_path)
     sl = live(r, progress__md="p")

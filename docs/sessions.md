@@ -10,6 +10,7 @@ A **session** is one line of work: a branch `superlite/sessions/<slug>`, parked 
 | Branch | `superlite/sessions/<slug>` (or the branch recorded for the slug) — one checkout only |
 | Slugs | `a-z`, `0-9`, `-`; `host` is reserved |
 | Live run | Host’s `.superlite/` while that session is active |
+| Run marker | `.superlite/current-run.json`: the active run's id, topic, slug and start time |
 | `runs/` | `<hub>/.superlite/runs/`: archived runs, never moved by sessions |
 
 ## Why
@@ -58,7 +59,7 @@ All registry writes take `.superlite/sessions.lock` and replace `sessions.json` 
 
 | Command | Effect |
 |---|---|
-| `superlite-cli session ensure --slug S` | Idempotent flow entry; see [Auto-start](#auto-start). Last line `SESSION worktree=<path> slug=<s> branch=<b>`; exit 3 `REDIRECT`, exit 4 `ASK untracked` or `ASK move` |
+| `superlite-cli session ensure --slug S` | Idempotent flow entry; see [Auto-start](#auto-start). It copies unfinished run files to `runs/` when starting a different topic, leaves them live, and writes or keeps `current-run.json`. Last line `SESSION worktree=<path> slug=<s> branch=<b>`; exit 3 `REDIRECT`, exit 4 `ASK untracked` or `ASK move` |
 | `superlite-cli session ensure --slug S --branch B` | Session on an existing branch `B`: in place if `B` is checked out here (a finished session already on `B` is reopened, its uncommitted work kept), `REDIRECT` if checked out elsewhere (an unregistered checkout is registered as a session first), else a worktree on `B`; exit 2 if `B` does not exist. Registration copies existing run state to an unfinished archive and leaves it live |
 | `superlite-cli session close --slug S [--keep-branch]` | End of flow: mark `S` finished, park it and put the host back on the base branch, remove a parallel worktree `ensure` cut |
 | `superlite-cli session untracked [ask\|stash\|keep]` | Per-repo choice for untracked files (default `ask`); stored in the main checkout's `sessions.json` |
@@ -76,11 +77,13 @@ Every flow (start, regular, mvp, feature, debug, small, review, research) runs `
 
 | Where it runs | What `ensure` does |
 |---|---|
-| A checkout whose session is open | Preserve its run state; prints `session: <slug> already open here` |
-| Main checkout, no active session or the active one is finished | `create` with the main checkout as host: branch `superlite/sessions/<topic>` from the current branch; a finished active session is parked first |
+| A checkout whose session is open | Same-topic marker: preserve the run without copying. A different topic copies unfinished files to `runs/` and keeps them live; prints `session: <slug> already open here` |
+| Main checkout, no active session or the active one is finished | `create` with the main checkout as host: branch `superlite/sessions/<topic>` from the current branch; a finished active session is parked first. Existing run files are copied, not moved |
 | Main checkout, active session still open | Moves the open session out (see [Move-out](#move-out)): asks `ASK move`, then it continues in `.superlite/worktrees/sessions/<old>` and the new topic takes the main checkout. Without a move the open session is untouched |
-| Main checkout with a pre-existing run (`orchestrator.json`, no row) | Records it as the active open host session, then follows the row above |
+| Main checkout with a pre-existing run (`orchestrator.json`, no row) | Records it as the active open host session, then follows the row above; legacy orchestrator state without a marker gets a marker without a copy |
 | Unregistered linked worktree | Registers it where it is (`owned: false`), copying any existing run state to an unfinished archive and leaving it live to resume |
+
+`current-run.json` identifies the run across repeated ensures and resume. A missing marker with no run files starts a marker; a missing marker with run files snapshots them, except legacy `orchestrator.json` state, which is treated as the same run. Only `finish` moves live run files into the archive.
 
 A taken slug gets `-2`, `-3`, and the slug it settled on is printed. Under Claude Code the command also prints `session: enter EnterWorktree path=<abs>` when the worktree is not the cwd: call `EnterWorktree` with that path. Elsewhere `cd` to the `SESSION worktree=<path>` (fallback).
 

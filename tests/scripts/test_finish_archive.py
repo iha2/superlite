@@ -53,6 +53,15 @@ def fake_module(calls, slug_box):
             except OSError:
                 pass
 
+    def read_current_run(sl):
+        try:
+            return json.loads((Path(sl) / "current-run.json").read_text())
+        except (OSError, ValueError):
+            return None
+
+    def write_current_run(sl, marker):
+        (Path(sl) / "current-run.json").write_text(json.dumps(marker) + "\n")
+
     def archive(sl, slug=None, unfinished=False, plan=None, now=None, rid=None, reserved=None):
         calls.append((Path(sl), slug, plan, rid))
         files = sorted(p.name for p in Path(sl).iterdir() if p.is_file() and p.name not in KEEP and not p.name.endswith(".lock"))
@@ -62,10 +71,12 @@ def fake_module(calls, slug_box):
         dest = Path(reserved) if reserved else reserve(sl, slug, now=now, rid=rid)
         for f in files:
             (Path(sl) / f).replace(dest / f)
-        (dest / "run.json").write_text(json.dumps({"slug": slug, "plan": plan, "status": "finished", "files": files}))
+        (dest / "run.json").write_text(json.dumps({"id": dest.name, "slug": slug, "plan": plan,
+                                                   "status": "finished", "files": files}))
         return dest
 
     m.run_id, m.current_slug, m.reserve, m.cancel_reservation, m.archive = run_id, current_slug, reserve, cancel_reservation, archive
+    m.read_current_run, m.write_current_run = read_current_run, write_current_run
     return m
 
 
@@ -244,7 +255,33 @@ def test_history_uses_collision_suffix_before_recording(repo, calls, capsys, mon
     (repo / "P.md").write_text("x\n")
     (repo / ".superlite" / "runs").mkdir()
     (repo / ".superlite" / "runs" / f"{STAMP}-run").mkdir()
+    (repo / ".superlite" / "current-run.json").write_text(json.dumps(
+        {"id": f"{STAMP}-run", "topic": "run", "slug": "run", "started_at": "2026-11-10T14:03:09"}))
     run_main(capsys, ARGS + ["--plan", "P.md"])
     arch = runs_of(repo)[-1]
     assert arch.name == f"{STAMP}-run-2"
     assert seen == [arch.name] and calls[0][3] == arch.name
+    marker = json.loads((arch / "current-run.json").read_text())
+    assert marker["id"] == arch.name
+    assert json.loads((arch / "run.json").read_text())["id"] == arch.name
+
+
+def test_finish_uses_marker_id_for_archive_and_history(repo, calls, capsys, monkeypatch):
+    import history
+    seen = []
+
+    def record_run(plan, sl_dir=".superlite", run_id=None):
+        seen.append(run_id)
+        return []
+
+    monkeypatch.setattr(history, "record_run", record_run)
+    (repo / ".superlite" / "metrics.jsonl").write_text("")
+    (repo / "P.md").write_text("x\n")
+    marker = {"id": f"{STAMP}-topic", "topic": "topic", "slug": "topic", "started_at": "2026-11-10T14:03:09"}
+    (repo / ".superlite" / "current-run.json").write_text(json.dumps(marker) + "\n")
+    run_main(capsys, ARGS + ["--plan", "P.md"])
+    (arch,) = runs_of(repo)
+    assert arch.name == marker["id"]
+    assert seen == [marker["id"]]
+    assert json.loads((arch / "current-run.json").read_text())["id"] == marker["id"]
+    assert json.loads((arch / "run.json").read_text())["id"] == marker["id"]

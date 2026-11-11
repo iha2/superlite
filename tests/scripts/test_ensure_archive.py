@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -46,22 +47,25 @@ def runs(r):
     return sorted(p for p in d.iterdir()) if d.is_dir() else []
 
 
-def test_open_here_preserves_unfinished(repo):
+def test_open_here_reentry_does_not_snapshot_active_run(repo):
     assert run("ensure", "--slug", "demo", cwd=repo).returncode == 0
     sl = repo / ".superlite"
     (sl / "progress.md").write_text("p\n")
+    (sl / "orchestrator.json").write_text('{"mode":"human","approved":true}\n')
+    marker = (sl / "current-run.json").read_text()
     cp = run("ensure", "--slug", "demo", cwd=repo)
     lines = cp.out.strip().splitlines()
     assert cp.returncode == 0, cp.err
     assert lines[0] == "session: demo already open here"
     assert lines[-1].startswith("SESSION ")
     assert (sl / "progress.md").read_text() == "p\n"
+    assert (sl / "orchestrator.json").read_text() == '{"mode":"human","approved":true}\n'
+    assert (sl / "current-run.json").read_text() == marker
     assert runs(repo) == []
 
 
-@pytest.mark.parametrize("in_flow", [False, True])
 @pytest.mark.parametrize("with_branch", [False, True])
-def test_ensure_preserves_active_run(repo, with_branch, in_flow):
+def test_ensure_preserves_active_run(repo, with_branch):
     assert run("ensure", "--slug", "demo", cwd=repo).returncode == 0
     sl = repo / ".superlite"
     progress = sl / "progress.md"
@@ -69,8 +73,6 @@ def test_ensure_preserves_active_run(repo, with_branch, in_flow):
     orchestrator = sl / "orchestrator.json"
     orchestrator.write_text('{"mode":"human","approved":false}\n')
     args = ["ensure", "--slug", "demo"]
-    if in_flow:
-        args.append("--in-flow")
     if with_branch:
         args.extend(["--branch", git(repo, "branch", "--show-current").strip()])
 
@@ -91,10 +93,55 @@ def test_unregistered_leftovers_archived(repo):
     assert cp.returncode == 0, cp.err
     assert cp.out.strip().splitlines()[-1].startswith("SESSION ")
     (d,) = runs(repo)
-    assert d.name.endswith("-run-unfinished")
+    assert d.name.endswith("-new-unfinished")
     assert (d / "progress.md").read_text() == "stray\n"
-    assert not (sl / "progress.md").exists()
+    assert (sl / "progress.md").read_text() == "stray\n"
+    marker = json.loads((sl / "current-run.json").read_text())
+    assert marker["topic"] == "new" and marker["slug"] == "new"
+    assert marker["id"] == d.name.removesuffix("-unfinished")
+    assert f"run: copied leftovers to .superlite/runs/{d.name}" in cp.out
     assert git(repo, "branch", "--show-current").strip() != "main"
+
+
+def test_different_topic_copies_unfinished_state_and_keeps_it(repo):
+    assert run("ensure", "--slug", "old", cwd=repo).returncode == 0
+    sl = repo / ".superlite"
+    (sl / "progress.md").write_text("old run\n")
+    marker = json.loads((sl / "current-run.json").read_text())
+    branch = git(repo, "branch", "--show-current").strip()
+    cp = run("ensure", "--slug", "new", "--branch", branch, cwd=repo)
+    assert cp.returncode == 0, cp.err
+    archives = runs(repo)
+    assert len(archives) == 1 and archives[0].name == marker["id"] + "-unfinished"
+    assert (archives[0] / "progress.md").read_text() == "old run\n"
+    assert (sl / "progress.md").read_text() == "old run\n"
+    updated = json.loads((sl / "current-run.json").read_text())
+    assert updated["topic"] == "new" and updated["slug"] == "old"
+    assert updated["id"] != marker["id"]
+
+
+def test_legacy_orchestrator_gets_marker_without_snapshot(repo):
+    sl = repo / ".superlite"
+    sl.mkdir()
+    (sl / "orchestrator.json").write_text('{"mode":"human","approved":true}\n')
+    cp = run("ensure", "--slug", "legacy", cwd=repo)
+    assert cp.returncode == 0, cp.err
+    assert runs(repo) == []
+    assert (sl / "orchestrator.json").read_text() == '{"mode":"human","approved":true}\n'
+    marker = json.loads((sl / "current-run.json").read_text())
+    assert marker["topic"] == "legacy" and marker["slug"] == "legacy"
+
+
+def test_branch_registration_copies_and_keeps_leftovers(repo):
+    sl = repo / ".superlite"
+    sl.mkdir()
+    (sl / "progress.md").write_text("stray\n")
+    cp = run("ensure", "--slug", "branch-run", "--branch", "main", cwd=repo)
+    assert cp.returncode == 0, cp.err
+    assert (sl / "progress.md").read_text() == "stray\n"
+    (snapshot,) = runs(repo)
+    assert (snapshot / "progress.md").read_text() == "stray\n"
+    assert "run: copied leftovers to" in cp.out
 
 
 def test_config_survives(repo):
@@ -108,6 +155,8 @@ def test_config_survives(repo):
     assert run("ensure", "--slug", "new", cwd=repo).returncode == 0
     assert (sl / "test-cmd.json").exists()
     assert len(runs(repo)) == 1
+    (snapshot,) = runs(repo)
+    assert (snapshot / "progress.md").read_text() == "stray\n"
     assert (sl / "progress.md").read_text() == "again\n"
 
 
@@ -148,35 +197,6 @@ def test_failed_enter_restores_leftovers(repo, monkeypatch):
             E.start_in_host(repo, reg, repo, "new", "main")
     assert (sl / "progress.md").read_text() == "stray\n"
     assert (sl / "test-cmd.json").exists()
-    assert not list((sl / "runs").glob("*-unfinished")) if (sl / "runs").exists() else True
-
-
-def test_failed_preserved_state_move_restores_everything(repo, monkeypatch):
-    import shutil
-    import session_ensure as E
-    import session_registry as R
-
-    sl = repo / ".superlite"
-    sl.mkdir()
-    (sl / "progress.md").write_text("stray\n")
-    (sl / "test-cmd.json").write_text("{}\n")
-    (sl / "agent-specs.json").write_text("{}\n")
-
-    def partial_move(src, dest, moved=None):
-        source = R.run_entries(src)[0]
-        dest.mkdir(parents=True, exist_ok=True)
-        target = dest / source.name
-        shutil.move(str(source), str(target))
-        moved.append((source, target))
-        raise OSError("preserved move failed")
-
-    monkeypatch.setattr(E, "move_run_state", partial_move)
-    with R.registry_lock(repo):
-        reg = R.read(repo)
-        with pytest.raises(E.JournalError):
-            E.start_in_host(repo, reg, repo, "new", "main")
-    assert (sl / "progress.md").read_text() == "stray\n"
-    assert (sl / "test-cmd.json").is_file() and (sl / "agent-specs.json").is_file()
     assert not list((sl / "runs").glob("*-unfinished")) if (sl / "runs").exists() else True
 
 

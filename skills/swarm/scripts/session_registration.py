@@ -1,5 +1,4 @@
 """Rollback-safe session registration for existing linked and in-place checkouts."""
-import shutil
 import sys
 from pathlib import Path
 
@@ -18,15 +17,17 @@ from session_registry import (
 from worktree_home import harness_worktree  # noqa: E402
 
 
-def _archive_for_registration(live: Path, slug: str, j: Journal) -> Path | None:
-    j.step("archive the leftovers")
-    dest = run_archive.archive(live, slug, unfinished=True, copy=True)
-    if dest is not None:
-        j.undo(lambda: shutil.rmtree(dest), "archive")
+def prepare_run(root: Path, live: Path, topic: str, slug: str, j: Journal | None = None) -> Path | None:
+    if j:
+        j.step("snapshot the current run")
+    _, dest, previous = run_archive.ensure_run(live, topic, slug)
+    if j:
+        j.undo(lambda: run_archive.undo_ensure(live, dest, previous), "run marker")
+    _say_copied(root, dest)
     return dest
 
 
-def _say_archived(root: Path, dest: Path | None) -> None:
+def _say_copied(root: Path, dest: Path | None) -> None:
     if dest is not None:
         shown = dest.relative_to(root) if dest.is_relative_to(root) else dest
         print(f"run: copied leftovers to {shown.as_posix()}")
@@ -40,7 +41,7 @@ def register_linked(root: Path, reg: dict, here: Path, want: str) -> int:
     detached = cur == "HEAD"
     branch = None if detached else claude_create.adopt_branch(here, slug, cur)
     with Journal() as j:
-        dest = _archive_for_registration(state.run_dir(here), slug, j)
+        prepare_run(root, state.run_dir(here), want, slug, j)
         j.step("register the session")
         upsert_row(reg, {"slug": slug, "branch": branch, "worktree": here.as_posix(),
                          "store": store_path(root, slug).as_posix(), "has_stash": False, "status": "parallel",
@@ -50,7 +51,6 @@ def register_linked(root: Path, reg: dict, here: Path, want: str) -> int:
                          **base_row(root, reg, head if detached else branch)})
         hide_all(root)
         write(root, reg)
-    _say_archived(root, dest)
     print(f"session: registered {slug} where it is ({here.as_posix()}) on {branch or 'detached ' + head[:7]}")
     session_line(here, slug, branch or "HEAD")
     return 0
@@ -62,7 +62,7 @@ def register_in_place(root: Path, reg: dict, host: Path, path: Path, want: str, 
     if slug != want:
         print(f"session: slug {want} taken; using {slug}")
     with Journal() as j:
-        dest = _archive_for_registration(state.run_dir(path), slug, j)
+        prepare_run(root, state.run_dir(path), want, slug, j)
         j.step("register the session")
         hide_all(root)
         at_host = same(path, host)
@@ -75,6 +75,5 @@ def register_in_place(root: Path, reg: dict, host: Path, path: Path, want: str, 
             reg["active"] = slug
             reg["host_worktree"] = path.as_posix()
         write(root, reg)
-    _say_archived(root, dest)
     print(f"session: registered {slug} in place on {exist} ({path.as_posix()})")
     return slug

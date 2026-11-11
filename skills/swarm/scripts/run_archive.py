@@ -1,9 +1,10 @@
 """Run archive: choose a run's files, make its id, write run.json and move the files into the hub's runs folder. Stdlib only."""
 import json
 import os
+import re
 import shutil
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -12,6 +13,8 @@ import session_registry  # noqa: E402
 import state  # noqa: E402
 
 KEEP = {"runs", "research", "test-cmd.json", "agent-specs.json", "host-models.json", "peers.json"}
+CURRENT_RUN = "current-run.json"
+CURRENT_ID = re.compile(r"^\d{8}-\d{6}-[a-z0-9][a-z0-9-]{0,40}(?:-\d+)?$")
 
 
 def run_id(slug: str | None, now: datetime, unfinished: bool = False) -> str:
@@ -76,6 +79,66 @@ def cancel_reservation(dest: Path | None) -> None:
             Path(dest).rmdir()
         except OSError:
             pass
+
+
+def read_current_run(sl: Path) -> dict | None:
+    try:
+        value = json.loads((Path(sl) / CURRENT_RUN).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if (not isinstance(value, dict) or not CURRENT_ID.fullmatch(str(value.get("id", "")))
+            or not isinstance(value.get("topic"), str) or not isinstance(value.get("slug"), str)
+            or not isinstance(value.get("started_at"), str)):
+        return None
+    return value
+
+
+def write_current_run(sl: Path, value: dict) -> None:
+    sl.mkdir(parents=True, exist_ok=True)
+    tmp = sl / (CURRENT_RUN + ".tmp")
+    try:
+        tmp.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8", newline="\n")
+        os.replace(tmp, sl / CURRENT_RUN)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def ensure_run(sl: Path, topic: str, slug: str, now: datetime | None = None) -> tuple[dict, Path | None, bytes | None]:
+    """Keep live state; snapshot an earlier unfinished run before writing this run's marker."""
+    sl, now = Path(sl), (now or datetime.now()).replace(microsecond=0)
+    marker_path = sl / CURRENT_RUN
+    previous = marker_path.read_bytes() if marker_path.is_file() else None
+    current = read_current_run(sl)
+    if current and current["topic"] == topic:
+        return current, None, previous
+    dest = None
+    legacy = current is None and (sl / session_registry.ORCH).is_file()
+    if entries(sl) and not legacy:
+        old_slug = (current or {}).get("slug") or current_slug(sl.parent) or slug
+        old_id = (current or {}).get("id") or run_id(old_slug, now)
+        dest = archive(sl, old_slug, unfinished=True, now=now, rid=f"{old_id}-unfinished", copy=True)
+    new_id = run_id(slug, now)
+    if current and new_id == current["id"]:
+        now += timedelta(seconds=1)
+    value = {"id": run_id(slug, now), "topic": topic, "slug": slug,
+             "started_at": now.isoformat(timespec="seconds")}
+    try:
+        write_current_run(sl, value)
+    except OSError:
+        if dest is not None:
+            shutil.rmtree(dest, ignore_errors=True)
+        raise
+    return value, dest, previous
+
+
+def undo_ensure(sl: Path, dest: Path | None, previous: bytes | None) -> None:
+    if dest is not None:
+        shutil.rmtree(dest, ignore_errors=True)
+    marker = Path(sl) / CURRENT_RUN
+    if previous is None:
+        marker.unlink(missing_ok=True)
+    else:
+        marker.write_bytes(previous)
 
 
 def archive(sl: Path, slug: str | None = None, unfinished: bool = False, plan: str | None = None,

@@ -39,6 +39,7 @@ def test_readme_mentions_runs():
 def test_start_handoff_does_not_repeat_session_ensure():
     start = read("commands/start.md")
     assert "session was ensured above" in start
-    assert "skip that command's initial ensure step" in start
+    assert "repeated `session ensure` for the same topic is safe" in start
     for path in ("commands/small.md", "commands/review.md"):
-        assert "When invoked independently (not from `/superlite:start`)" in read(path)
+        assert "session ensure --slug <topic>" in read(path)
+        assert "When invoked independently" not in read(path)

@@ -244,13 +244,21 @@ def _shown(path):  # path relative to the cwd when inside it, else absolute
 
 def run_ids(sl_dir):  # O(files) + registry read; reserve the final id before history refers to it
     """The session slug, final archive id and reserved folder; unavailable values are None."""
+    reserved = None
     try:
         import run_archive
-        slug = run_archive.current_slug(sl_dir.parent)
-        base_id = run_archive.run_id(slug, datetime.now())
+        marker = run_archive.read_current_run(sl_dir)
+        slug = (marker or {}).get("slug") or run_archive.current_slug(sl_dir.parent)
+        base_id = (marker or {}).get("id") or run_archive.run_id(slug, datetime.now())
         reserved = run_archive.reserve(sl_dir, slug, rid=base_id)
-        return slug, reserved.name if reserved else base_id, reserved
+        rid = reserved.name if reserved else base_id
+        if marker and rid != marker["id"]:
+            run_archive.write_current_run(sl_dir, dict(marker, id=rid))
+        return slug, rid, reserved
     except (ImportError, OSError, ValueError) as e:
+        if reserved is not None:
+            import run_archive
+            run_archive.cancel_reservation(reserved)
         print(f"run: archive id not made ({e})", file=sys.stderr)
         return None, None, None
 
