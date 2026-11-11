@@ -195,6 +195,7 @@ up_to_run() {
 
 jstr cwd; in_cwd="${REPLY//\\\\/$'\x01'}"; in_cwd="${in_cwd//\\\"/\"}"; in_cwd="${in_cwd//\\\//\/}"; in_cwd="${in_cwd//$'\x01'//}"
 proj0="${CLAUDE_PROJECT_DIR:-${CURSOR_PROJECT_DIR:-}}"
+proj0="${proj0//\\//}"   # Windows hosts pass C:\x\y; up_to_run climbs on "/"
 [ -n "$proj0" ] || proj0="$in_cwd"
 if [ -z "$proj0" ]; then   # Cursor: the first workspace root that holds a superlite run
   re_roots='"workspace_roots"[[:space:]]*:[[:space:]]*\[([^]]*)\]'
