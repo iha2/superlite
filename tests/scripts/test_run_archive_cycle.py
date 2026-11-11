@@ -2,19 +2,22 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
 
 CLI = Path(__file__).resolve().parents[2] / "skills" / "swarm" / "scripts" / "superlite-cli"
+_GIT_BASH = r"C:\Program Files\Git\bin\bash.exe"
+BASH = _GIT_BASH if os.name == "nt" and os.path.exists(_GIT_BASH) else shutil.which("bash")
 
 
 def cli(repo, *args, home):
     env = dict(os.environ, SUPERLITE_HOME=str(home), GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
                GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t")
     env.pop("SUPERLITE_NO_AUTO_SESSION", None)
-    cp = subprocess.run(["bash", str(CLI), *map(str, args)], cwd=repo, env=env, capture_output=True, timeout=180)
+    cp = subprocess.run([BASH, str(CLI), *map(str, args)], cwd=repo, env=env, capture_output=True, timeout=180)
     cp.out, cp.err = cp.stdout.decode("utf-8"), cp.stderr.decode("utf-8")
     return cp
 
