@@ -47,11 +47,11 @@ def _close(root: Path, slug: str, a) -> int:
     return _close_stored(root, reg, row, slug)
 
 
-def _discard_sandbox(live: Path, row: dict, root: Path, checkout: Path | None = None) -> None:
+def _discard_sandbox(live: Path, row: dict, root: Path) -> None:
     """An open prototype sandbox goes first: its run is archived with the session, its files are dropped."""
     try:
         from proto_discard import discard_open  # lazy: the prototype modules are optional here
-        res = discard_open(live, "session close", checkout=checkout or live.parent)
+        res = discard_open(live, "session close")
     except (ImportError, OSError, ValueError, KeyError, TypeError, IndexError) as e:
         print(f"session: could not discard the open sandbox: {e}", file=sys.stderr)
         return
@@ -191,7 +191,6 @@ def _close_stored(root: Path, reg: dict, row: dict, slug: str) -> int:
         oid = None  # the recorded stash is gone: nothing to carry
     refs = session_stashes(root, row) if oid else []
     before = copy.deepcopy(reg)
-    _discard_sandbox(store_path(root, slug), row, root, Path(row.get("worktree") or root))
     try:
         with Journal() as j:
             if oid and not W.exists(root, slug):

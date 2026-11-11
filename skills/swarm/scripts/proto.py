@@ -130,11 +130,11 @@ def newest_feature_plan() -> str | None:  # O(F log F)
     return found[-1].as_posix() if found else None
 
 
-def proto_report(st: dict, run_dir: Path | None = None) -> dict | None:  # O(file)
+def proto_report(st: dict) -> dict | None:  # O(file)
     """The prototype build's report headline: saved at discard, else read live, else the archived run of its run id."""
     if st.get("proto_report"):
         return st["proto_report"]
-    sl = Path(run_dir) if run_dir is not None else run_dir_of(st)
+    sl = run_dir_of(st)
     if sl is None:
         return None
     c = base.read_json(sl / "report.json", None)

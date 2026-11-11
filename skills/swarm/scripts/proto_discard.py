@@ -49,21 +49,21 @@ def _legacy(checkout: Path, st: dict) -> None:
     st["branch_kept"] = False
 
 
-def discard_open(sl: Path, reason: str = "discard", checkout: Path | None = None) -> dict | None:
+def discard_open(sl: Path, reason: str = "discard") -> dict | None:
     """Discard the open prototype in run folder `sl`; the saved state, or None when none is open."""
     sl = Path(sl)
-    checkout = Path(checkout) if checkout is not None else sl.parent
+    checkout = sl.parent
     st = proto.read_state(sl)
     if not st or st["status"] == "discarded":
         return None
-    rep = proto.proto_report(st, sl)  # before the run files move
+    rep = proto.proto_report(st)  # before the run files move
     if rep:
         st["proto_report"] = rep
         proto.write_state(sl, st)
     if st.get("sandbox"):
         rid = st.get("run_id")
         run_archive.archive(sl, run_archive.current_slug(checkout), unfinished=True, plan=st.get("plan"),
-                            rid=f"{rid}-unfinished" if rid else None, keep=KEEP, checkout=checkout)
+                            rid=f"{rid}-unfinished" if rid else None, keep=KEEP)
         if not _remove_sandbox(checkout, Path(st["sandbox"])):
             st["sandbox_kept"] = True
     else:

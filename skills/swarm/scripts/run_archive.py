@@ -162,7 +162,7 @@ def undo_ensure(sl: Path, dest: Path | None, previous: bytes | None) -> None:
 
 def archive(sl: Path, slug: str | None = None, unfinished: bool = False, plan: str | None = None,
             now: datetime | None = None, rid: str | None = None, reserved: Path | None = None,
-            copy: bool = False, keep: tuple = (), checkout: Path | None = None) -> Path | None:
+            copy: bool = False, keep: tuple = ()) -> Path | None:
     """Move or copy run files into <hub>/.superlite/runs/<id>/ with run.json; None if there are no run files.
     Names in `keep` stay live. Takes no registry lock (session ensure already holds it)."""
     files = entries(sl, keep)
@@ -170,7 +170,7 @@ def archive(sl: Path, slug: str | None = None, unfinished: bool = False, plan: s
         cancel_reservation(reserved)
         return None
     now = (now or datetime.now()).replace(microsecond=0)
-    checkout = Path(checkout) if checkout is not None else Path(sl).parent
+    checkout = Path(sl).parent
     dest = Path(reserved) if reserved is not None else reserve(sl, slug, unfinished, now, rid, keep)
     if dest is None:
         return None

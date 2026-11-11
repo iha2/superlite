@@ -68,7 +68,7 @@ def test_sandbox_archive_keeps_stable_feature_run_id(tmp_path):
         "sandbox": sb.as_posix(), "status": "building", "run_id": "stable-id",
     }))
     dest = run_archive.archive(sl, "export", unfinished=True, now=NOW, rid="stable-id-unfinished",
-                               keep=("feature.json",), checkout=r)
+                               keep=("feature.json",))
     meta = json.loads((dest / "run.json").read_text())
     assert meta["id"] == "stable-id-unfinished" and meta["run_id"] == "stable-id"
 

@@ -19,9 +19,6 @@ import session_ensure as E  # noqa: E402
 import session_reconcile as rec  # noqa: E402
 import session_sandboxes  # noqa: E402
 
-REAL_DISCARD_OPEN = proto_discard.discard_open
-
-
 def git(cwd, *args):
     return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, check=True).stdout
 
@@ -34,7 +31,7 @@ def _open_entries(row):
 def calls(monkeypatch):
     log = []
     if os.environ.get("SUPERLITE_REAL") != "1":
-        def fake_discard(sl, reason="discard", checkout=None):
+        def fake_discard(sl, reason="discard"):
             log.append(("discard", reason))
             return {"status": "discarded", "discard_reason": reason}
         monkeypatch.setattr(proto_discard, "discard_open", fake_discard, raising=False)
@@ -74,8 +71,8 @@ def test_close_archives_updated_sandbox_entry(repo, calls, monkeypatch):
     E.cmd_ensure(Namespace(slug="s1", root=str(repo), branch=None, move=None, untracked=None))
     session_sandboxes.record(repo, "export", session="s1", path=".superlite/sandboxes/s1/export", status="building")
 
-    def discard(_sl, _reason, checkout=None):
-        session_sandboxes.record(checkout, "export", session="s1", status="discarded")
+    def discard(sl, _reason):
+        session_sandboxes.record(Path(sl).parent, "export", session="s1", status="discarded")
         return {"topic": "export", "status": "discarded"}
 
     monkeypatch.setattr(proto_discard, "discard_open", discard)
@@ -93,7 +90,7 @@ def test_close_discard_failure_does_not_block(repo, calls, monkeypatch, capsys):
     assert "could not discard" in capsys.readouterr().err
 
 
-def test_close_parked_session_discards_stored_prototype(repo, calls, monkeypatch):
+def test_close_parked_session_keeps_its_prototype(repo, calls):
     E.cmd_ensure(Namespace(slug="s1", root=str(repo), branch=None, move=None, untracked=None))
     sb = repo / ".superlite" / "sandboxes" / "s1" / "export"
     sb.mkdir(parents=True)
@@ -109,15 +106,12 @@ def test_close_parked_session_discards_stored_prototype(repo, calls, monkeypatch
     E.cmd_create(Namespace(slug="s2", root=str(repo), base=None, branch=None, worktree=False, untracked=None))
     store = repo / ".superlite" / "session-store" / "s1"
     assert (store / "feature.json").is_file()
-    monkeypatch.setattr(proto_discard, "discard_open", REAL_DISCARD_OPEN)
     assert E.cmd_close(Namespace(slug="s1", root=str(repo), keep_branch=False, untracked=None)) == 0
-    assert not sb.exists()
-    assert json.loads((store / "feature.json").read_text())["status"] == "discarded"
-    archive = repo / ".superlite" / "runs" / "20261111-140000-export-unfinished"
-    meta = json.loads((archive / "run.json").read_text())
-    assert meta["checkout"] == repo.as_posix() and meta["run_id"] == "20261111-140000-export"
+    assert sb.is_dir()
+    assert json.loads((store / "feature.json").read_text())["status"] == "building"
+    assert not any(call[0] == "discard" for call in calls)
     closed = session_archive.read(repo, "s1")
-    assert closed["sandboxes"][0]["status"] == "discarded"
+    assert closed["sandboxes"][0]["status"] == "building"
 
 
 def _reg(sandboxes):
