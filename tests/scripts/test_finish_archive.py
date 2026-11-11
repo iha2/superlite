@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 import types
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -170,25 +171,50 @@ def test_summary_unchanged(repo, calls, capsys):
 
 def test_release_before_archive(repo, calls, capsys, monkeypatch):
     import exclusive
+    import session
+    import session_registry
     (repo / ".superlite" / "peers.json").write_text("{}")
     order = []
+    locked = []
+    real_lock = session_registry.registry_lock
+
+    @contextmanager
+    def registry_lock(root):
+        with real_lock(root):
+            locked.append(True)
+            try:
+                yield
+            finally:
+                locked.pop()
+
+    monkeypatch.setattr(session_registry, "registry_lock", registry_lock)
+    real_mark = session.mark_run
+
+    def mark_run(*args, **kwargs):
+        assert locked and kwargs["lock_held"]
+        order.append(("mark", None))
+        return real_mark(*args, **kwargs)
+
+    monkeypatch.setattr(session, "mark_run", mark_run)
     real = exclusive.release
 
-    def release(sl):
+    def release(sl, **kwargs):
+        assert locked and kwargs["lock_held"]
         order.append(("release", (Path(sl) / "peers.json").is_file()))
-        return real(sl)
+        return real(sl, **kwargs)
 
     monkeypatch.setattr(exclusive, "release", release)
     ra = sys.modules["run_archive"] if "run_archive" in sys.modules else __import__("run_archive")
     real_archive = ra.archive
 
     def spy(*a, **k):
+        assert locked
         order.append(("archive", None))
         return real_archive(*a, **k)
 
     monkeypatch.setattr(ra, "archive", spy)
     run_main(capsys)
-    assert order == [("release", True), ("archive", None)]
+    assert order == [("mark", None), ("release", True), ("archive", None)]
 
 
 def test_non_superlite_ledger_dir_not_archived(tmp_path, calls, capsys, monkeypatch):

@@ -275,16 +275,7 @@ def archive_run(root, sl_dir, slug, plan, rid, reserved=None):  # O(files); fail
         return None
 
 
-def main(argv=None):  # O(R*w + I*w)
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--ledger", default=DEFAULT_LEDGER)
-    ap.add_argument("--log", default=DEFAULT_LOG)
-    ap.add_argument("--plan", help="record this run into history (needs " + state.DIR_NAME + "/metrics.jsonl)")
-    ap.add_argument("--lint-log", help="default: lint-log.jsonl next to the ledger")
-    a = ap.parse_args(argv)
-    sys.stdout.reconfigure(encoding="utf-8")
-    root = Path(a.ledger).resolve().parent  # .superlite, or the ledger's directory
-    sl_dir = root if root.name == state.DIR_NAME else root / state.DIR_NAME
+def _finish_locked(a, root, sl_dir):  # O(R*w + I*w)
     slug, rid, reserved = run_ids(sl_dir)
     try:
         sys.stdout.write(summary(a.ledger, a.log, a.lint_log or str(Path(a.ledger).with_name("lint-log.jsonl")),
@@ -294,12 +285,12 @@ def main(argv=None):  # O(R*w + I*w)
         clean_checkpoints(a.ledger)  # after the summary, which reads the checkpoint state
         try:  # fail open: no registry, no git, unreadable sessions.json -> no line. Mark first: release looks at open runs.
             import session
-            marked = session.mark_run(sl_dir.parent, "finished")
+            marked = session.mark_run(sl_dir.parent, "finished", lock_held=True)
             if marked:
                 print(f"session: {marked} finished")
-        except Exception:
+        except (ImportError, OSError, ValueError, KeyError, TypeError):
             pass
-        print(exclusive.release(sl_dir))
+        print(exclusive.release(sl_dir, lock_held=True))
         dest = archive_run(root, sl_dir, slug, a.plan, rid, reserved)  # after release: the archive empties the folder
         if dest:
             print(f"run: archived to {_shown(dest)}")
@@ -313,6 +304,25 @@ def main(argv=None):  # O(R*w + I*w)
         if reserved:
             import run_archive
             run_archive.cancel_reservation(reserved)
+
+
+def main(argv=None):  # O(R*w + I*w)
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--ledger", default=DEFAULT_LEDGER)
+    ap.add_argument("--log", default=DEFAULT_LOG)
+    ap.add_argument("--plan", help="record this run into history (needs " + state.DIR_NAME + "/metrics.jsonl)")
+    ap.add_argument("--lint-log", help="default: lint-log.jsonl next to the ledger")
+    a = ap.parse_args(argv)
+    sys.stdout.reconfigure(encoding="utf-8")
+    root = Path(a.ledger).resolve().parent  # .superlite, or the ledger's directory
+    sl_dir = root if root.name == state.DIR_NAME else root / state.DIR_NAME
+    import session_registry
+    try:
+        hub = session_registry.hub_root(sl_dir.parent)
+    except (session_registry.GitError, OSError, ValueError, IndexError):
+        return _finish_locked(a, root, sl_dir)
+    with session_registry.registry_lock(hub):
+        return _finish_locked(a, root, sl_dir)
 
 
 if __name__ == "__main__":
