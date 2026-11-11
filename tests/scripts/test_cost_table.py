@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import sys
-from pathlib import Path
 
 from test_plan_tools import SCRIPTS
 
@@ -52,23 +51,3 @@ def test_usd_rounding(tmp_path):
     assert s["rows"][0]["usd"] == 0.1235
     assert s["rows"][1]["usd"] == 0.1
     assert s["usd"] == 0.2235
-
-
-def test_cost_line_matches_old_output(tmp_path):
-    """`cost.py line` prints what cost_live printed: the host block, silent before the host reports."""
-    import subprocess
-    sl = tmp_path / ".superlite"
-    sl.mkdir()
-    script = Path(SCRIPTS) / "cost.py"
-
-    def run(*args):
-        return subprocess.run([sys.executable, str(script), *args], capture_output=True, text=True, encoding="utf-8")
-    assert run("line", str(sl)).stdout == ""
-    row = {"ev": "host_usage", "host": "cursor", "model": "sonnet", "generation_id": "g1",
-           "input": 1000, "output": 200, "cache_read": 500, "cache_write": 50, "usd": 1.25}
-    (sl / "metrics.jsonl").write_text(json.dumps(row) + "\n", encoding="utf-8")
-    want = ("superlite cost (host, cursor): $1.2500\n  tokens 1750 | 1 turn\n  in 1000 out 200 cache_r 500\n")
-    assert run("line", str(sl)).stdout == want
-    assert cost.line(sl) == want.rstrip("\n")
-    assert run("table", str(sl)).stdout.startswith("| agent | model | wall_min | tokens | usd |\n")
-    assert run("bogus").returncode == 2

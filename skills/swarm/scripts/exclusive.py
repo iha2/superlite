@@ -151,12 +151,14 @@ def _release_here(sl: Path) -> None:  # O(S)
     (sl / FILE).unlink(missing_ok=True)
 
 
-def release(plan_or_dir=None) -> str:  # O(N)
+def release(plan_or_dir=None, lock_held: bool = False) -> str:  # O(N)
     """Clear the suspension once the last open run finishes; until then the peers stay off. Runs under the registry lock."""
     sl = orchestrator.sl_dir(plan_or_dir)
     try:
         hub = state.hub_root(sl.parent)
     except base.GitError:
+        return _release(plan_or_dir, sl)
+    if lock_held:
         return _release(plan_or_dir, sl)
     with session_registry.registry_lock(hub):
         return _release(plan_or_dir, sl)

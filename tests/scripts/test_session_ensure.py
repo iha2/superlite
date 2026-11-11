@@ -192,6 +192,48 @@ def test_unregistered_linked_worktree_is_registered_in_place(repo, tmp_path):
     assert "already open here" in run("ensure", "--slug", "x", cwd=other).out
 
 
+def test_unregistered_linked_worktree_resumes_leftovers(repo, tmp_path):
+    other = tmp_path.resolve() / "linked"
+    git(repo, "worktree", "add", "-q", "-b", "feat/y", str(other))
+    live = other / ".superlite"
+    live.mkdir()
+    (live / "progress.md").write_text("old run\n")
+    (live / "metrics.jsonl").write_text('{"task":"T1"}\n')
+    cp = run("ensure", "--slug", "x", cwd=other)
+    assert cp.returncode == 0, cp.both
+    assert row_of(repo, "x")["worktree"] == other.as_posix()
+    assert row_of(repo, "x")["run"] == "open"
+    assert run("ensure", "--slug", "x", cwd=other).returncode == 0
+    assert (live / "progress.md").read_text() == "old run\n"
+    assert (live / "metrics.jsonl").read_text() == '{"task":"T1"}\n'
+    (archive,) = (repo / ".superlite" / "runs").iterdir()
+    assert (archive / "progress.md").read_text() == "old run\n"
+    assert (archive / "metrics.jsonl").read_text() == '{"task":"T1"}\n'
+    assert json.loads((archive / "run.json").read_text())["status"] == "unfinished"
+
+
+def test_linked_registration_failure_restores_leftovers(repo, tmp_path, monkeypatch):
+    import session_ensure as E
+    import session_registration as S
+    import session_registry as R
+
+    other = tmp_path.resolve() / "linked"
+    git(repo, "worktree", "add", "-q", "-b", "feat/y", str(other))
+    live = other / ".superlite"
+    live.mkdir()
+    (live / "progress.md").write_text("old run\n")
+    reg = R.read(repo)
+
+    def fail_write(*_):
+        raise OSError("registry write failed")
+
+    monkeypatch.setattr(S, "write", fail_write)
+    with pytest.raises(E.JournalError):
+        S.register_linked(repo, reg, other, "x")
+    assert (live / "progress.md").read_text() == "old run\n"
+    assert not list((repo / ".superlite" / "runs").glob("*"))
+
+
 def test_slug_collisions_get_suffix(repo):
     run("ensure", "--slug", "demo", cwd=repo)
     session.mark_run(repo, "finished")
@@ -239,12 +281,26 @@ def test_concurrent_ensure_same_slug_makes_one_session(repo):
     assert [s["slug"] for s in reg_of(repo)["sessions"]] == ["demo"]
 
 
+def _assert_leftover_archived(repo):
+    """Leftover run files are archived (not lost) under runs/<id>-run-unfinished/."""
+    dirs = sorted((repo / ".superlite" / "runs").glob("*-unfinished"))
+    assert len(dirs) == 1, dirs
+    meta = json.loads((dirs[0] / "run.json").read_text(encoding="utf-8"))
+    assert meta["status"] == "unfinished", meta
+    found = [f for f in dirs[0].rglob("notes.txt")]
+    live = (repo / ".superlite" / "notes.txt")
+    assert found or live.exists(), "leftover lost"
+    assert not live.exists() or live.read_text() == "keep\n"
+    if found:
+        assert found[0].read_text() == "keep\n"
+
+
 def test_leftover_run_files_without_active_survive_ensure(repo):
     (repo / ".superlite").mkdir()
     (repo / ".superlite" / "notes.txt").write_text("keep\n")
     cp = run("ensure", "--slug", "demo", cwd=repo)
     assert cp.returncode == 0, cp.both
-    assert (repo / ".superlite" / "notes.txt").read_text() == "keep\n"
+    _assert_leftover_archived(repo)
 
 
 def test_failed_switch_keeps_dirty_work_and_leftovers(repo):
@@ -258,7 +314,7 @@ def test_failed_switch_keeps_dirty_work_and_leftovers(repo):
     (repo / "app.py").write_text("dirty\n")
     (repo / ".superlite" / "notes.txt").write_text("keep\n")
     run("ensure", "--slug", "b", cwd=repo)
-    assert (repo / ".superlite" / "notes.txt").read_text() == "keep\n"
+    _assert_leftover_archived(repo)
     assert "dirty" in (repo / "app.py").read_text() or git(repo, "stash", "list").strip()
 
 
@@ -646,6 +702,48 @@ def test_ensure_branch_registers_current_branch_in_place(repo):
     assert last(cp) == f"SESSION worktree={repo.as_posix()} slug=rev branch=feature"
 
 
+def test_branch_registration_resumes_leftovers(repo):
+    git(repo, "switch", "-q", "-c", "feature")
+    live = repo / ".superlite"
+    live.mkdir()
+    (live / "progress.md").write_text("old run\n")
+    (live / "metrics.jsonl").write_text('{"task":"T1"}\n')
+    cp = run("ensure", "--slug", "rev", "--branch", "feature", cwd=repo)
+    assert cp.returncode == 0, cp.both
+    assert row_of(repo, "rev")["run"] == "open"
+    assert run("ensure", "--slug", "rev", "--branch", "feature", cwd=repo).returncode == 0
+    assert (live / "progress.md").read_text() == "old run\n"
+    assert (live / "metrics.jsonl").read_text() == '{"task":"T1"}\n'
+    (archive,) = (live / "runs").iterdir()
+    assert (archive / "progress.md").read_text() == "old run\n"
+    assert (archive / "metrics.jsonl").read_text() == '{"task":"T1"}\n'
+    assert run("ensure", "--slug", "next", "--move", "yes", cwd=repo).returncode == 0
+    moved = Path(row_of(repo, "rev")["worktree"]) / ".superlite"
+    assert (moved / "progress.md").read_text() == "old run\n"
+    assert (moved / "metrics.jsonl").read_text() == '{"task":"T1"}\n'
+
+
+def test_branch_registration_failure_restores_leftovers(repo, monkeypatch):
+    import session_ensure as E
+    import session_registration as S
+    import session_registry as R
+
+    git(repo, "switch", "-q", "-c", "feature")
+    live = repo / ".superlite"
+    live.mkdir()
+    (live / "progress.md").write_text("old run\n")
+    reg = R.read(repo)
+
+    def fail_write(*_):
+        raise OSError("registry write failed")
+
+    monkeypatch.setattr(S, "write", fail_write)
+    with pytest.raises(E.JournalError):
+        S.register_in_place(repo, reg, repo, repo, "rev", "feature")
+    assert (live / "progress.md").read_text() == "old run\n"
+    assert not list((live / "runs").glob("*"))
+
+
 def test_ensure_branch_parallel_worktree_checks_out_existing_branch(repo):
     """`ensure --branch <B> --move yes` puts the new worktree on existing B, not a fresh branch off base."""
     assert run("ensure", "--slug", "a", cwd=repo).returncode == 0
@@ -812,6 +910,9 @@ def test_redirect_to_unregistered_worktree_registers_it(repo):
     """REDIRECT to an unregistered checkout of the requested branch registers it as a session first."""
     x = repo.parent / "x"
     git(repo, "worktree", "add", "-q", "-b", "feature", str(x))
+    live = x / ".superlite"
+    live.mkdir()
+    (live / "progress.md").write_text("old run\n")
     cp = run("ensure", "--slug", "rev", "--branch", "feature", cwd=repo)
     assert cp.returncode == 3, cp.both
     assert "REDIRECT" in cp.out, cp.out
@@ -820,6 +921,10 @@ def test_redirect_to_unregistered_worktree_registers_it(repo):
     assert Path(rows[0]["worktree"]).resolve() == x.resolve()
     assert rows[0].get("run", "open") == "open"
     assert rows[0].get("adopted_branch") is True
+    assert run("ensure", "--slug", "rev", "--branch", "feature", cwd=x).returncode == 0
+    assert (live / "progress.md").read_text() == "old run\n"
+    (archive,) = (repo / ".superlite" / "runs").iterdir()
+    assert (archive / "progress.md").read_text() == "old run\n"
 
 
 def test_session_on_base_branch_stays_in_place_when_second_flow_starts(repo):

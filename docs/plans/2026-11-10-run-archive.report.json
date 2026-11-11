@@ -1,0 +1,440 @@
+{
+ "projection_note": "projection: fixed forecast saved at lint 2026-11-10T21:32:05 (plan edited since)",
+ "headline": {
+  "wall_min": {
+   "projected": 3.652,
+   "actual": 70.228
+  },
+  "cost_usd_agents": {
+   "projected": 0.6128,
+   "actual": 1.30842
+  },
+  "task_min": {
+   "projected": 12.307,
+   "actual": 37.827
+  },
+  "agents": {
+   "projected": 8,
+   "actual": 35
+  }
+ },
+ "feature": {
+  "topic": "run-archive",
+  "status": "approved",
+  "prototype": {
+   "wall_min": {
+    "projected": 3.456,
+    "actual": 10.553
+   },
+   "cost_usd": {
+    "projected": 0.344966,
+    "actual": 0.86871
+   }
+  },
+  "integration": {
+   "wall_min": {
+    "projected": 3.652,
+    "actual": 70.228
+   },
+   "cost_usd": {
+    "projected": 0.6128,
+    "actual": 1.30842
+   }
+  },
+  "prototype_tasks": 5,
+  "share_pct": 66.4,
+  "cap_pct": 25
+ },
+ "cost_split": {
+  "agents_usd": 0.694514,
+  "rework_usd": 0.613906,
+  "coordinator_usd": 12.969458,
+  "total_usd": 14.277878
+ },
+ "concurrency": {
+  "peak": 5,
+  "projected_peak": 7
+ },
+ "critical_path": {
+  "actual": [
+   "T2"
+  ],
+  "projected": [
+   "T1",
+   "T8"
+  ],
+  "projected_min": 3.652
+ },
+ "model_mix": {
+  "haiku": {
+   "tasks": 2,
+   "cost_usd": 0.034826
+  },
+  "sonnet": {
+   "tasks": 4,
+   "cost_usd": 1.163576
+  },
+  "unknown": {
+   "tasks": 1,
+   "cost_usd": 0.110018
+  }
+ },
+ "coordinator_cost_by_model": {
+  "opus": 12.969398,
+  "sonnet": 6e-05
+ },
+ "quality": {
+  "tests": {
+   "passed": 201,
+   "failed": 0,
+   "skipped": 0,
+   "seconds": 326.7,
+   "mode": "fast",
+   "failures": [],
+   "skipped_tests": []
+  },
+  "first_time_pass": 0,
+  "first_time_n": 0,
+  "rework_dispatches": 7,
+  "open_incidents": 34
+ },
+ "tasks": [
+  {
+   "task": "T7",
+   "model": "haiku",
+   "pred_min": 1.379,
+   "actual_min": 3.97,
+   "delta": {
+    "abs": 2.591,
+    "pct": 187.9
+   },
+   "cost_usd": 0.010381,
+   "first_time_pass": null
+  },
+  {
+   "task": "T2",
+   "model": "sonnet",
+   "pred_min": 1.494,
+   "actual_min": 3.482,
+   "delta": {
+    "abs": 1.9877,
+    "pct": 133.0
+   },
+   "cost_usd": 0.419785,
+   "first_time_pass": null
+  },
+  {
+   "task": "T3",
+   "model": "sonnet",
+   "pred_min": 1.475,
+   "actual_min": 3.405,
+   "delta": {
+    "abs": 1.93,
+    "pct": 130.8
+   },
+   "cost_usd": 0.485859,
+   "first_time_pass": null
+  },
+  {
+   "task": "T4",
+   "model": null,
+   "pred_min": 1.475,
+   "actual_min": 0.0,
+   "delta": {
+    "abs": -1.475,
+    "pct": -100.0
+   },
+   "cost_usd": 0.110018,
+   "first_time_pass": null
+  },
+  {
+   "task": "T8",
+   "model": "sonnet",
+   "pred_min": 2.06,
+   "actual_min": 1.14,
+   "delta": {
+    "abs": -0.92,
+    "pct": -44.7
+   },
+   "cost_usd": 0.096833,
+   "first_time_pass": null
+  },
+  {
+   "task": "T1",
+   "model": "sonnet",
+   "pred_min": 1.592,
+   "actual_min": 0.785,
+   "delta": {
+    "abs": -0.807,
+    "pct": -50.7
+   },
+   "cost_usd": 0.161099,
+   "first_time_pass": null
+  },
+  {
+   "task": "T0",
+   "model": "haiku",
+   "pred_min": null,
+   "actual_min": 25.045,
+   "delta": {
+    "abs": null,
+    "pct": null
+   },
+   "cost_usd": 0.024445,
+   "first_time_pass": null
+  }
+ ],
+ "cost_table": {
+  "source": "est",
+  "usd": 1.7299,
+  "tokens": 3851857,
+  "wall_min": 687839692.9663,
+  "rows": [
+   {
+    "agent": "a06575b4ca0728b35",
+    "model": "sonnet",
+    "wall_min": 1.1538,
+    "tokens": 112983,
+    "usd": 0.0968
+   },
+   {
+    "agent": "a1a0e9ea4039feb44",
+    "model": "opus",
+    "wall_min": 2.5914,
+    "tokens": 0,
+    "usd": 0.0
+   },
+   {
+    "agent": "a244bb130db75775d",
+    "model": "sonnet",
+    "wall_min": 0.721,
+    "tokens": 70984,
+    "usd": 0.0626
+   },
+   {
+    "agent": "a262bf8bf05890de6",
+    "model": "sonnet",
+    "wall_min": 29906076.7578,
+    "tokens": 0,
+    "usd": 0.0
+   },
+   {
+    "agent": "a288c19f05edb434c",
+    "model": "sonnet",
+    "wall_min": 29906079.7013,
+    "tokens": 81226,
+    "usd": 0.0611
+   },
+   {
+    "agent": "a2d8b73485fdffd0e",
+    "model": "sonnet",
+    "wall_min": 29906074.68,
+    "tokens": 0,
+    "usd": 0.0
+   },
+   {
+    "agent": "a40c3cc48be93af1c",
+    "model": "sonnet",
+    "wall_min": 1.096,
+    "tokens": 85778,
+    "usd": 0.0833
+   },
+   {
+    "agent": "a500905139cfa9c61",
+    "model": "sonnet",
+    "wall_min": 29905997.2331,
+    "tokens": 0,
+    "usd": 0.0
+   },
+   {
+    "agent": "a50709b49b71e25c6",
+    "model": "sonnet",
+    "wall_min": 29906076.2268,
+    "tokens": 0,
+    "usd": 0.0
+   },
+   {
+    "agent": "a52e4ab53dde12f36",
+    "model": "sonnet",
+    "wall_min": 1.2849,
+    "tokens": 140242,
+    "usd": 0.1027
+   },
+   {
+    "agent": "a574e464d5a446481",
+    "model": "sonnet",
+    "wall_min": 29906077.7451,
+    "tokens": 0,
+    "usd": 0.0
+   },
+   {
+    "agent": "a5b51e693784d630b",
+    "model": "sonnet",
+    "wall_min": 3.5962,
+    "tokens": 540732,
+    "usd": 0.2545
+   },
+   {
+    "agent": "a5de0089a69f8f60d",
+    "model": "sonnet",
+    "wall_min": 29906077.4703,
+    "tokens": 487471,
+    "usd": 0.2566
+   },
+   {
+    "agent": "a66541b092b32ff7c",
+    "model": "sonnet",
+    "wall_min": 29906079.7723,
+    "tokens": 53063,
+    "usd": 0.0419
+   },
+   {
+    "agent": "a67495d593753739b",
+    "model": "sonnet",
+    "wall_min": 0.8657,
+    "tokens": 92507,
+    "usd": 0.0791
+   },
+   {
+    "agent": "a6871b86f86018b49",
+    "model": "sonnet",
+    "wall_min": 29906101.744,
+    "tokens": 0,
+    "usd": 0.0
+   },
+   {
+    "agent": "a7350444b53e2396f",
+    "model": "opus",
+    "wall_min": 1.1287,
+    "tokens": 0,
+    "usd": 0.0
+   },
+   {
+    "agent": "a81b488263e83c1be",
+    "model": "sonnet",
+    "wall_min": 29906143.5359,
+    "tokens": 189914,
+    "usd": 0.1234
+   },
+   {
+    "agent": "a82ed952961bc6fbc",
+    "model": "sonnet",
+    "wall_min": 0.6008,
+    "tokens": 56513,
+    "usd": 0.0474
+   },
+   {
+    "agent": "a8522ddf4f6f7545d",
+    "model": "sonnet",
+    "wall_min": 29906110.7123,
+    "tokens": 0,
+    "usd": 0.0
+   },
+   {
+    "agent": "a8840c1aacb9edd62",
+    "model": "sonnet",
+    "wall_min": 29906004.3493,
+    "tokens": 0,
+    "usd": 0.0
+   },
+   {
+    "agent": "a8fefc5c142653ce2",
+    "model": "sonnet",
+    "wall_min": 29906143.1589,
+    "tokens": 385808,
+    "usd": 0.1942
+   },
+   {
+    "agent": "a9937f805f2595e23",
+    "model": "haiku",
+    "wall_min": 4.0387,
+    "tokens": 277051,
+    "usd": 0.0104
+   },
+   {
+    "agent": "a9feedd0b5ff00f89",
+    "model": "sonnet",
+    "wall_min": 29905999.1829,
+    "tokens": 0,
+    "usd": 0.0
+   },
+   {
+    "agent": "aa49486949fe70b80",
+    "model": "sonnet",
+    "wall_min": 29906074.705,
+    "tokens": 0,
+    "usd": 0.0
+   },
+   {
+    "agent": "aadcc772c17d40013",
+    "model": "sonnet",
+    "wall_min": 29905999.4684,
+    "tokens": 0,
+    "usd": 0.0
+   },
+   {
+    "agent": "ab1a08771b63a3cd9",
+    "model": "sonnet",
+    "wall_min": 29906074.8381,
+    "tokens": 162763,
+    "usd": 0.1035
+   },
+   {
+    "agent": "abe04991647ebbb45",
+    "model": "haiku",
+    "wall_min": 25.0615,
+    "tokens": 1078591,
+    "usd": 0.0244
+   },
+   {
+    "agent": "ad63474914a98f0e4",
+    "model": "sonnet",
+    "wall_min": 29906075.2993,
+    "tokens": 0,
+    "usd": 0.0
+   },
+   {
+    "agent": "addb5cc9b50fd55b7",
+    "model": "sonnet",
+    "wall_min": 29906146.8053,
+    "tokens": 0,
+    "usd": 0.0
+   },
+   {
+    "agent": "ae1577ca50407c377",
+    "model": "opus",
+    "wall_min": 0.4982,
+    "tokens": 36231,
+    "usd": 0.188
+   },
+   {
+    "agent": "ae9b5b5c81a3c76da",
+    "model": "sonnet",
+    "wall_min": 29906072.8671,
+    "tokens": 0,
+    "usd": 0.0
+   },
+   {
+    "agent": "af35a42cfc7fae89c",
+    "model": "sonnet",
+    "wall_min": 29906005.4273,
+    "tokens": 0,
+    "usd": 0.0
+   },
+   {
+    "agent": "af4602abf862ea065",
+    "model": "sonnet",
+    "wall_min": 29906079.1293,
+    "tokens": 0,
+    "usd": 0.0
+   },
+   {
+    "agent": "afc1d87fd66c06ecf",
+    "model": "sonnet",
+    "wall_min": 29906079.5196,
+    "tokens": 0,
+    "usd": 0.0
+   }
+  ]
+ }
+}

@@ -88,7 +88,7 @@ flowchart TB
 2. Build the packet now: `bash "$CLI" plan_tools packet --plan $PLAN --base <start-sha>` uses the existing `.superlite/test-summary.json`, the probe results and the incidents, and writes `.superlite/review-packet.md`. Its header says `FAST PATH` or `REVIEW REQUIRED`. In the same message start `bash "$CLI" run_tests --affected --background`; do not wait for it.
 3. Start `superlite:final-reviewer` at the same moment, fresh, brief = `SUPERLITE=<path>` and "read .superlite/review-packet.md", nothing more. The tree stays frozen. It answers in one turn from the packet only: `Verdict: APPROVED` or `CHANGES_REQUESTED` plus `file:line - problem - fix - tier N` lines.
 4. Red suite lines are findings too. Send all to fixers (`fixing.md`: tier by understanding, split by file), then `checkpoint Tn` per owning task and one more `run_tests --background`. Leftovers: a `Ruling:`.
-5. Freeze and final checkpoint without waiting on tests. Shipping runs the one blocking test run (`run_tests --full --reuse` when the plan says `**Full suite:** yes`, else `run_tests --affected --base <start sha>`); red blocks merge and PR.
+5. Freeze and checkpoint without waiting on tests. Shipping runs the one blocking run (`run_tests --full --reuse` when the plan says `**Full suite:** yes`, else `run_tests --affected --base <start sha>`); red blocks merge and PR.
 
 ## Measure and budget
 
@@ -96,7 +96,7 @@ Hooks write `.superlite/metrics.jsonl` (see `metrics.md`). `lint` and `dispatch`
 
 ## Freeze, rulings, finish
 
-Green suite: freeze. Archive `.superlite/incidents.jsonl` and `progress.md` next to the plan. Run `bash "$CLI" finish --plan $PLAN`; print its rulings in your closing message under "Rulings I made", each with its cost. Print its last block before any merge or PR option; full: `<plan>.report.md`. Then invoke `superlite:shipping`.
+Green suite: freeze. `finish` moves the run's files into `.superlite/runs/<id>/`. Run `bash "$CLI" finish --plan $PLAN`; print its rulings in your closing message under "Rulings I made", each with its cost, then its last block (the report summary) before any merge or PR option; full: `<plan>.report.md`. Then invoke `superlite:shipping`.
 
 ## Stop conditions
 

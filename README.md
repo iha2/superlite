@@ -64,7 +64,7 @@ Both stop for destructive, outward (push, merge, publish) or security-sensitive 
 
 ### Watch a run
 
-**Let it run.** Watch `.superlite/` in your project: `progress.md` has the rulings and the log, `test-summary.json` the latest test result, `metrics.jsonl` and the run history the time and cost per agent.
+**Let it run.** Watch `.superlite/` in your project: `progress.md` has the rulings and the log, `test-summary.json` the latest test result, `metrics.jsonl` and the run history the time and cost per agent. A finished run is archived in `.superlite/runs/<id>/`.
 
 ```mermaid
 flowchart LR

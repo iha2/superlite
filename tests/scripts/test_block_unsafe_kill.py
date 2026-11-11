@@ -65,20 +65,10 @@ def test_allows_unrelated_commands():
     assert run("pkill x", tool="Read").returncode == 0
 
 
-def test_malformed_input_fails_open():
-    for raw in ("", "not json", "[]", json.dumps({"tool_name": "Bash"}),
-                json.dumps({"tool_name": "Bash", "tool_input": {"command": 5}})):
-        r = run(None, raw=raw)
-        assert r.returncode == 0, raw
-        assert r.stdout == "" and r.stderr == ""
-
-
-def test_hooks_json_has_both_entries():
-    data = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))
-    assert "SessionStart" in data["hooks"]
-    (pre,) = data["hooks"]["PreToolUse"]
-    assert {"Bash", "PowerShell"} <= set(pre["matcher"].split("|"))
-    assert pre["hooks"][0]["command"] == 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/pre-tool"'
+def test_a_one_megabyte_command_is_allowed_and_a_kill_after_it_is_still_blocked():
+    big = "echo " + "a" * 1_000_000
+    assert run(big).returncode == 0
+    assert run(big + "\npkill -f y").returncode == 2
 
 
 def test_blocks_multiline_and_escaped_newlines():

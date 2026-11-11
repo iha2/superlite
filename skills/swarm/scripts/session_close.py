@@ -13,6 +13,7 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 import session_archive as A  # noqa: E402
+import run_archive  # noqa: E402
 import session_wip as W  # noqa: E402
 import state  # noqa: E402
 from journal import Journal, JournalError  # noqa: E402
@@ -130,7 +131,7 @@ def _close_owned(root: Path, reg: dict, row: dict, slug: str, a) -> int:
         if stop is not None:
             return stop
     store, live = store_path(root, slug), state.run_dir(wt)
-    had_run = bool(run_entries(live))
+    had_run = any(p.name != run_archive.CURRENT_RUN for p in run_entries(live))
     before = read(root)  # as on disk: the undo must not persist the in-memory "finished" mark
     wip = None
     try:

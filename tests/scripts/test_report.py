@@ -102,3 +102,15 @@ def test_two_builds_in_one_project_keep_two_reports_and_list_and_show_them(tmp_p
     assert shown.startswith("build report (projected -> actual)") and "plan.report.md" in shown
     assert "model mix:" in run(REPORT, "--show", "plan.md", "--full", "--plans", tmp_path, cwd=tmp_path).out
     assert "no stored report for nope" in run(REPORT, "--show", "nope", "--plans", tmp_path, cwd=tmp_path).out
+
+
+def test_post_finish_report_uses_the_matching_archive(tmp_path):
+    p = fixture(tmp_path)
+    sl = tmp_path / ".superlite"
+    import run_archive
+    archived = run_archive.archive(sl, "done", plan=p.as_posix(), rid="finished")
+    assert archived is not None and not (sl / "metrics.jsonl").exists()
+    out = go(tmp_path, p)
+    assert "build report (projected -> actual)" in out
+    assert (archived / "report.json").is_file()
+    assert p.with_name("plan.report.json").is_file()

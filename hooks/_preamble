@@ -182,9 +182,12 @@ fi
 root="${root//\\//}"
 
 # up_to_run DIR: the nearest folder at or above DIR that holds .superlite/orchestrator.json, else DIR, into UP.
+# The search stops at the main checkout (a folder with a .git directory): a linked worktree (.git file) still
+# finds its hub's run, but a run outside the repository never gates it.
 up_to_run() {
   local d="$1" up
   while [ ! -f "$d/.superlite/orchestrator.json" ]; do
+    [ -d "$d/.git" ] && { UP="$1"; return 0; }
     up="${d%/*}"; { [ -z "$up" ] || [ "$up" = "$d" ]; } && { UP="$1"; return 0; }; d="$up"
   done
   UP="$d"
@@ -192,6 +195,9 @@ up_to_run() {
 
 jstr cwd; in_cwd="${REPLY//\\\\/$'\x01'}"; in_cwd="${in_cwd//\\\"/\"}"; in_cwd="${in_cwd//\\\//\/}"; in_cwd="${in_cwd//$'\x01'//}"
 proj0="${CLAUDE_PROJECT_DIR:-${CURSOR_PROJECT_DIR:-}}"
+case ${OSTYPE:-} in
+  msys*|cygwin*|win*) proj0="${proj0//\\//}" ;;   # Windows hosts pass C:\x\y; up_to_run climbs on "/"
+esac
 [ -n "$proj0" ] || proj0="$in_cwd"
 if [ -z "$proj0" ]; then   # Cursor: the first workspace root that holds a superlite run
   re_roots='"workspace_roots"[[:space:]]*:[[:space:]]*\[([^]]*)\]'

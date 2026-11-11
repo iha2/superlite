@@ -45,7 +45,9 @@ Stdlib only.
 import argparse
 import json
 import os
+import importlib.util
 import re
+import shlex
 import sys
 import tempfile
 import time
@@ -386,6 +388,30 @@ def make_reporter(a, label, paths):
     return report
 
 
+def serial_addopts():  # O(size of pyproject) -> ["-o", "addopts=..."] when xdist flags would break pytest, else []
+    """The project's addopts ask for xdist (`-n auto --dist loadfile`) but xdist is not installed: pytest would
+    exit 4 on the unknown flags, so run serially with the other addopts kept."""
+    if importlib.util.find_spec("xdist"):
+        return []
+    try:
+        import tomllib
+        ini = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["tool"]["pytest"]["ini_options"]
+        toks = shlex.split(ini.get("addopts", ""))
+    except (OSError, ValueError, KeyError, ImportError):
+        return []
+    keep, i = [], 0
+    while i < len(toks):
+        t = toks[i]
+        if t in ("-n", "--numprocesses", "--dist", "--maxprocesses"):
+            i += 2
+        elif t.startswith(("-n", "--numprocesses=", "--dist=", "--maxprocesses=")) and t != "--no-header":
+            i += 1
+        else:
+            keep.append(t)
+            i += 1
+    return ["-o", "addopts=" + shlex.join(keep)] if len(keep) != len(toks) else []
+
+
 def watched(a, cmd, label, paths, **kw):  # the test command under the hang probe
     cfg = tp.load_config()
     return tp.run_watched(cmd, cfg=cfg, expected_s=expected_seconds(a, label), test_file=", ".join(paths) or None,
@@ -492,7 +518,7 @@ def run(a):  # O(X + T*d + B + F log F) + the runner + one incident append
             print("0 0 0 0.0")
             return 2
         cmd = [*pyt, *paths, "-q", "-p", "no:cacheprovider",
-               "-o", "junit_family=xunit1", f"--junitxml={xml_path}"]
+               "-o", "junit_family=xunit1", f"--junitxml={xml_path}", *serial_addopts()]
         t0 = time.monotonic()
         r = watched(a, cmd, label, paths)
         seconds = time.monotonic() - t0

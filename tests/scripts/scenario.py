@@ -53,7 +53,9 @@ def _make_template() -> Path:
     atexit.register(shutil.rmtree, tpl, True)
     env = {**os.environ, **GIT_ENV}
     for argv in (["git", "init", "-q", "-b", "main"], ["git", "config", "user.name", "t"],
-                 ["git", "config", "user.email", "t@example.com"], ["git", "config", "commit.gpgsign", "false"]):
+                 ["git", "config", "user.email", "t@example.com"], ["git", "config", "commit.gpgsign", "false"],
+                 # no background maintenance: it writes lock files while Repo copies the template
+                 ["git", "config", "maintenance.auto", "false"], ["git", "config", "gc.auto", "0"]):
         subprocess.run(argv, cwd=tpl, env=env, check=True, capture_output=True)
     (tpl / "README.md").write_text("scenario repo\n", encoding="utf-8")
     subprocess.run(["git", "add", "-A"], cwd=tpl, env=env, check=True, capture_output=True)
@@ -68,7 +70,7 @@ class Repo:
     def __init__(self, tmp_path: Path):
         self.root = Path(tmp_path).resolve() / "repo"
         self.home = Path(tmp_path).resolve() / "_sl_home"
-        shutil.copytree(_make_template(), self.root)
+        shutil.copytree(_make_template(), self.root, ignore=shutil.ignore_patterns("*.lock"))
         self.home.mkdir(exist_ok=True)
         self.base_sha = self.git("rev-parse", "HEAD").strip()
 

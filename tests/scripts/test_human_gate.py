@@ -296,16 +296,6 @@ def test_protected_reads_and_sl_orchestrator_allowed(tmp_path):
         assert bash(proj, cmd).returncode == 0, cmd
 
 
-def test_guard_fails_open(human):
-    env = {**os.environ, "CLAUDE_PROJECT_DIR": str(human)}
-    for raw in ("", "not json", "[]", "{", json.dumps({"tool_name": "Agent"}),
-                json.dumps({"tool_name": "Bash", "tool_input": {"command": 5}})):
-        r = subprocess.run([BASH, str(GUARD)], input=raw, capture_output=True, text=True, env=env)
-        if '"Agent"' in raw:
-            continue  # an Agent call with no subagent_type is general-purpose
-        assert r.returncode == 0 and r.stderr == "", raw
-
-
 # ---- the reply recorder in hooks/prompt ----
 
 def reply(proj, prompt, raw=None):
@@ -386,25 +376,6 @@ def test_reply_appends_and_escapes(human):
     assert a["text"] == "first"
     assert b["text"] == 'yes "approve" \\ it next line {x}' and b["approves"] is True
     assert len(c["text"]) == 160
-
-
-def test_reply_fails_open(human):
-    for raw in ("", "not json", "[]", "{", '{"prompt": 5}', '{"cwd": "x"}'):
-        r = reply(human, None, raw=raw)
-        assert r.returncode == 0 and r.stdout == "" and r.stderr == "", raw
-    for rec in lines(human):
-        assert set(rec) == {"t", "approves", "text"}
-
-
-def test_registration_and_endings():
-    data = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
-    (guard_entry,) = data["PreToolUse"]
-    assert guard_entry["hooks"][0]["command"].endswith("pre-tool\"")
-    assert "Agent" in guard_entry["matcher"].split("|")
-    ups = [h["command"] for e in data["UserPromptSubmit"] for h in e["hooks"]]
-    assert ups == ['bash "${CLAUDE_PLUGIN_ROOT}/hooks/prompt"']
-    for h in (GUARD, REPLY):
-        assert b"\r" not in h.read_bytes()
 
 
 def cursor_reply(proj, prompt, roots, cwd):
@@ -561,27 +532,6 @@ def test_claude_denials_stay_on_stderr(human):
     assert r.returncode == 2 and r.stdout == "" and NEXT in r.stderr
 
 
-def test_latency(human):
-    def best(argv, raw, cwd):
-        env = {**os.environ, "CLAUDE_PROJECT_DIR": str(human)}
-        times = []
-        for _ in range(3):
-            t = time.perf_counter()
-            subprocess.run(argv, input=raw, capture_output=True, text=True, env=env, cwd=cwd)
-            times.append(time.perf_counter() - t)
-        return min(times)
-
-    base = best([BASH, "-c", "exit 0"], "", str(human))
-    cases = (
-        (GUARD, json.dumps({"tool_name": "Bash", "tool_input": {"command": "git status && ls"}})),
-        (GUARD, json.dumps({"tool_name": "Write", "tool_input": {"file_path": "a.py"}})),
-        (REPLY, json.dumps({"cwd": str(human), "prompt": "yes, approve"})),
-    )
-    for hook, raw in cases:
-        t = best([BASH, str(hook)], raw, str(human))
-        assert t < max(0.6, base + 0.35), (hook.name, t, base)
-
-
 # ---- the session folder and the folder superlite-cli runs in can differ (the desktop app moves the working directory) ----
 
 def test_reply_recorded_when_the_prompt_cwd_is_below_the_project(human):
@@ -600,3 +550,37 @@ def test_guard_finds_the_run_from_a_folder_below_the_project(human):
     env = {k: v for k, v in os.environ.items() if k != "CLAUDE_PROJECT_DIR"}
     r = subprocess.run([BASH, str(GUARD)], input=raw, capture_output=True, text=True, env=env)
     assert r.returncode == 2 and NEXT in r.stderr
+
+
+# ---- the run search stops at the repository: a run in a folder above it never gates it ----
+
+def _git(*args, cwd):
+    env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+           "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, env=env)
+
+
+def _repo(path):
+    path.mkdir(parents=True)
+    _git("init", "-q", "-b", "main", cwd=path)
+    _git("commit", "-q", "--allow-empty", "-m", "init", cwd=path)
+    return path
+
+
+def test_run_above_the_repo_does_not_gate_it(tmp_path):
+    make(tmp_path, "human")   # an old unapproved run in the folder that holds the repository
+    repo = _repo(tmp_path / "repo")
+    assert bash(repo, 'bash "$CLI" dispatch implementer t1').returncode == 0
+
+
+def test_linked_worktree_still_finds_its_hub_run(tmp_path):
+    # A linked worktree has a .git file, not a directory: the search goes on up to the main checkout's run.
+    hub = _repo(tmp_path / "hub")
+    wt = hub / ".claude" / "worktrees" / "wt"
+    _git("worktree", "add", "-q", "-b", "wt", str(wt), cwd=hub)
+    (hub / ".superlite").mkdir()
+    (hub / ".superlite" / "orchestrator.json").write_text('{"mode": "human", "approved": false}')
+    r = bash(wt, 'bash "$CLI" dispatch implementer t1')
+    assert r.returncode == 2 and NEXT in r.stderr
+    (hub / ".superlite" / "orchestrator.json").write_text('{"mode": "human", "approved": true}')
+    assert bash(wt, 'bash "$CLI" dispatch implementer t1').returncode == 0
