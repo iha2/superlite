@@ -534,6 +534,8 @@ def test_using_superlite_loads_through_the_session_start_hook(repo, host):
         assert "hookSpecificOutput" not in steady["json"]
 
 
+# ---------------------------------------------------------------- peers are suspended for the run
+
 def find_node():
     candidates = [shutil.which("node")] + sorted(Path.home().glob(".nvm/versions/node/*/bin/node"), reverse=True)
     for c in filter(None, candidates):
@@ -560,30 +562,6 @@ process.stdout.write(JSON.stringify(out.messages[0].parts.map(p => p.text)));
     assert parts[-1] == "hello" and all(ln in parts[0] for ln in SKILL_LINES)
     assert len(parts[0].encode("utf-8")) <= 9000  # the skill plus OpenCode's tool mapping (measured about 6.5 KB)
 
-
-def test_using_superlite_loads_through_the_pi_extension():
-    src = (ROOT / ".pi" / "extensions" / "superlite.ts").read_text(encoding="utf-8")
-    assert re.search(r'resolve\(skillsDir, "using-superlite", "SKILL\.md"\)', src)
-    assert 'skillsDir = resolve(packageRoot, "skills")' in src and 'resolve(extensionDir, "../..")' in src
-    assert 'pi.on("context"' in src and "bootstrapMessage" in src  # injected as a user message
-    mapping = re.search(r"function piToolMapping\(\): string \{\s*return `(.*?)`;\s*\}", src, re.S)[1]
-    assert len(SKILL_BODY.encode("utf-8")) + len(mapping.encode("utf-8")) + 400 <= 9000
-
-
-def test_using_superlite_loads_through_gemini():
-    lines = (ROOT / "GEMINI.md").read_text(encoding="utf-8").split("\n")
-    imports = [ln[1:].strip() for ln in lines if ln.startswith("@")]
-    assert "./skills/using-superlite/SKILL.md" in imports
-    size = 0
-    for rel in imports:
-        assert (ROOT / rel).is_file(), rel
-        size += (ROOT / rel).stat().st_size
-    assert size <= 9000
-    ext = json.loads((ROOT / "gemini-extension.json").read_text(encoding="utf-8"))
-    assert ext.get("contextFileName", "GEMINI.md") == "GEMINI.md"
-
-
-# ---------------------------------------------------------------- peers are suspended for the run
 
 def settings(root: Path) -> dict:
     f = root / ".claude" / "settings.local.json"

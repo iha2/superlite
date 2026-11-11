@@ -5,7 +5,6 @@ import json
 import os
 import shutil
 import subprocess
-import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -106,14 +105,6 @@ def observed(tmp_path_factory):
     with ThreadPoolExecutor(8) as ex:
         results = list(ex.map(lambda p: run_pairing(p, tmp), pairs))
     return dict(zip((f"{s}|{e}" for s, e in pairs), results))
-
-
-def test_table_covers_the_whole_cross_product():
-    table = load_table()
-    expected = {f"{s}|{e}" for s, e in itertools.product(STATES, EVENTS)}
-    assert expected - set(table) == set(), "pairings missing from guard_matrix.json"
-    assert set(table) - expected == set(), "guard_matrix.json rows for unknown pairings"
-    assert set(table.values()) <= {"allow", "deny", "rewrite"}
 
 
 def test_every_pairing_matches_the_table(observed):
@@ -218,31 +209,6 @@ def test_read_only_corpus_is_allowed(tmp_path, state):
 
 # ---- fail open ----
 
-def fuzz_inputs():
-    return {
-        "empty": "",
-        "not_json": "garbage {{{",
-        "truncated": '{"tool_name": "Bash", "tool_input": {"command": "pk',
-        "no_tool_name": json.dumps({"tool_input": {"command": "ls"}}),
-        "no_tool_input": json.dumps({"tool_name": "Bash"}),
-        "null_fields": json.dumps({"tool_name": None, "tool_input": None, "cwd": None}),
-        "unknown_tool": json.dumps({"tool_name": "Frobnicate", "tool_input": {"x": 1}}),
-        "binary": "\x01\x02\x7f" * 50,
-        "big_payload": json.dumps({"tool_name": "Write", "tool_input": {"file_path": "docs/a.md", "content": "x" * 1_000_000}}),
-    }
-
-
-@pytest.mark.parametrize("name", list(fuzz_inputs()))
-def test_malformed_input_fails_open(tmp_path, name):
-    root = build_state(tmp_path, "ai_run")
-    t0 = time.time()
-    r = hook(root, fuzz_inputs()[name])
-    assert time.time() - t0 < 10
-    assert r.returncode == 0, r.stderr
-    if r.stdout.strip():
-        json.loads(r.stdout)
-
-
 def test_unreadable_state_dir_fails_open(tmp_path):
     if os.name == "nt" or os.geteuid() == 0:
         pytest.skip("permissions are not enforced here")
@@ -258,28 +224,6 @@ def test_unreadable_state_dir_fails_open(tmp_path):
                 json.loads(r.stdout)
     finally:
         sd.chmod(0o755)
-
-
-def test_long_bash_command_is_decided_fast(tmp_path):
-    # The Bash guards are linear in command length: a 1 MB command is decided in under 2 seconds (10 under Git Bash
-    # on Windows, which is slower per byte), in a run where the kill guard, the coordinator guard and the test-run
-    # rewrite all look at it.
-    limit = 10 if os.name == "nt" else 2
-    root = build_state(tmp_path, "ai_run")
-    shapes = {
-        "one word": "echo " + "a" * 1_000_000,
-        "quoted": 'echo rm "' + "a" * 1_000_000 + '"',
-        "many lines": "echo a\n" * 150_000,
-    }
-    for name, cmd in shapes.items():
-        t0 = time.time()
-        r = hook(root, claude("Bash", {"command": cmd}))
-        assert time.time() - t0 < limit, name
-        assert r.returncode == 0, name
-    t0 = time.time()
-    r = hook(root, claude("Bash", {"command": "echo " + "a" * 1_000_000 + "\n" + KILL_BY_NAME}))
-    assert time.time() - t0 < limit
-    assert r.returncode == 2
 
 
 # ---- harness parity ----

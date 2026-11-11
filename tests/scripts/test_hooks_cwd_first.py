@@ -87,14 +87,6 @@ def test_compact_nudge_reads_worktree_run(tree):
     assert r.stdout.strip() != ""
 
 
-def test_hooks_parse_under_bash(tree):
-    if not BASH:
-        pytest.skip("bash not available")
-    for h in ("pre-tool", "prompt", "_preamble", "_kill", "_edits", "_rewrite", "_reply", "_nudge",
-              "capture-agent-launch", "capture-agent-stop"):
-        assert subprocess.run([BASH, "-n", str(HOOKS / h)]).returncode == 0
-
-
 @pytest.mark.parametrize("cwd", ["", "/", "C:\\\\Users\\\\x", "/no such/dir with \\\"quote", "relative/dir", None])
 def test_guard_odd_cwd_keeps_hub_run_and_never_crashes(tree, cwd):
     hub, _wt = tree

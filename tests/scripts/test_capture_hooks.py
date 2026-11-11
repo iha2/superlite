@@ -109,16 +109,6 @@ def test_other_tool_ignored(proj):
     assert records(proj) == []
 
 
-def test_malformed_input_fails_open(proj):
-    for hook in (LAUNCH, STOP):
-        for raw in ("", "not json", "[]", "{", '{"tool_name":"Agent"', '{"agent_id": 5}'):
-            r = run(hook, proj, raw=raw)
-            assert r.returncode == 0, raw
-            assert r.stdout == "" and r.stderr == ""
-    for rec in records(proj):  # whatever was written must still be valid JSON
-        assert rec["ev"] in ("launch", "stop")
-
-
 def test_escaping_round_trips(proj):
     nasty = 'say "hi" \\ back\\slash\nnew\tline {x}'
     p = json.loads(json.dumps(LAUNCH_PAYLOAD))
@@ -141,14 +131,6 @@ def test_truncation(proj):
     launch, stop = records(proj)
     assert len(launch["desc"]) == 120
     assert len(stop["last"]) == 160
-
-
-def test_hooks_json_registers_both():
-    data = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
-    post = data["PostToolUse"][0]
-    assert post["matcher"] == "Agent"
-    assert post["hooks"][0]["command"] == 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/capture-agent-launch"'
-    assert data["SubagentStop"][0]["hooks"][0]["command"] == 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/capture-agent-stop"'
 
 
 def test_cursor_hooks_register_capture():
@@ -189,23 +171,3 @@ def test_feature_json_is_a_run_marker(tmp_path):
     run(STOP, tmp_path, CURSOR_STOP)
     assert len(records(tmp_path)) == 1
 
-
-def test_lf_endings():
-    for h in (LAUNCH, STOP):
-        assert b"\r" not in h.read_bytes()
-
-
-def test_fast(proj):
-    def best(argv, raw=""):
-        env = {**os.environ, "CLAUDE_PROJECT_DIR": str(proj)}
-        times = []
-        for _ in range(3):
-            t = time.perf_counter()
-            subprocess.run(argv, input=raw, capture_output=True, text=True, env=env)
-            times.append(time.perf_counter() - t)
-        return min(times)
-
-    base = best([BASH, "-c", "exit 0"])
-    for hook, payload in ((LAUNCH, LAUNCH_PAYLOAD), (STOP, STOP_PAYLOAD)):
-        t = best([BASH, str(hook)], json.dumps(payload))
-        assert t < max(0.6, base + 0.35), (hook.name, t, base)

@@ -7,10 +7,12 @@ requires-python = ">=3.12"
 dev = [
     "hypothesis>=6.170.14",
     "pytest",
+    "pytest-xdist>=3.8.0",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/scripts"]
+addopts = "-n auto --dist loadfile"
 markers = [
     "slow: long-running (state machine, fault injection); deselect with -m 'not slow'",
     "live: one-turn agent instruction tests (not in testpaths; run: pytest tests/live -m live)",
