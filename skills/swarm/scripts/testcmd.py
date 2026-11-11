@@ -350,6 +350,8 @@ def _rust_target(p: str, root: Path) -> tuple[str, ...]:  # tests/foo.rs -> --te
         return (p,)
     if re.search(r"(^|/)tests/[^/]+\.rs$", p):
         return ("--test", Path(p).stem)
+    if re.search(r"(^|/)src/(main\.rs$|bin/)", p):
+        return ("--bins",)
     return ("--lib",) if (root / "src" / "lib.rs").is_file() else ("--bins",)
 
 

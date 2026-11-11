@@ -200,6 +200,16 @@ def test_rust_binary_crate_inline_tests_run_bins(tmp_path):
     assert testcmd.resolve(str(tmp_path), ["src/main.rs"])["command"] == "cargo test --bins"
 
 
+def test_rust_binary_inline_tests_run_bins_even_with_a_lib(tmp_path):
+    write(tmp_path, "Cargo.toml", "")
+    write(tmp_path, "src/lib.rs", "#[cfg(test)]\nmod tests {}\n")
+    write(tmp_path, "src/main.rs", "#[cfg(test)]\nmod tests {}\n")
+    write(tmp_path, "src/bin/tool.rs", "#[cfg(test)]\nmod tests {}\n")
+    assert testcmd.resolve(str(tmp_path), ["src/main.rs"])["command"] == "cargo test --bins"
+    assert testcmd.resolve(str(tmp_path), ["src/bin/tool.rs"])["command"] == "cargo test --bins"
+    assert testcmd.resolve(str(tmp_path), ["src/lib.rs", "src/main.rs"])["command"] == "cargo test --lib --bins"
+
+
 def test_dotnet_selects_test_classes_by_filter(tmp_path):
     write(tmp_path, "app.csproj", "")
     write(tmp_path, "src/Cart.cs", "class Cart {}\n")
