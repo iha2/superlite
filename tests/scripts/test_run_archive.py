@@ -75,6 +75,40 @@ def test_unfinished_status(tmp_path):
     assert json.loads((dest / "run.json").read_text())["status"] == "unfinished"
 
 
+def test_copy_preserves_live_files_and_archives_independent_snapshot(tmp_path):
+    r = repo(tmp_path)
+    sl = live(r, progress__md="p")
+    (sl / "nested").mkdir()
+    (sl / "nested" / "metrics.jsonl").write_text("m")
+    dest = run_archive.archive(sl, "x", unfinished=True, now=NOW, copy=True)
+    (sl / "progress.md").write_text("continued")
+    (sl / "nested" / "metrics.jsonl").write_text("more")
+    assert (dest / "progress.md").read_text() == "p"
+    assert (dest / "nested" / "metrics.jsonl").read_text() == "m"
+    assert json.loads((dest / "run.json").read_text())["status"] == "unfinished"
+
+
+@pytest.mark.parametrize("failure", ["copy", "manifest"])
+def test_copy_failure_removes_partial_archive(tmp_path, monkeypatch, failure):
+    sl = tmp_path / ".superlite"
+    sl.mkdir()
+    (sl / "progress.md").write_text("p")
+
+    def fail(*args, **_kwargs):
+        if failure == "copy":
+            args[1].write_text("partial")
+        raise OSError("snapshot failed")
+
+    if failure == "copy":
+        monkeypatch.setattr(run_archive, "_copy_entry", fail)
+    else:
+        monkeypatch.setattr(run_archive.os, "replace", fail)
+    with pytest.raises(OSError, match="snapshot failed"):
+        run_archive.archive(sl, "s", now=NOW, copy=True)
+    assert (sl / "progress.md").read_text() == "p"
+    assert not list((sl / "runs").iterdir())
+
+
 def test_plan_recorded(tmp_path):
     r = repo(tmp_path)
     sl = live(r, progress__md="p")

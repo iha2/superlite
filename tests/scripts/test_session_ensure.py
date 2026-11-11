@@ -206,7 +206,10 @@ def test_unregistered_linked_worktree_resumes_leftovers(repo, tmp_path):
     assert run("ensure", "--slug", "x", cwd=other).returncode == 0
     assert (live / "progress.md").read_text() == "old run\n"
     assert (live / "metrics.jsonl").read_text() == '{"task":"T1"}\n'
-    assert not list((repo / ".superlite" / "runs").glob("*"))
+    (archive,) = (repo / ".superlite" / "runs").iterdir()
+    assert (archive / "progress.md").read_text() == "old run\n"
+    assert (archive / "metrics.jsonl").read_text() == '{"task":"T1"}\n'
+    assert json.loads((archive / "run.json").read_text())["status"] == "unfinished"
 
 
 def test_linked_registration_failure_restores_leftovers(repo, tmp_path, monkeypatch):
@@ -711,7 +714,9 @@ def test_branch_registration_resumes_leftovers(repo):
     assert run("ensure", "--slug", "rev", "--branch", "feature", cwd=repo).returncode == 0
     assert (live / "progress.md").read_text() == "old run\n"
     assert (live / "metrics.jsonl").read_text() == '{"task":"T1"}\n'
-    assert not list((live / "runs").glob("*"))
+    (archive,) = (live / "runs").iterdir()
+    assert (archive / "progress.md").read_text() == "old run\n"
+    assert (archive / "metrics.jsonl").read_text() == '{"task":"T1"}\n'
     assert run("ensure", "--slug", "next", "--move", "yes", cwd=repo).returncode == 0
     moved = Path(row_of(repo, "rev")["worktree"]) / ".superlite"
     assert (moved / "progress.md").read_text() == "old run\n"
@@ -918,7 +923,8 @@ def test_redirect_to_unregistered_worktree_registers_it(repo):
     assert rows[0].get("adopted_branch") is True
     assert run("ensure", "--slug", "rev", "--branch", "feature", cwd=x).returncode == 0
     assert (live / "progress.md").read_text() == "old run\n"
-    assert not list((repo / ".superlite" / "runs").glob("*"))
+    (archive,) = (repo / ".superlite" / "runs").iterdir()
+    assert (archive / "progress.md").read_text() == "old run\n"
 
 
 def test_session_on_base_branch_stays_in_place_when_second_flow_starts(repo):

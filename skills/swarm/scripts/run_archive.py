@@ -79,8 +79,9 @@ def cancel_reservation(dest: Path | None) -> None:
 
 
 def archive(sl: Path, slug: str | None = None, unfinished: bool = False, plan: str | None = None,
-            now: datetime | None = None, rid: str | None = None, reserved: Path | None = None) -> Path | None:
-    """Move the run files of live folder `sl` into <hub>/.superlite/runs/<id>/ with run.json; None if nothing to move.
+            now: datetime | None = None, rid: str | None = None, reserved: Path | None = None,
+            copy: bool = False) -> Path | None:
+    """Move or copy run files into <hub>/.superlite/runs/<id>/ with run.json; None if there are no run files.
     Takes no registry lock (session ensure already holds it)."""
     files = entries(sl)
     if not files:
@@ -97,8 +98,11 @@ def archive(sl: Path, slug: str | None = None, unfinished: bool = False, plan: s
     done = False
     try:
         for p in files:
-            shutil.move(str(p), str(dest / p.name))
-            moved.append(p)
+            if copy:
+                _copy_entry(p, dest / p.name)
+            else:
+                shutil.move(str(p), str(dest / p.name))
+                moved.append(p)
         meta = {"id": rid, "slug": slug or "run", "checkout": Path(checkout).resolve().as_posix(), "plan": plan,
                 "archived_at": now.isoformat(timespec="seconds"),
                 "status": "unfinished" if unfinished else "finished", "files": names}
@@ -108,9 +112,18 @@ def archive(sl: Path, slug: str | None = None, unfinished: bool = False, plan: s
         done = True
     finally:
         if not done:
-            # A failed manifest write is the same transaction failure as a partial move.
-            _rollback(dest, moved)
+            if copy:
+                shutil.rmtree(dest)
+            else:
+                _rollback(dest, moved)
     return dest
+
+
+def _copy_entry(source: Path, target: Path) -> None:
+    if source.is_dir() and not source.is_symlink():
+        shutil.copytree(source, target, symlinks=True)
+    else:
+        shutil.copy2(source, target, follow_symlinks=False)
 
 
 def current_slug(checkout: Path) -> str | None:

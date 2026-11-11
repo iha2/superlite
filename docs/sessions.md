@@ -59,7 +59,7 @@ All registry writes take `.superlite/sessions.lock` and replace `sessions.json` 
 | Command | Effect |
 |---|---|
 | `superlite-cli session ensure --slug S` | Idempotent flow entry; see [Auto-start](#auto-start). Last line `SESSION worktree=<path> slug=<s> branch=<b>`; exit 3 `REDIRECT`, exit 4 `ASK untracked` or `ASK move` |
-| `superlite-cli session ensure --slug S --branch B` | Session on an existing branch `B`: in place if `B` is checked out here (a finished session already on `B` is reopened, its uncommitted work kept), `REDIRECT` if checked out elsewhere (an unregistered checkout is registered as a session first), else a worktree on `B`; exit 2 if `B` does not exist |
+| `superlite-cli session ensure --slug S --branch B` | Session on an existing branch `B`: in place if `B` is checked out here (a finished session already on `B` is reopened, its uncommitted work kept), `REDIRECT` if checked out elsewhere (an unregistered checkout is registered as a session first), else a worktree on `B`; exit 2 if `B` does not exist. Registration copies existing run state to an unfinished archive and leaves it live |
 | `superlite-cli session close --slug S [--keep-branch]` | End of flow: mark `S` finished, park it and put the host back on the base branch, remove a parallel worktree `ensure` cut |
 | `superlite-cli session untracked [ask\|stash\|keep]` | Per-repo choice for untracked files (default `ask`); stored in the main checkout's `sessions.json` |
 | `superlite-cli session create --slug S` | Branch on the host (the main checkout); make active (an existing slug: use `use`; asks before stashing untracked files) |
@@ -80,7 +80,7 @@ Every flow (start, regular, mvp, feature, debug, small, review, research) runs `
 | Main checkout, no active session or the active one is finished | `create` with the main checkout as host: branch `superlite/sessions/<topic>` from the current branch; a finished active session is parked first |
 | Main checkout, active session still open | Moves the open session out (see [Move-out](#move-out)): asks `ASK move`, then it continues in `.superlite/worktrees/sessions/<old>` and the new topic takes the main checkout. Without a move the open session is untouched |
 | Main checkout with a pre-existing run (`orchestrator.json`, no row) | Records it as the active open host session, then follows the row above |
-| Unregistered linked worktree | Registers it where it is (`owned: false`), keeping its existing run state |
+| Unregistered linked worktree | Registers it where it is (`owned: false`), copying any existing run state to an unfinished archive and leaving it live to resume |
 
 A taken slug gets `-2`, `-3`, and the slug it settled on is printed. Under Claude Code the command also prints `session: enter EnterWorktree path=<abs>` when the worktree is not the cwd: call `EnterWorktree` with that path. Elsewhere `cd` to the `SESSION worktree=<path>` (fallback).
 
