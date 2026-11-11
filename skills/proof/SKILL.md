@@ -9,7 +9,7 @@ Evidence before claims. Never say "done", "fixed" or "passing" without fresh pro
 
 ## Acceptable evidence
 
-- The one-line summary (`passed failed skipped seconds`) from `bash <skill-dir>/../swarm/scripts/superlite-cli run_tests --full` after the last change.
+- The one-line summary (`passed failed skipped seconds`) from the finish run after the last change: `bash <skill-dir>/../swarm/scripts/superlite-cli run_tests --full --reuse` or `run_tests --affected --base <start sha>`, per the plan's `**Full suite:**`.
 - Or a focused run you executed yourself after the last change, covering exactly what you claim.
 - For a build, a lint or a type check: that command's exit status and summary line.
 - For a bug fix: the original reproduction now passing, plus its regression test.
@@ -19,12 +19,12 @@ Evidence before claims. Never say "done", "fixed" or "passing" without fresh pro
 1. Name the command that proves the claim.
 2. Run it fresh, or reuse a result only if nothing changed since that green run. If nothing changed, do not re-run.
 3. Read the 2 to 3 lines the claim rests on: the counts, the exit code, the failure ids. Not just "no error scrolled by".
-4. State the result honestly: "47 passed, 0 failed (run_tests --full, after the last edit)", or the actual failures.
+4. State the result honestly: "47 passed, 0 failed (run_tests --affected, after the last edit)", naming which finish run applied,, or the actual failures.
 5. Scope the claim to the evidence. A passing unit test does not prove the build works. A clean lint does not prove tests pass. An agent saying "DONE" does not prove the diff is right: check `git status --short` and `git diff --stat`, and read the evidence it reports.
 
 ## Full-suite runs
 
-Run `bash <skill-dir>/../swarm/scripts/superlite-cli run_tests --full` for full suites (or `--fast PATHS` for a focused run); it prints one summary line, so logs stay out of your context. Run it once per wave and once at the end, not after every small edit.
+Run `bash <skill-dir>/../swarm/scripts/superlite-cli run_tests --full --reuse` for full suites, `--affected` for changed code only (or `--fast PATHS` for a focused run); it prints one summary line, so logs stay out of your context. Run it once at the end, not after every small edit.
 
 ## Requirements and delegated work
 

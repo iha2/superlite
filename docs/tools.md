@@ -19,7 +19,7 @@ A checkpoint is a hidden save of one task under `refs/superlite/*`. superlite ne
 | `checkpoint` | Checks scope, then records one or more tasks' owned files as hidden checkpoints (`refs/superlite/*`, branch untouched); `--dispatch` also prints the next dispatch |
 | `cost` | `line` (live host-reported spend, silent before the host reports usage) and `table` (per-agent cost table) |
 | `agent_specs` | `on`/`off`/`status` opt-in pre-impl specs (`.superlite/agent-specs.json`, env `SUPERLITE_AGENT_SPECS`); `open on\|off` toggles `open_in_harness` (opens plans and specs; `status` always shows it); `prefer on\|off` records the first-session global default in `$SUPERLITE_HOME/preferences.json`. Spec = done+why; plan = how |
-| `run_tests` | Runs the project's test command, with `--background`, then `--wait` for the summary; writes `.superlite/test-summary.json`. Probes for a hung run (see below) |
+| `run_tests` | Runs the project's test command, with `--background`, then `--wait` for the summary. `--affected [--base REF] [--files F...]` runs only tests for changed files, `--full --reuse` skips a rerun when the working tree is unchanged since a green run; writes `.superlite/test-summary.json`. Probes for a hung run (see below) |
 | `testprobe` | The hung-test probe `run_tests` uses; run alone it prints the CPU-time method in use and the effective config |
 | `testcmd` | Resolves the project's test command: `.superlite/test-cmd.json`, else detection (npm, go, cargo, dotnet, Python) |
 | `pt_review` | `adapter`, `packet` (the final review packet) and `contract` (seam checks) |

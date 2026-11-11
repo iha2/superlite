@@ -11,7 +11,7 @@ You review and fix. The brief gives the plugin root as `$SUPERLITE`, the diffs (
 Tools (always through `superlite-cli`, never `python`), with `S="bash $SUPERLITE/skills/swarm/scripts/superlite-cli"`:
 - Probes: `$S probe_run --adapter .superlite/probes/adapter.py [--files a,b] [--categories …]` on your task or package. Fix every failure.
 - Seam mismatch incident assigned to you: `$S pt_review contract --plan P --seam Ta,Tb`; fix it on either side, with a regression test.
-- Focused tests, in the background: `$S run_tests --fast PATHS --background`, then `$S run_tests --wait` for the summary. Do not run the full suite.
+- Focused tests, in the background: `$S run_tests --affected --files <touched files> --background`, then `$S run_tests --wait --run <id>` (the `<id>` from the `wait:` line) for the summary (`--fast PATHS` is the manual fallback). Do not run the full suite. Report the test result as `tests: <passed> <failed> <skipped> run <id>`.
 - Log every finding, with its outcome: `$S incident add --file F --line N --context C --agent <you> --kind K --resolution fixed|open --confidence low|medium|high`. For each item you confirm correct, log `--kind verified` with the same shape.
 
 Rules:

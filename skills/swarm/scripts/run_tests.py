@@ -2,10 +2,17 @@
 """Run the project's test command (testcmd: .superlite/test-cmd.json, else detection; pytest for Python),
 parse its junit XML or output, print one summary line.
 
-    run_tests.py [--fast PATHS... | --full] [--log PATH] [--ledger PATH]
+    run_tests.py [--fast PATHS... | --full | --affected [--base REF] [--files F...]] [--reuse] [--log PATH] [--ledger PATH]
                  [--summary PATH] [--background]
                  [--expect SECONDS]
-    run_tests.py --wait [--timeout S] [--patient] [--summary PATH]
+    run_tests.py --wait [--run ID] [--timeout S] [--patient] [--summary PATH]
+
+--affected runs only the tests testcmd.select_affected picks for the changed files (git changes since
+--base, default the last `- start <sha>` in the ledger, else HEAD; --files replaces git). The summary has
+mode "affected", selected, reason, changed_count, untested and tree; a whole-suite trigger runs everything
+(reason `full: <trigger>`), nothing selected is green with zero counts. Full and affected summaries carry `tree`
+(tree_id.tree_hash). --reuse skips the run when --summary is a green full run with the same tree
+(prints `reused: <path>`, exit 0).
 
 Prints `passed failed skipped seconds` (errors count as failed). Each failing
 test becomes a `test-failure` incident; on a --full run each test file whose
@@ -24,11 +31,13 @@ processes. Output and children flat with flat CPU is BLOCKED, with busy CPU SPIN
 `running`); the run is never killed unless config says so. A killed or crashed run says so in `failures`
 (`process killed or crashed (exit -1)`, `TIMEOUT: ...`), never a bare exit code.
 
---background starts a detached run of the same command, prints `summary: <path>` and exits 0
+--background starts a detached run of the same command, prints `wait: run_tests --wait --run <id>` then `summary: <path>` (last), and exits 0
 at once. Each background run gets its own summary file (`test-summary-<id>.json` next to
 --summary) and the pointer `test-summary.latest` (atomic) names the newest run; when a run
 finishes it also publishes its summary to --summary, unless a newer run has started since.
---wait blocks until the pointed run's own summary exists (an older summary never counts),
+Every summary carries `"run_id"` (the background run id; a foreground run makes one); --wait --run ID exits 2
+with `run_tests: run id mismatch` when the file's run_id is not ID.
+--wait blocks until the pointed run's own summary exists (an older summary never counts; --wait --run ID waits for run ID's own summary instead of the pointed one),
 prints it, and exits 0 green, 1 red, 2 on timeout (`TIMEOUT`) or when no background run was started, and 3 as
 soon as the probe reports a SUSPECT HANG (prints that line; the run keeps going; --patient waits on regardless).
 Stdlib only.
@@ -56,6 +65,7 @@ import testprobe as tp  # noqa: E402
 DEFAULT_SUMMARY = f"{state.DIR_NAME}/test-summary.json"
 POLL_SECONDS = 0.5
 DEFAULT_WAIT = 600.0
+RUN_ID = ""  # the id every summary this process writes carries (set in main)
 
 
 def pointer_path(summary):
@@ -84,8 +94,12 @@ def read_pointer(summary):
         return None
 
 
+def new_run_id():  # O(1)
+    return f"{time.strftime('%Y%m%dT%H%M%S')}-{os.getpid()}-{os.urandom(3).hex()}"
+
+
 def start_background(a, argv):  # O(len argv) + one detached spawn
-    run_id = f"{time.strftime('%Y%m%dT%H%M%S')}-{os.getpid()}-{os.urandom(3).hex()}"
+    run_id = new_run_id()
     mine = run_summary_path(a.summary, run_id).resolve()
     child = [sys.executable, str(Path(__file__).resolve()),
              *[x for x in argv if x != "--background"],
@@ -93,22 +107,29 @@ def start_background(a, argv):  # O(len argv) + one detached spawn
     atomic_write(pointer_path(a.summary), json.dumps({"id": run_id, "summary": str(mine),
                                                       "started": time.time()}) + "\n")
     base.spawn_background(child, mine.with_suffix(".log"))
-    print(f"summary: {mine}")
+    print(f"wait: run_tests --wait --run {run_id}")
+    print(f"summary: {mine}")  # last: callers read the final line as the summary path
     return 0
 
 
 def wait_background(a):  # O(timeout / POLL_SECONDS) polls
-    ptr = read_pointer(a.summary)
-    if not ptr:
-        print("run_tests: no background run to wait for", file=sys.stderr)
-        return 2
-    mine = Path(ptr["summary"])
+    if a.run:  # exactly that run's own summary, whatever the pointer names
+        mine = run_summary_path(a.summary, a.run).resolve()
+    else:
+        ptr = read_pointer(a.summary)
+        if not ptr:
+            print("run_tests: no background run to wait for", file=sys.stderr)
+            return 2
+        mine = Path(ptr["summary"])
     limit = a.timeout if a.timeout is not None else DEFAULT_WAIT
     deadline = time.monotonic() + limit
     while True:
         if mine.exists():
             try:
                 data = json.loads(mine.read_text(encoding="utf-8"))
+                if a.run and data.get("run_id") != a.run:
+                    print(f"run_tests: run id mismatch: wanted {a.run}, file has {data.get('run_id')!r}", file=sys.stderr)
+                    return 2
                 break
             except (OSError, ValueError):
                 pass
@@ -216,6 +237,8 @@ def write_summary(path, mode, counts, failures, seconds, error=None, extra=None)
             + ([error[:200]] if error else []),
             "skipped_tests": counts["skipped_tests"]}
     data.update(extra or {})  # additive probe fields only (verdict, suspect_hang, running)
+    if RUN_ID:
+        data["run_id"] = RUN_ID
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_name(p.name + ".tmp")
@@ -235,6 +258,10 @@ def main(argv=None):  # O(X + T*d + B + F log F) + pytest run + one incident app
     mode.add_argument("--fast", nargs="+", metavar="PATH",
                       help="run only these test paths (comma or space separated)")
     mode.add_argument("--full", action="store_true", help="run everything (default)")
+    mode.add_argument("--affected", action="store_true", help="run only tests related to the changed files")
+    ap.add_argument("--base", default=None, metavar="REF", help="with --affected: diff base (default: last start sha, else HEAD)")
+    ap.add_argument("--files", nargs="+", metavar="F", help="with --affected: use these files instead of git changes")
+    ap.add_argument("--reuse", action="store_true", help="skip the run when --summary is a green full run of this exact tree")
     ap.add_argument("--log", default=ct.DEFAULT_LOG)
     ap.add_argument("--ledger", default=ct.DEFAULT_LEDGER)
     ap.add_argument("--summary", default=DEFAULT_SUMMARY,
@@ -242,6 +269,7 @@ def main(argv=None):  # O(X + T*d + B + F log F) + pytest run + one incident app
     ap.add_argument("--background", action="store_true",
                     help="start a detached run, print `summary: <path>`, exit 0")
     ap.add_argument("--wait", action="store_true", help="wait for the latest background run's summary")
+    ap.add_argument("--run", default=None, metavar="ID", help="with --wait: wait for this run id (the `wait:` line), not the newest")
     ap.add_argument("--timeout", type=float, default=None, help=f"--wait limit in seconds (default {DEFAULT_WAIT:.0f})")
     ap.add_argument("--expect", type=float, default=None, metavar="SECONDS",
                     help="expected test time; the hang probe starts at 3x this (default: last green run, else config fallback)")
@@ -252,6 +280,10 @@ def main(argv=None):  # O(X + T*d + B + F log F) + pytest run + one incident app
     a = ap.parse_args(argv)
     if a.wait:
         return wait_background(a)
+    global RUN_ID
+    RUN_ID = a.run_id or new_run_id()
+    if a.reuse and (a.full or not (a.fast or a.affected)) and try_reuse(a):
+        return 0
     if a.background:
         return start_background(a, argv)
     if a.run_id:
@@ -268,6 +300,51 @@ def main(argv=None):  # O(X + T*d + B + F log F) + pytest run + one incident app
         return run(a)  # see run
     finally:  # a foreground run has no --wait reader: its sidecar must not outlive it
         suspect_path(a.summary).unlink(missing_ok=True)
+
+
+def current_tree():  # the working-tree fingerprint, "" when unknown
+    try:
+        import tree_id
+        return tree_id.tree_hash(".") or ""
+    except Exception:  # noqa: BLE001 - a missing or failing fingerprint only disables reuse
+        return ""
+
+
+def try_reuse(a):  # O(summary size) + one tree hash
+    try:
+        prior = json.loads(Path(a.summary).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    tree = current_tree()
+    if (isinstance(prior, dict) and tree and prior.get("tree") == tree and prior.get("mode") == "full"
+            and not prior.get("failed") and (prior.get("passed") or 0) > 0):
+        print(f"reused: {a.summary}")
+        return True
+    return False
+
+
+def default_base(ledger):  # the sha on the last `- start <sha>` ledger line, else None (HEAD)
+    try:
+        hits = re.findall(r"^- start\s+([0-9a-fA-F]{4,40})\b", Path(ledger).read_text(encoding="utf-8"), re.M)
+    except OSError:
+        return None
+    return hits[-1] if hits else None
+
+
+def select_for(a):  # -> (paths, extra summary fields, nothing_selected)
+    if a.files:
+        changed = sorted({f.replace("\\", "/") for chunk in a.files for f in nt.csv(chunk)})
+    else:
+        changed = testcmd.changed_files(".", a.base or default_base(a.ledger))
+    sel = testcmd.select_affected(".", changed)
+    selected = list(sel.get("selected") or [])
+    if sel.get("full"):
+        reason, selected = f"full: {sel.get('trigger', '')}", []
+    else:
+        reason = ",".join(sorted(set((sel.get("reasons") or {}).values())))
+    extra = {"selected": selected, "reason": reason, "changed_count": len(changed),
+             "untested": list(sel.get("untested") or [])}
+    return selected, extra, (not sel.get("full") and not selected)
 
 
 def expected_seconds(a, label):  # O(summary size) expected test time for the probe, None when unknown
@@ -374,7 +451,17 @@ def expand_fast_paths(paths):  # O(p) source paths -> related tests; test paths 
 def run(a):  # O(X + T*d + B + F log F) + the runner + one incident append
     paths = [p for chunk in (a.fast or []) for p in nt.csv(chunk)]
     label = "fast" if paths else "full"
-    if paths:
+    a.extra = {}
+    if a.affected:
+        label = "affected"
+        paths, a.extra, nothing = select_for(a)
+        a.extra.update({"tree": t} if (t := current_tree()) else {})
+        if nothing:
+            return finish_run(a, label, {"passed": 0, "failed": 0, "skipped": 0, "skipped_tests": []},
+                              [], {}, 0.0, 0, extra=a.extra, empty_ok=True)
+    elif label == "full":
+        a.extra.update({"tree": t} if (t := current_tree()) else {})
+    if paths and not a.affected:  # --affected selection is already test files: straight to the runner
         try:
             paths = expand_fast_paths(paths)
         except FileNotFoundError as e:
@@ -424,7 +511,8 @@ def run(a):  # O(X + T*d + B + F log F) + the runner + one incident append
     return finish_run(a, label, counts, failures, files, seconds, r.returncode, extra=tp.summary_fields(r))
 
 
-def finish_run(a, label, counts, failures, files, seconds, returncode, extra=None):  # O(k + F + B) one incident append
+def finish_run(a, label, counts, failures, files, seconds, returncode, extra=None, empty_ok=False):  # O(k + F + B) one incident append
+    extra = {**getattr(a, "extra", {}), **(extra or {})}
     write_summary(a.summary, label, counts, failures, seconds, extra=extra)
     publish_summary(a)
     items = [(f, line, ctx, "test-failure", "open") for f, line, ctx in failures]
@@ -442,7 +530,7 @@ def finish_run(a, label, counts, failures, files, seconds, returncode, extra=Non
                      f"failed={counts['failed']} skipped={counts['skipped']} "
                      f"seconds={seconds:.1f}")
     print(summary)
-    return 1 if counts["failed"] or not (counts["passed"] or counts["skipped"]) else 0
+    return 1 if counts["failed"] or not (empty_ok or counts["passed"] or counts["skipped"]) else 0
 
 
 if __name__ == "__main__":

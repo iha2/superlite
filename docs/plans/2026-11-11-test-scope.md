@@ -92,7 +92,7 @@ e.g. tree_hash("/not/a/repo") -> ""
 **Notes:** sha256 over `git rev-parse HEAD`, `git diff HEAD --binary`, then for each `git ls-files --others --exclude-standard` path (sorted) its path and bytes; first 16 hex chars. Any git error gives `""`.
 
 ### T3 run_tests --affected and --reuse · Complexity 5 · Est. context 45k
-**Owns:** skills/swarm/scripts/run_tests.py, tests/scripts/test_run_tests_affected.py
+**Owns:** skills/swarm/scripts/run_tests.py, tests/scripts/test_run_tests_affected.py, tests/scripts/test_testprobe.py
 **Components:** 2
 **LOC owned:** 160
 **Tests:** fast
@@ -121,7 +121,7 @@ e.g. pointer `test-summary.latest` names a missing run file -> ("- tests: runnin
 **Notes:** The pointer is `path.with_name("test-summary.latest")`. Read it first; a missing or unreadable pointer falls back to today's behaviour.
 
 ### T5 Full suite plan header · Complexity 2 · Est. context 26k
-**Owns:** skills/swarm/scripts/plan_tools.py, skills/swarm/scripts/plan_lint.py, tests/scripts/test_full_suite_header.py
+**Owns:** skills/swarm/scripts/plan_tools.py, skills/swarm/scripts/plan_lint.py, tests/scripts/test_full_suite_header.py, tests/scripts/test_plan_tools.py
 **Components:** 1
 **LOC owned:** 40
 **Tests:** fast

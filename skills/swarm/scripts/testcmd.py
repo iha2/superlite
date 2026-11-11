@@ -11,9 +11,11 @@ vitest is a dependency, jest-junit's reporter when jest-junit is), go.mod, Cargo
 Library: resolve, resolve_related, parse_output (best-effort counts and failing names without JUnit). Stdlib only.
 """
 import argparse
+import fnmatch
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -122,6 +124,196 @@ def is_test_path(path: str) -> bool:
     if re.match(r"^(test_.*|.*_test)\.[^.]+$", name):
         return True
     return p.startswith("tests/") or "/tests/" in f"/{p}"
+
+
+FULL_NAMES = {"conftest.py", "pyproject.toml", "setup.cfg", "pytest.ini", "tox.ini", "package.json", "package-lock.json", "yarn.lock",
+              "pnpm-lock.yaml", "uv.lock", "poetry.lock", "go.mod", "go.sum", "Cargo.toml", "Cargo.lock"}
+TEST_WALK_LIMIT = 5000
+
+
+def _read_map(root: str) -> dict:  # O(file)
+    try:
+        d = json.loads(state.path(Path(root), "test-map.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return d if isinstance(d, dict) else {}
+
+
+def _map_list(v) -> list[str]:
+    return [x for x in v if isinstance(x, str)] if isinstance(v, list) else []
+
+
+def _git(root: str, *args: str) -> list[str] | None:  # O(output)
+    try:
+        r = subprocess.run(["git", "-c", "core.quotepath=off", *args], cwd=root, capture_output=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode != 0:
+        return None
+    return [x.replace("\\", "/") for x in r.stdout.decode("utf-8", "replace").split("\0") if x]
+
+
+def changed_files(root: str, base: str | None) -> list[str]:  # O(changes)
+    """Paths changed vs `base` (default HEAD) plus untracked non-ignored files; sorted, posix; [] outside a repo."""
+    tracked = _git(root, "diff", "--name-only", "-z", base or "HEAD", "--")
+    if tracked is None:
+        return []
+    untracked = _git(root, "ls-files", "-z", "--others", "--exclude-standard") or []
+    return sorted(set(tracked) | set(untracked))
+
+
+def is_full_trigger(path: str, root: str = ".") -> bool:  # O(map)
+    """True when a change to `path` should run the whole suite."""
+    p = path.replace("\\", "/")
+    name = p.rsplit("/", 1)[-1]
+    if name in FULL_NAMES or name.endswith(".csproj") or p == ".superlite/test-cmd.json":
+        return True
+    return any(fnmatch.fnmatch(p, g) for g in _map_list(_read_map(root).get("_full")))
+
+
+CODE_EXTS = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")
+LANG_EXTS = {"python": (".py",), "typescript": CODE_EXTS, "javascript": CODE_EXTS, "node": CODE_EXTS, "go": (".go",),
+             "rust": (".rs",), "csharp": (".cs",), "dotnet": (".cs",)}
+
+
+def _is_test(p: str) -> bool:
+    """A test FILE by name: test_*.<ext>, *_test.<ext>, *.test.<ext>, *.spec.<ext> (spec only with a code extension)."""
+    name = Path(p.replace("\\", "/")).name
+    if re.match(r"^(test_.*|.*_test)\.[^.]+$", name) or re.search(r"\.test\.[^./]+$", name):
+        return not name.endswith((".md", ".json", ".jsonl", ".txt"))
+    m = re.search(r"\.spec(\.[^./]+)$", name)
+    return bool(m and m.group(1) in CODE_EXTS)
+
+
+def _ini_testpaths(text: str, section: str):
+    sec = None
+    for line in text.splitlines():
+        m = re.match(r"^\s*\[([^\]]+)\]\s*$", line)
+        if m:
+            sec = m.group(1).strip()
+            continue
+        m = re.match(r"^\s*testpaths\s*[=:]\s*(.*)$", line)
+        if sec == section and m:
+            return m.group(1).split()
+    return None
+
+
+def pytest_testpaths(root: str) -> list[str]:  # O(config files); [] when none is configured
+    r = Path(root)
+    for name, section in (("pytest.ini", "pytest"), ("pyproject.toml", None), ("tox.ini", "pytest"), ("setup.cfg", "tool:pytest")):
+        try:
+            text = (r / name).read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if section is None:
+            try:
+                import tomllib
+                v = ((tomllib.loads(text).get("tool") or {}).get("pytest") or {}).get("ini_options", {}).get("testpaths")
+            except Exception:  # noqa: BLE001 - an unreadable pyproject only disables the filter
+                v = None
+            v = v.split() if isinstance(v, str) else v
+        else:
+            v = _ini_testpaths(text, section)
+        if isinstance(v, list) and v:
+            return [x.replace("\\", "/").strip("/").removeprefix("./") for x in v if isinstance(x, str) and x.strip("/ ")]
+    return []
+
+
+def _collectable(root: str):  # -> predicate: does the project's runner collect this test path
+    spec = resolve(root)
+    lang = (spec or {}).get("language")
+    exts = LANG_EXTS.get(lang or "")
+    if lang == "go":
+        exts = None
+    tpaths = pytest_testpaths(root) if lang == "python" else []
+
+    def keep(t: str) -> bool:
+        t = t.replace("\\", "/")
+        if lang == "go" and not t.endswith("_test.go"):
+            return False
+        if exts and not t.endswith(exts):
+            return False
+        if tpaths:
+            parts = t.split("/")
+            dirs = ["/".join(parts[:i]) for i in range(1, len(parts) + 1)]
+            return any(fnmatch.fnmatch(d, tp) for tp in tpaths for d in dirs)
+        return True
+    return keep
+
+
+def _walk_tests(root: str) -> list[str]:  # O(f), capped
+    out: list[str] = []
+    for dp, dns, fns in os.walk(root):
+        dns[:] = sorted(d for d in dns if d not in SKIP_DIRS and not d.startswith("."))
+        for fn in sorted(fns):
+            rel = os.path.relpath(os.path.join(dp, fn), root).replace("\\", "/")
+            if _is_test(rel):
+                out.append(rel)
+                if len(out) >= TEST_WALK_LIMIT:
+                    return out
+    return out
+
+
+def select_affected(root: str, changed: list[str]) -> dict:  # O(changed * tests)
+    """-> {"full", "selected", "reasons", "untested"[, "trigger"]}; over-selects when unsure."""
+    paths = [c.replace("\\", "/") for c in changed]
+    for p in paths:
+        if is_full_trigger(p, root):
+            return {"full": True, "selected": [], "reasons": {}, "untested": [], "trigger": p}
+    rmap = _read_map(root)
+    keep = _collectable(root)
+    tests = [t for t in _walk_tests(root) if keep(t)]
+    texts: dict[str, str] = {}
+    reasons: dict[str, str] = {}
+    untested: list[str] = []
+
+    def add(t: str, why: str) -> None:
+        reasons.setdefault(t, why)
+
+    def text(t: str) -> str:
+        if t not in texts:
+            try:
+                texts[t] = (Path(root) / t).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                texts[t] = ""
+        return texts[t]
+
+    for p in paths:
+        if _is_test(p):
+            if keep(p) and (Path(root) / p).is_file():
+                add(p, "changed")
+            continue
+        hit = False
+        try:
+            for t in resolve_related(root, p):
+                if keep(t):
+                    add(t, "related")
+                    hit = True
+        except FileNotFoundError:
+            pass
+        stem = Path(p).stem
+        if stem:
+            pat = re.compile(r"\b" + re.escape(stem) + r"\b")
+            for t in tests:
+                if pat.search(text(t)):
+                    add(t, "mention")
+                    hit = True
+        for glob, vals in rmap.items():
+            if glob == "_full" or not fnmatch.fnmatch(p, glob):
+                continue
+            for v in _map_list(vals):
+                v = v.replace("\\", "/")
+                if any(c in v for c in "*?["):
+                    for t in tests:
+                        if fnmatch.fnmatch(t, v):
+                            add(t, "map")
+                            hit = True
+                elif keep(v) and (Path(root) / v).is_file():
+                    add(v, "map")
+                    hit = True
+        if not hit:
+            untested.append(p)
+    return {"full": False, "selected": sorted(reasons), "reasons": dict(sorted(reasons.items())), "untested": untested}
 
 
 def resolve(root=".", paths=()):  # O(m + f)
