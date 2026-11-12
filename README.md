@@ -28,7 +28,7 @@ Each run starts its own session automatically (`superlite-cli session ensure`): 
 | Situation | Say something like | What happens |
 |---|---|---|
 | **MVP, a new project** | "Build me a static site generator from this spec" | One batch of questions, a plan, then parallel tasks on Sonnet and Haiku, package reviews and one fresh final review |
-| **A feature on existing code** | "Add CSV export with column widths to the existing app" | Feature mode: it researches the code (Graphify on a large codebase, never installed without your yes), writes a feature plan you validate, builds a small prototype in its own worktree for you to try, then ports it into your code with frozen interfaces and seam checks. The report shows both builds |
+| **A feature on existing code** | "Add CSV export with column widths to the existing app" | Feature mode: it researches the code (Graphify on a large codebase, never installed without your yes), writes a feature plan you validate, builds a small prototype in a sandbox inside your checkout for you to try, then ports it into your code with frozen interfaces and seam checks. The report shows both builds |
 | **Debug** | "This test fails on leap days: find the root cause and fix it" | `diagnosis` finds the cause first; fixes go to fix-only agents by tier, each leaving a note, and escalate after two failed rounds |
 | **Research** | "Research the state of the art in vector search, for a VP" | Research mode: parallel researchers fill a sourced ledger, contradictions are listed with causes, and the report is written at your level (Director, VP, Researcher or Simple) with the same claims and citations at every level |
 | **A small change** | "Rename `build` to `render` everywhere" | Small work stays inline, with a reviewer always |
@@ -60,6 +60,10 @@ Plain words work just as well; the commands are shortcuts.
 
 - **Human orchestrator.** You get a plain-language review plan with diagrams (a `.review.md`, about two pages, with a rough time and cost), and nothing is linted, dispatched or sent to an agent until you reply approve. Any clear approval counts (yes, go ahead, looks good, or similar), including a longer note. After that you are not asked again: any change to scope is recorded as a ruling and listed at the end under "Changed from the approved plan". Small inline work needs only your yes in chat.
 - **AI orchestrator.** It plans, lints, dispatches and rules on open choices itself, with no review plan and no questions.
+
+<p align="center">
+  <img src="assets/review-plan.webp" width="720" alt="A review plan open in a split pane beside the session: the chat on the left, and on the right the plan's diagrams for a feature prototype: what is kept and what is thrown away, how a sandbox is linked to its session and run, and how it gets built in waves.">
+</p>
 
 Both stop for destructive, outward (push, merge, publish) or security-sensitive actions, and superlite never commits during a run: finished tasks are hidden checkpoints. A checkpoint is a hidden save of one task under `refs/superlite/*`. At session end, shipping asks once: "Commit to <session branch>" or "Leave uncommitted".
 
