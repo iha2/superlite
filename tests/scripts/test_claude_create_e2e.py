@@ -1,4 +1,4 @@
-"""End to end: Claude creates the session / prototype worktree, superlite adopts it (real CLI, real git, CLAUDECODE=1).
+"""End to end: Claude creates the session worktree, superlite adopts it; a prototype is a sandbox folder (real CLI, real git, CLAUDECODE=1).
 
 EnterWorktree name=<n> is simulated with `git worktree add .claude/worktrees/<n> -b worktree-<n> HEAD`;
 ExitWorktree remove with `git worktree remove` + `git branch -D worktree-<n>`.
@@ -195,31 +195,25 @@ def proto(where, env, *args):
     return sl(where, env, "proto", *args)
 
 
-def test_proto_claude_create_lifecycle(hub, tmp_path):
+def test_proto_under_claude_code_makes_a_sandbox(hub, tmp_path):
     env = env_for(tmp_path)
     before_wts, before_br = git(hub, "worktree", "list", "--porcelain"), branches(hub)
     refs = refs_snapshot(hub)
     cp = proto(hub, env, "start", "--topic", "x")
     assert cp.returncode == 0, cp.stdout + cp.stderr
-    assert "proto: create EnterWorktree name=x-proto base=feat" in cp.stdout.splitlines()
-    assert not (hub / ".superlite" / "feature.json").exists()
-    assert git(hub, "worktree", "list", "--porcelain") == before_wts and branches(hub) == before_br
-
-    wt = enter_worktree(hub, "x-proto")
-    cp = proto(wt, env, "start", "--topic", "x", "--adopt")
-    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert not CREATE.search(cp.stdout) and "EnterWorktree" not in cp.stdout  # no create or enter round trip
+    assert not (hub / ".superlite" / "proto-pending.json").exists()
+    boxes = list((hub / ".superlite" / "sandboxes").glob("*/x"))
+    assert len(boxes) == 1 and boxes[0].is_dir()
     feat = json.loads((hub / ".superlite" / "feature.json").read_text(encoding="utf-8"))
-    assert Path(feat["worktree"]).as_posix() == wt.as_posix()
-    assert (feat["branch"], feat["base"], feat["adopted"], feat["topic"]) == ("worktree-x-proto", "feat", True, "x")
-    assert not (wt / ".superlite" / "feature.json").exists()  # the hub's run folder, not the worktree's
+    assert Path(feat["sandbox"]).as_posix() == boxes[0].as_posix() and feat["topic"] == "x" and feat["run_id"]
+    assert not {"worktree", "branch", "base", "adopted"} & set(feat)
+    assert git(hub, "worktree", "list", "--porcelain") == before_wts and branches(hub) == before_br
 
     cp = proto(hub, env, "discard")
     assert cp.returncode == 0, cp.stdout + cp.stderr
-    assert "proto: leave the sandbox with ExitWorktree remove" in cp.stdout
-    assert wt.is_dir() and "worktree-x-proto" in branches(hub)
+    assert not boxes[0].exists()
     assert json.loads((hub / ".superlite" / "feature.json").read_text(encoding="utf-8"))["status"] == "discarded"
-
-    exit_worktree_remove(hub, wt, "x-proto")
     assert drift(session(hub, env, hub, "reconcile")) == []
     assert refs_snapshot(hub) == refs
     assert git(hub, "branch", "--show-current").strip() == "feat"

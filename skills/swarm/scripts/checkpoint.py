@@ -5,31 +5,27 @@
                   [--log .superlite/incidents.jsonl]
                   [--dispatch [--pool .superlite/pool.json] [--running T3] [--cap 10] [--batch N]]
 
-Several ids are checkpointed in order in one process (one plan parse, one exclude check).
-Output: the SHA for one task; `Tn <sha>` or `Tn FAILED` per task for several. Each
-checkpointed task's agent in the pool (`current: Tn`) gets `current` cleared, `busy: false`,
-and Tn in its `tasks`. `--dispatch` then prints `next:` and the `dispatch` lines (ready tasks
-and agents) for the updated ledger; a dispatch failure only warns, the checkpoints stand.
+Several ids are checkpointed in order in one process. Output: the SHA for one task; `Tn <sha>`
+or `Tn FAILED` per task for several. Each task's pool agent (`current: Tn`) gets `current`
+cleared, `busy: false` and Tn in its `tasks`. `--dispatch` then prints `next:` and the
+`dispatch` lines for the updated ledger; a dispatch failure only warns, the checkpoints stand.
 
-A checkpoint is a hidden save of one task: a shadow git object (never on HEAD, the branch
-or the user's index) stored under refs/superlite/<run>/<Tn>; its SHA is what the ledger,
-probes and seam checks use. `superlite-cli finish` deletes the refs at the end of the run.
+A checkpoint is a hidden shadow git object (never on HEAD, the branch or the user's index)
+stored under refs/superlite/<run>/<Tn>; its SHA is what the ledger, probes and seam checks
+use. `superlite-cli finish` deletes the refs at the end of the run.
 
 Steps: scope check (changes outside every task's Owns block the checkpoint and are logged as
 incidents; files another task owns are left out, silently), py_compile plus an import check
 on each touched .py file, checkpoint with the task title, append `- checkpoint Tn <sha>
-<title>` to the progress ledger, then launch in the background `superlite-cli probe_run --checkpoint
-SHA` and, for every seam of the task graph (`superlite-cli plan_tools taskgraph --format full`) that
-involves this task and whose both sides are now checkpointed per the ledger, `superlite-cli pt_review
-contract --plan P --seam Ta,Tb --log LOG` (mismatches become incidents, a pass logs
-`verified`). Prints the SHA, or exits 1 listing the problem files. Run it from the
-repository root.
+<title>` to the progress ledger, then launch in the background `superlite-cli probe_run
+--checkpoint SHA` and, for every seam of the task graph (`superlite-cli plan_tools taskgraph
+--format full`) with both sides now checkpointed, `superlite-cli pt_review contract --plan P
+--seam Ta,Tb --log LOG` (mismatches become incidents, a pass logs `verified`). Exits 1
+listing the problem files. Run it from the repository root.
 
-Scope rules: `tests/regression/` (where probe_run writes `test_probe_*.py`) is owned
-by whichever task is being checkpointed, so the task or review that fixes a defect records
-the regression test it caused. `.superlite/` is never staged and never blocks; add it
-to the repo's `.git/info/exclude` at setup (`setup_exclude()` here does it, and
-checkpoint also does it on every run). Stdlib only.
+Scope rules: `tests/regression/` (probe_run's `test_probe_*.py`) is owned by whichever task is
+being checkpointed. `.superlite/` is never staged and never blocks; `setup_exclude()` adds it
+to `.git/info/exclude` on every run. Stdlib only.
 """
 
 import argparse
@@ -46,7 +42,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import next_tasks as nt  # noqa: E402
 import base  # noqa: E402
+import checkpoint_import as ci  # noqa: E402
 import gitignore  # noqa: E402
+import sandbox  # noqa: E402
 import state  # noqa: E402
 
 DEFAULT_LEDGER = f"{state.DIR_NAME}/progress.md"
@@ -65,62 +63,38 @@ LEDGER_LINE = re.compile(r"^\s*[-*+]?\s*checkpoint\s+(T\d+[A-Za-z]?)\s+([0-9a-f]
 STATE = f"{state.DIR_NAME}/checkpoints.json"
 TEMP_INDEX = f"{state.DIR_NAME}/checkpoint.index"
 REF_ROOT = "refs/superlite"
+SETTINGS_LOCAL = ".claude/settings.local.json"  # written by exclusive.py (peer suspension); no task owns it
+WORKTREE_HOME = ".claude/worktrees/"  # linked checkouts (superlite's and the Claude Code harness's): never this tree's changes
 TASK_ID = re.compile(r"T\d+[A-Za-z]?")
 
-IMPORT_DRIVER = r"""
-import importlib, importlib.util, json, os, sys, traceback
-sys.dont_write_bytecode = True
-root = os.path.abspath(sys.argv[1])
-files = sys.argv[2:]
-sys.path.insert(0, root)
-if os.path.isdir(os.path.join(root, "src")):
-    sys.path.insert(1, os.path.join(root, "src"))
-failures = []
-for rel in files:
-    path = os.path.join(root, rel)
-    parts = rel.replace("\\", "/")[:-3].split("/")
-    if parts[0] == "src" and os.path.isdir(os.path.join(root, "src")):
-        parts = parts[1:]
-    if parts and parts[-1] == "__init__":
-        parts = parts[:-1]
-    if parts and parts[-1] == "__main__":
-        continue  # importing it runs the program (SPECs often require an unguarded sys.exit(main())); the syntax check covers it
-    try:
-        if parts and all(p.isidentifier() for p in parts):
-            importlib.import_module(".".join(parts))
-        else:
-            name = "_slcheck_" + "_".join(p.replace("-", "_") for p in parts)
-            sys.path.append(os.path.dirname(path))
-            spec = importlib.util.spec_from_file_location(name, path)
-            mod = importlib.util.module_from_spec(spec)
-            sys.modules[name] = mod
-            spec.loader.exec_module(mod)
-    except BaseException as e:
-        line = 0
-        for fr in traceback.extract_tb(e.__traceback__):
-            if os.path.abspath(fr.filename) == os.path.abspath(path):
-                line = fr.lineno
-        failures.append({"file": rel, "line": line,
-                         "error": f"{type(e).__name__}: {e}"[:150]})
-print(json.dumps(failures))
-"""
-
-
-def git(*args, check=True, env=None):  # O(output) + process spawn
+def git(*args, check=True, env=None, cwd=None):  # O(output) + process spawn
     r = subprocess.run(["git", *args], capture_output=True, text=True,
-                       encoding="utf-8", env={**os.environ, **env} if env else None)
+                       encoding="utf-8", env={**os.environ, **env} if env else None, cwd=cwd)
     if check and r.returncode != 0:
         nt.die(f"git {' '.join(args[:2])} failed: {(r.stderr or r.stdout).strip()}", 1)
     return r
 
 
-SETTINGS_LOCAL = ".claude/settings.local.json"  # written by exclusive.py (peer suspension); no task owns it
-WORKTREE_HOME = ".claude/worktrees/"  # linked checkouts (superlite's and the Claude Code harness's): never this tree's changes
+SANDBOXES = f"{state.DIR_NAME}/sandboxes/"  # prototype sandboxes: ignored by git, saved with `add -f` when owned
+
+
+def sandbox_files(keep):  # O(sandbox files)
+    """Files of the open prototype sandbox that `keep` claims; git status never lists them (the folder is ignored)."""
+    if not keep:
+        return []
+    try:
+        sl = state.run_dir(Path.cwd())
+        rel = sandbox.open_sandbox(sl)
+        return [f for f in sandbox.files(Path.cwd(), Path.cwd() / rel) if keep(f) and not f.endswith(".pyc")] if rel else []
+    except OSError:
+        return []
 
 
 def hard_ignored(path):  # O(len path)
     """Run bookkeeping and bytecode: never staged, even when a task's Owns would match."""
     p = "/" + path
+    if path.startswith(SANDBOXES) and not path.endswith(".pyc") and "/__pycache__/" not in p:
+        return False  # a prototype's files: staged when the task owns them
     return path.endswith(".pyc") or f"/{state.DIR_NAME}/" in p or "/__pycache__/" in p or path == SETTINGS_LOCAL or path.startswith(WORKTREE_HOME)
 
 
@@ -145,7 +119,20 @@ def changed_files(keep=None):  # O(m log m) + process spawn
             path = entry[3:].replace("\\", "/")
             if not ignored(path) or (keep and not hard_ignored(path) and keep(path)):
                 files.append(path)
-    return sorted(set(files))
+    return sorted(set(files + sandbox_files(keep) + deleted_sandbox_files(keep)))
+
+
+def deleted_sandbox_files(keep):  # O(checkpointed sandbox files)
+    if not keep:
+        return []
+    rel = sandbox.open_sandbox(state.run_dir(Path.cwd()))
+    st = load_state()
+    entries = st.get("entries") if isinstance(st, dict) else None
+    parent = entries[-1].get("sha") if entries else None
+    if not rel or not parent:
+        return []
+    tree = git("ls-tree", "-r", "--name-only", parent).stdout.splitlines()
+    return [f for f in tree if sandbox.inside(rel, f) and keep(f) and not Path(f).exists()]
 
 
 def syntax_errors(files):  # O(total size of m_py files)
@@ -165,7 +152,7 @@ def syntax_errors(files):  # O(total size of m_py files)
 def import_errors(files):  # O(m_py * import cost) + 1 process spawn (batched)
     if not files:
         return []
-    r = subprocess.run([sys.executable, "-I", "-c", IMPORT_DRIVER, ".", *files],
+    r = subprocess.run([sys.executable, "-I", "-c", ci.IMPORT_DRIVER, ".", state.DIR_NAME, *files],
                        capture_output=True, text=True, encoding="utf-8", timeout=120,
                        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
     try:
@@ -191,12 +178,14 @@ def append_ledger(ledger, line):
         f.write(line + "\n")
 
 
-def setup_exclude():  # O(x) + process spawn
+def setup_exclude(cwd=None):  # O(x) + process spawn
     """Add `.superlite/` to the repo's .git/info/exclude (idempotent); True if it did."""
-    r = git("rev-parse", "--git-path", "info/exclude", check=False)
+    r = git("rev-parse", "--git-path", "info/exclude", check=False, cwd=cwd)
     if r.returncode != 0 or not r.stdout.strip():
         return False
     p = Path(r.stdout.strip())
+    if not p.is_absolute():
+        p = Path(cwd or Path.cwd()) / p
     try:
         old = p.read_text(encoding="utf-8") if p.exists() else ""
         if any(ln.strip() in (state.DIR_NAME, f"{state.DIR_NAME}/") for ln in old.splitlines()):
@@ -220,9 +209,7 @@ def spawn_background(cmd):
 
 
 def probe_categories(plan):  # O(L + categories)
-    """Union of the Review Focus categories in the plan, comma separated ("" if none).
-
-    There is no plan or progress source for the app type, so --app-type is not passed."""
+    """Union of the plan's Review Focus categories, comma separated ("" if none); --app-type is not passed."""
     try:
         import pt_review
         cats = []
@@ -379,7 +366,12 @@ def save_checkpoint(tid, title, files, plan):  # O(files) + git spawns
     env = {"GIT_INDEX_FILE": str(idx)}
     try:
         git("read-tree", parent, env=env) if parent else git("read-tree", "--empty", env=env)
-        git("add", "-A", "--", *files, env=env)
+        plain = [f for f in files if not f.startswith(SANDBOXES)]
+        boxed = [f for f in files if f.startswith(SANDBOXES)]
+        if plain:
+            git("add", "-A", "--", *plain, env=env)
+        if boxed:
+            git("add", "-f", "-A", "--", *boxed, env=env)  # the sandbox folder is git-ignored
         tree = git("write-tree", env=env).stdout.strip()
     finally:
         idx.unlink(missing_ok=True)
@@ -416,13 +408,11 @@ def checkpoint_one(a, tid, info, own_files):  # O(m*o + py size) + git spawns (s
     owns = owns + [o for o in SHARED_OWNS if o not in owns]
     other = [o for t, i in info.items() if t != tid for o in i["owns"]
              if o not in SHARED_OWNS]
-
     if getattr(a, "gitignore_owner", None):  # the coordinator's script edited .gitignore: only the Wave 0 task takes it
         if tid == a.gitignore_owner:
             owns = owns + [".gitignore"]
         else:
             other = other + [".gitignore"]
-
     mine, out_of_scope = [], []
     for f in changed_files(claims(owns)):
         if f in own_files and not nt.owns_match(f, owns):
@@ -450,7 +440,6 @@ def checkpoint_one(a, tid, info, own_files):  # O(m*o + py size) + git spawns (s
     if not mine:
         print(f"nothing to checkpoint for {tid}", file=sys.stderr)
         return 1, None
-
     present = [f for f in mine if os.path.exists(f)]
     py = [f for f in present if f.endswith(".py")]
     problems = syntax_errors(py)
@@ -463,7 +452,6 @@ def checkpoint_one(a, tid, info, own_files):  # O(m*o + py size) + git spawns (s
         log_incidents(a.log, tid, [(f, line, f"{msg}; nothing saved")
                                    for f, line, msg in problems])
         return 1, None
-
     sha = save_checkpoint(tid, task["title"], mine, a.plan)  # hidden ref: HEAD, branch, index and tree untouched
     append_ledger(a.ledger, f"- checkpoint {tid} {sha[:10]} {task['title']}")
     launch_probes(sha, a.plan)
@@ -476,29 +464,26 @@ def _sl_state(plan, name):
     return state.path(pt.stable_root(plan), name)
 
 
-def write_questions(plan, task, agent=""):
-    path = _sl_state(plan, "questions.json")
+def _edit_state(plan, name, default, edit):
+    path = _sl_state(plan, name)
+    if not path.exists() and default is None:
+        return
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"waiting": {}}
-    data.setdefault("waiting", {})[task] = {"agent": agent}
+    data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else default
+    edit(data)
     path.write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")
+
+
+def write_questions(plan, task, agent=""):
+    _edit_state(plan, "questions.json", {"waiting": {}}, lambda d: d.setdefault("waiting", {}).__setitem__(task, {"agent": agent}))
 
 
 def clear_question(plan, task):
-    path = _sl_state(plan, "questions.json")
-    if not path.exists():
-        return
-    data = json.loads(path.read_text(encoding="utf-8"))
-    data.get("waiting", {}).pop(task, None)
-    path.write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")
+    _edit_state(plan, "questions.json", None, lambda d: d.get("waiting", {}).pop(task, None))
 
 
 def write_blocked(plan, task, tier):
-    path = _sl_state(plan, "blocked.json")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"blocked": {}}
-    data.setdefault("blocked", {})[task] = {"tier": tier}
-    path.write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")
+    _edit_state(plan, "blocked.json", {"blocked": {}}, lambda d: d.setdefault("blocked", {}).__setitem__(task, {"tier": tier}))
 
 
 def main(argv=None):  # O(L + t*(m*o)) + git spawns per task; one process for all tasks
@@ -519,7 +504,6 @@ def main(argv=None):  # O(L + t*(m*o)) + git spawns per task; one process for al
     ap.add_argument("--tier", help="required fixer tier for --blocked (haiku|sonnet|opus)")
     ap.add_argument("--agent", default="", help="implementer id for --question")
     a = ap.parse_args(argv)
-
     if a.question:
         write_questions(a.plan, a.question, a.agent)
         print(f"question {a.question}")

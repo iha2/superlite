@@ -15,20 +15,20 @@ A lean build-lifecycle plugin: 10 skills in `skills/`, 7 agents in `agents/`, an
 - Versions are declared in `.version-bump.json`. Change them only with `scripts/bump-version.sh <version>`; run `scripts/bump-version.sh --audit` to catch missed files.
 - Keep LF line endings. `hooks/session-start` uses `printf`, never a heredoc.
 - Do not touch `bench/` results or `docs/plans/` when working on a harness integration.
-- **One feature, one worktree.** Never develop two features in the same checkout. Before writing code for a feature (including feature-mode integration), cut a dedicated branch and git worktree with superlite (`superlite-cli session create --slug <topic> --worktree`; it lands in `.claude/worktrees/`), enter it (under Claude Code see "Worktrees under Claude Code"), and keep other features' trees untouched. Prototype worktrees (`.claude/worktrees/<topic>-proto`) stay separate from the integration worktree. The flow that cut a worktree removes it when the flow finishes; a keep with uncommitted work stays. Trivial one-line fixes on the current branch are exempt.
+- **One feature, one worktree.** Never develop two features in the same checkout. Before writing code for a feature (including feature-mode integration), cut a dedicated branch and git worktree with superlite (`superlite-cli session create --slug <topic> --worktree`; it lands in `.claude/worktrees/`), enter it (under Claude Code see "Worktrees under Claude Code"), and keep other features' trees untouched. Prototypes are sandbox folders under `.superlite/sandboxes/<session>/<topic>/`, not worktrees. The flow that cut a worktree removes it when the flow finishes; a keep with uncommitted work stays. Trivial one-line fixes on the current branch are exempt.
 - **No Cursor agent notes on commits.** Do not add `Co-authored-by: Cursor …` (or similar agent trailers). After clone, run `bash scripts/install-git-hooks.sh` once so `core.hooksPath=.githooks` and the `commit-msg` hook strips them automatically.
 
 ## Worktrees under Claude Code
 
 Project instructions authorise `EnterWorktree` (`name=` and `path=`) and `ExitWorktree` here. Follow the line superlite prints:
 
-- `session: create EnterWorktree name=<n> base=<ref>` (session ensure / create --worktree) or `proto: create EnterWorktree name=<topic>-proto base=<ref>` (proto start): call `EnterWorktree name=<n>`, then rerun the same command inside the new worktree (`proto start --topic <T> --adopt` for the prototype). Superlite adopts it.
+- `session: create EnterWorktree name=<n> base=<ref>` (session ensure / create --worktree): call `EnterWorktree name=<n>`, then rerun the same command inside the new worktree. Superlite adopts it.
 - `ASK branch-name slug=<s>: ...`: ask the user once: keep Claude's `worktree-<slug>`, use `superlite/sessions/<slug>`, or their own pattern with `{slug}`. Rerun with `--branch-name worktree|superlite|PATTERN`; it is saved and changed later with `superlite-cli session branch-name`.
 - `session: enter EnterWorktree path=<abs>`: superlite cut the worktree (hub not on the needed base, merge checkout, or another harness's fallback); call `EnterWorktree path=<abs>`. `session: note hub on <cur>, not <base>; superlite cut the worktree` explains why.
 
 Worktrees live under `<hub>/.claude/worktrees/`. The repo's `.claude/settings.json` sets `"worktree": {"baseRef": "head"}` so `EnterWorktree name=` cuts from the hub's HEAD; it applies from the next Claude Code session start.
 
-Cleanup: a Claude-created worktree ends with `ExitWorktree` `remove` (or `keep`) or the desktop app; `session close` and `proto discard` only archive and unregister it. A worktree superlite cut is removed by `session close` / `proto discard`; `ExitWorktree` only leaves it.
+Cleanup: a Claude-created worktree ends with `ExitWorktree` `remove` (or `keep`) or the desktop app; `session close` only archives and unregisters it. A worktree superlite cut is removed by `session close`; `ExitWorktree` only leaves it.
 
 ### Other harnesses (fallback)
 

@@ -1,0 +1,139 @@
+"""Stay-inside lint: a .proto.md plan owns only paths in the open prototype sandbox."""
+import argparse
+import os
+import sys
+from pathlib import Path
+
+import pytest
+
+from test_plan_tools import make_plan
+
+SCRIPTS = str(Path(__file__).resolve().parents[2] / "skills" / "swarm" / "scripts")
+sys.path.insert(0, SCRIPTS)
+import plan_lint  # noqa: E402
+import proto_lint  # noqa: E402
+import sandbox  # noqa: E402
+
+def _args(p):
+    return argparse.Namespace(plan=str(p), spec=None, cap=plan_lint.pt.DEFAULT_CAP, target_min=None, tail_min=None, max_task_min=None, max_chars=plan_lint.DEFAULT_MAX_CHARS,
+                              stable=False)
+
+
+SB = ".superlite/sandboxes/host/x"
+
+
+@pytest.fixture
+def fake_sandbox(monkeypatch):
+    """Fake T1 (open_sandbox returns SB, inside is a prefix check) unless SUPERLITE_REAL=1."""
+    if os.environ.get("SUPERLITE_REAL") == "1":
+        return
+    monkeypatch.setattr(sandbox, "open_sandbox", lambda sl: SB)
+    monkeypatch.setattr(sandbox, "inside", lambda sb, p: p == sb or p.startswith(sb + "/"))
+
+
+@pytest.fixture
+def no_sandbox(monkeypatch):
+    monkeypatch.setattr(sandbox, "open_sandbox", lambda sl: None)
+
+
+def test_outside_path_named(fake_sandbox, tmp_path):
+    out = proto_lint.check("docs/plans/x.proto.md", {"T2": ["src/app.py"]}, tmp_path / ".superlite",
+                           wave0_id="T1")
+    assert out == [f"SANDBOX: T2 writes src/app.py outside {SB}"]
+
+
+def test_non_proto_plan_not_checked(fake_sandbox, tmp_path):
+    assert proto_lint.check("docs/plans/x.md", {"T2": ["src/app.py"]}, tmp_path / ".superlite") == []
+
+
+def test_no_open_sandbox_no_check(no_sandbox, tmp_path):
+    assert proto_lint.check("docs/plans/x.proto.md", {"T2": ["src/app.py"]}, tmp_path / ".superlite") == []
+
+
+def test_inside_paths_ok(fake_sandbox, tmp_path):
+    assert proto_lint.check("docs/plans/x.proto.md", {"T1": [f"{SB}/a.py", f"{SB}/t/b.py"]},
+                            tmp_path / ".superlite", wave0_id="T1") == []
+
+
+@pytest.mark.parametrize("bad", [f"{SB}/../../../../src/a.py", f"{SB}/../y/a.py", "/etc/passwd", "../x.py",
+                                 f"{SB}\\..\\..\\a.py", "C:/win/a.py"])
+def test_traversal_and_absolute_rejected(fake_sandbox, tmp_path, bad):
+    out = proto_lint.check("docs/plans/x.proto.md", {"T1": [bad]}, tmp_path / ".superlite", wave0_id="T1")
+    assert len(out) == 1 and "SANDBOX: T1 writes" in out[0]
+
+
+def test_relative_to_sandbox_ok(fake_sandbox, tmp_path):
+    sl = tmp_path / ".superlite"
+    plan = tmp_path / SB / "docs" / "plans" / "x.proto.md"
+    assert proto_lint.check(str(plan), {"T1": [f"{SB}/src/app.py", f"{SB}/tests/t.py"]}, sl, wave0_id="T1") == []
+    out = proto_lint.check(str(plan), {"T1": ["src/app.py", "**"]}, sl, wave0_id="T1")
+    assert len(out) == 2
+
+
+def test_proto_plan_requires_explicit_wave0(fake_sandbox, tmp_path):
+    out = proto_lint.check("docs/plans/x.proto.md", {"T1": [f"{SB}/src/app.py"]}, tmp_path / ".superlite")
+    assert out == ["SANDBOX: plan needs an explicit in-sandbox Wave 0 task"]
+
+
+@pytest.mark.parametrize("claim", [f"{SB}/linked/*.py", f"{SB}/**"])
+def test_symlink_components_in_glob_claim_rejected(fake_sandbox, tmp_path, claim):
+    target = tmp_path / "src"
+    target.mkdir()
+    link = tmp_path / SB / "linked"
+    link.parent.mkdir(parents=True)
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlink creation is not permitted")
+    out = proto_lint.check("docs/plans/x.proto.md", {"T1": [claim]}, tmp_path / ".superlite", wave0_id="T1")
+    assert len(out) == 1 and "outside" in out[0]
+
+
+def test_proto_plan_outside_fails_lint(fake_sandbox, tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    p = make_plan(tmp_path, [{"id": "T1", "time": 2, "owns": "src/app.py"}], header="**Ignore:** .env",
+                  name="x.proto.md")
+    rc = plan_lint.cmd_lint(_args(p))
+    out = capsys.readouterr().out
+    assert rc != 0 and f"SANDBOX: T1 writes src/app.py outside {SB}" in out
+
+
+def test_proto_plan_without_wave0_fails_lint(fake_sandbox, tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    p = make_plan(tmp_path, [{"id": "T1", "time": 2, "owns": f"{SB}/src/app.py"}],
+                  header="**Ignore:** .env", name="x.proto.md")
+    rc = plan_lint.cmd_lint(_args(p))
+    out = capsys.readouterr().out
+    assert rc != 0 and "plan needs an explicit in-sandbox Wave 0 task" in out
+
+
+def test_missing_wave0_blocks_all_tasks_from_stable_lint(fake_sandbox, tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    tasks = [{"id": "T1", "time": 2, "owns": f"{SB}/src/app.py"},
+             {"id": "T2", "time": 2, "owns": f"{SB}/src/other.py"}]
+    p = make_plan(tmp_path, tasks, header="**Ignore:** .env", name="x.proto.md")
+    (tmp_path / ".superlite" / "feature.json").parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".superlite" / "feature.json").write_text(
+        f'{{"status":"building","sandbox":"{tmp_path / SB}"}}', encoding="utf-8")
+    plan_lint.cmd_lint_stable(_args(p))
+    out = capsys.readouterr().out
+    stable = plan_lint.base.read_json(tmp_path / ".superlite" / "stable.json", {})
+    assert stable["stable"] == [] and {f["task"] for f in stable["fix"]} == {"T1", "T2"}, out
+
+
+def test_proto_plan_wave0_owns_only_sandbox_paths(fake_sandbox, tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    p = make_plan(tmp_path, [{"id": "T1", "title": "Wave 0 skeleton", "time": 2,
+                              "owns": f"{SB}/pyproject.toml"}], header="**Ignore:** .env", name="x.proto.md")
+    p.write_text(p.read_text().replace("**Owns:**", "**Kind:** Mechanical\n**Owns:**"), encoding="utf-8")
+    rc = plan_lint.cmd_lint(_args(p))
+    out = capsys.readouterr().out
+    assert "SANDBOX" not in out, out
+
+
+def test_non_proto_plan_lint_unaffected(fake_sandbox, tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    p = make_plan(tmp_path, [{"id": "T1", "time": 2, "owns": "src/app.py"}], header="**Ignore:** .env",
+                  name="x.md")
+    plan_lint.cmd_lint(_args(p))
+    assert "SANDBOX" not in capsys.readouterr().out

@@ -107,7 +107,7 @@ def _read_json(p):  # O(file)
 
 
 def feature_parts(sl_dir, headline) -> dict | None:  # O(file)
-    """Feature flow only: {topic, prototype, integration, prototype_tasks, share_pct, cap_pct}; None without feature.json."""
+    """Feature flow only: {topic, status, run_id, sandbox, prototype, integration, prototype_tasks, share_pct, cap_pct}; None without feature.json."""
     st = _read_json(Path(sl_dir) / "feature.json")
     if not isinstance(st, dict) or not st.get("topic"):
         return None
@@ -118,7 +118,9 @@ def feature_parts(sl_dir, headline) -> dict | None:  # O(file)
     pp, ip = part(rep.get("headline") or {}), part(headline)
     pc = pp["cost_usd"]["actual"] if pp["cost_usd"]["actual"] is not None else pp["cost_usd"]["projected"]
     ic = ip["cost_usd"]["actual"] or ip["cost_usd"]["projected"]
-    return {"topic": st["topic"], "status": st.get("status"), "prototype": pp, "integration": ip,
+    import sandbox
+    return {"topic": st["topic"], "status": st.get("status"), "run_id": st.get("run_id"), "sandbox": sandbox.open_sandbox(Path(sl_dir)),
+            "prototype": pp, "integration": ip,
             "prototype_tasks": rep.get("tasks"), "share_pct": round(100.0 * pc / ic, 1) if pc is not None and ic else None,
             "cap_pct": PROTO_CAP_PCT}
 

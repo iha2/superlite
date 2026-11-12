@@ -1,4 +1,4 @@
-"""Feature flow: superlite-cli proto (worktree, feature.json, the try-out gate), the hooks' try-out state, the report's two parts,
+"""Feature flow: superlite-cli proto (sandbox, feature.json, the try-out gate), the hooks' try-out state, the report's two parts,
 and the command and skill texts."""
 import json
 import os
@@ -9,13 +9,13 @@ import time
 import pytest
 
 from test_human_gate import BASH, guard, lines, reply
-from test_plan_tools import SCRIPTS, run
+from test_plan_tools import SCRIPTS
 
 sys.path.insert(0, str(SCRIPTS))
 import orchestrator  # noqa: E402
 import report  # noqa: E402
+from test_proto_sandbox import fakes, inproc, rows  # noqa: E402,F401  (fakes: the autouse seam for T1, T2, T4)
 
-PROTO = SCRIPTS / "proto.py"
 TRYOUT_NEXT = "Feature flow: the integration build waits for the human's try-out of the prototype."
 
 
@@ -41,7 +41,7 @@ def repo(tmp_path):
 
 
 def proto(repo, *args):
-    return run(PROTO, *args, cwd=repo)
+    return inproc(*args, cwd=repo)
 
 
 def state(repo):
@@ -53,17 +53,17 @@ def set_mode(repo, mode, approved):
     (repo / ".superlite" / "orchestrator.json").write_text(json.dumps({"mode": mode, "approved": approved}))
 
 
-def test_start_cuts_a_worktree_and_records_feature_json(repo):
+def test_start_makes_a_sandbox_and_records_feature_json(repo):
     cp = proto(repo, "start", "--topic", "export", "--run", "go run .", "--reach", "http://localhost:8080")
     assert cp.returncode == 0, cp.both
     st = state(repo)
-    wt = repo / ".claude" / "worktrees" / "export-proto"
-    assert st["status"] == "building" and st["branch"] == "superlite/export-proto" and st["level"] == "L1"
-    assert st["worktree"] == wt.as_posix() and (wt / "main.go").is_file() and st["run"] == "go run ."
-    assert st["plan"] == "docs/plans/2026-10-21-export.feature.md" and st["base"] == "main"
-    assert "superlite/export-proto" in git(repo, "branch", "--list")
+    sb = repo / ".superlite" / "sandboxes" / "host" / "export"
+    assert st["status"] == "building" and st["level"] == "L1" and st["run"] == "go run ." and sb.is_dir()
+    assert st["sandbox"] == sb.as_posix() and "worktree" not in st and "branch" not in st
+    assert st["plan"] == "docs/plans/2026-10-21-export.feature.md"
+    assert "superlite/export-proto" not in git(repo, "branch", "--list")
     assert git(repo, "status", "--porcelain") == ""  # the user's checkout is untouched
-    again = proto(repo, "start", "--topic", "export")  # same topic: a fix round, not a second worktree
+    again = proto(repo, "start", "--topic", "export")  # same topic: a fix round, not a second sandbox
     assert again.returncode == 0 and "fix round 2" in again.out and state(repo)["rounds"] == 2
     assert proto(repo, "start", "--topic", "other").returncode == 2  # one open prototype at a time
     assert proto(repo, "start", "--topic", "Bad Topic").returncode == 2
@@ -119,17 +119,16 @@ def test_gate_fails_open_and_skips_the_prototype_build(repo, tmp_path):
     assert orchestrator.gate(repo / "docs" / "plans" / "p.md", "dispatch") == orchestrator.TRYOUT_BLOCK
 
 
-def test_discard_saves_the_report_and_removes_the_worktree(repo):
+def test_discard_saves_the_report_and_removes_the_sandbox(repo):
     proto(repo, "start", "--topic", "export")
-    wt = repo / ".claude" / "worktrees" / "export-proto"
-    (wt / ".superlite").mkdir()
+    sb = repo / ".superlite" / "sandboxes" / "host" / "export"
     head = {"wall_min": {"projected": 4.0, "actual": 5.0}, "cost_usd_agents": {"projected": 0.5, "actual": 0.6}}
-    (wt / ".superlite" / "report.json").write_text(json.dumps({"headline": head, "tasks": [{}, {}]}))
+    (repo / ".superlite" / "report.json").write_text(json.dumps({"headline": head, "tasks": [{}, {}]}))
     cp = proto(repo, "discard")
     assert cp.returncode == 0, cp.both
     st = state(repo)
     assert st["status"] == "discarded" and st["proto_report"]["headline"] == head and st["proto_report"]["tasks"] == 2
-    assert not wt.exists() and "superlite/export-proto" not in git(repo, "branch", "--list")
+    assert not sb.exists()
     assert "status" in proto(repo, "status", "--json").out and proto(repo, "discard").out.startswith("proto: nothing")
 
 

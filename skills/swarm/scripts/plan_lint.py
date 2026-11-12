@@ -14,6 +14,7 @@ if str(HERE) not in sys.path:
 
 import base  # noqa: E402
 import plan_tools as pt  # noqa: E402
+import proto_lint  # noqa: E402
 from plan_schedule import (CTX_CEILING, DEFAULT_SIZE_BAND, ancestors, block_hash, chain_id, dispatched_tasks, edge_notes,
                            effective_context, effective_times, example_issues, find_cycle, parse_taskgraph,
                            schedule_report, split_notes, stable_partition, task_interface, waited_graph)
@@ -191,6 +192,19 @@ class _Lint:
                 if shared:
                     self.add(f"{a.id} and {b.id} can run in parallel but both own {', '.join(shared)}", [a.id, b.id])
 
+    def sandbox(self) -> None:
+        """A .proto.md plan owns only paths inside the open prototype sandbox."""
+        path = str(self.plan.path or "")
+        import wave0
+        explicit_wave0 = next((t.id for t in self.plan.tasks if wave0.is_wave0(t)), None)
+        for msg in proto_lint.check(path, {t.id: t.owns for t in self.plan.tasks}, pt.run_dir(path),
+                                    wave0_id=explicit_wave0) if path else []:
+            task_id = msg.split()[1] if len(msg.split()) > 1 else ""
+            if task_id in {t.id for t in self.plan.tasks}:
+                self.add(msg, [task_id])
+            else:
+                self.add(msg, [t.id for t in self.plan.tasks])
+
     def interfaces(self) -> None:
         """Every Consumes item has a Produces line with the same parameters and return type."""
         plan = self.plan
@@ -346,6 +360,7 @@ def lint_plan(plan: Plan, args) -> tuple[list, list[str]]:  # O(n^2*k*s + e*n + 
     run.placeholders()
     run.header_notes()
     run.owns()
+    run.sandbox()
     run.interfaces()
     run.examples_and_diagrams()
     coef = run.size_caps()

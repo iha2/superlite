@@ -78,26 +78,28 @@ def test_global_history_dedupes_with_repository_identity(env, monkeypatch):
     assert len(history.unique_rows(rows)) == 2
 
 
-def test_phase_build_default(env, monkeypatch):
-    import proto
-    monkeypatch.setattr(proto, "originating_run", lambda cwd: None)
+def open_prototype(sl, status="building"):
+    sb = sl / "sandboxes" / "host" / "x"
+    sb.mkdir(parents=True)
+    (sl / "feature.json").write_text(json.dumps({"v": 1, "topic": "x", "status": status, "sandbox": sb.as_posix(),
+                                                 "session": "host", "run_id": "20261111-100000-host"}), encoding="utf-8")
+
+
+def test_phase_build_default(env):
+    assert history.phase_of(env[1]) == "build"
+    open_prototype(env[1], "discarded")
     assert history.phase_of(env[1]) == "build"
 
 
-def test_phase_proto(env, monkeypatch):
-    import proto
-    seen = []
-    monkeypatch.setattr(proto, "originating_run", lambda cwd: seen.append(Path(cwd)) or Path("/hub/.superlite"))
+def test_phase_proto(env):
+    open_prototype(env[1])
     assert history.phase_of(env[1]) == "proto"
-    assert seen == [env[1].resolve().parent]
 
 
 def test_run_rows_carry_phase(env, monkeypatch):
     import metrics
     import plan_tools as pt
-    import proto
     import routing
-    monkeypatch.setattr(proto, "originating_run", lambda cwd: Path("/hub/.superlite"))
     rec = {"task": "T1", "kind": "design", "loc": 50, "components": 1, "tests": "fast", "model": "sonnet", "agent_type": "x",
            "duration_s": 5.0, "tokens": {"in": 1, "out": 1, "cache_read": 0, "cache_write": 0}, "cost_usd": 0.0,
            "tool_calls": 1, "first_time_pass": True, "rework_s": 0, "rework_cost": 0}
@@ -106,9 +108,11 @@ def test_run_rows_carry_phase(env, monkeypatch):
     monkeypatch.setattr(history, "predicted_flags", lambda plan, args=None: {})
     monkeypatch.setattr(routing, "read_tiers", lambda p: {})
     monkeypatch.setattr(pt, "review_focus_cases", lambda plan: {})
-    assert [r["phase"] for r in history.run_rows("P.md", env[1], "X1")] == ["proto"]
-    monkeypatch.setattr(proto, "originating_run", lambda cwd: None)
     assert [r["phase"] for r in history.run_rows("P.md", env[1], "X1")] == ["build"]
+    open_prototype(env[1])
+    rows = history.run_rows("P.md", env[1], "X1")
+    assert [r["phase"] for r in rows] == ["proto"] and rows[0]["run_id"] == "20261111-100000-host"
+    assert rows[0]["sandbox"] == ".superlite/sandboxes/host/x"
 
 
 def test_stats_use_unique_rows(tmp_path):

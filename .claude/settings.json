@@ -1,5 +1,8 @@
 {
   "worktree": {
     "baseRef": "head"
+  },
+  "enabledPlugins": {
+    "superlite@superlite-dev": true
   }
 }

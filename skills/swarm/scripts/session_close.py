@@ -47,6 +47,24 @@ def _close(root: Path, slug: str, a) -> int:
     return _close_stored(root, reg, row, slug)
 
 
+def _discard_sandbox(live: Path, row: dict, root: Path) -> bool:
+    """An open prototype sandbox goes first: its run is archived with the session, its files are dropped."""
+    try:
+        from proto_discard import discard_open  # lazy: the prototype modules are optional here
+        res = discard_open(live, "session close")
+    except (ImportError, OSError, ValueError, KeyError, TypeError, IndexError) as e:
+        print(f"session: could not discard the open sandbox: {e}", file=sys.stderr)
+        return True
+    if res and res.get("status") == "tests-running":
+        return False
+    if res:
+        updated = find_row(read(root), row["slug"])
+        if updated is not None:
+            row["sandboxes"] = copy.deepcopy(updated.get("sandboxes", []))
+        print(f"session: discarded the open prototype sandbox ({res.get('status')})")
+    return True
+
+
 def _save_wip(cwd: Path, slug: str, keep_untracked: bool, j: Journal) -> str | None:
     """Park the dirty tree on the slug's private ref; undone through `j` by restoring it."""
     oid = W.save(cwd, slug, untracked=not keep_untracked)
@@ -86,6 +104,8 @@ def _close_host(root: Path, reg: dict, row: dict, slug: str, host: Path, a) -> i
     store, live = store_path(root, slug), state.run_dir(host)
     before = copy.deepcopy(reg)
     wip = None
+    if not _discard_sandbox(live, row, root):
+        return 2
     try:
         with Journal() as j:
             j.step("save the work")
@@ -134,6 +154,8 @@ def _close_owned(root: Path, reg: dict, row: dict, slug: str, a) -> int:
     had_run = any(p.name != run_archive.CURRENT_RUN for p in run_entries(live))
     before = read(root)  # as on disk: the undo must not persist the in-memory "finished" mark
     wip = None
+    if not _discard_sandbox(live, row, root):
+        return 2
     try:
         with Journal() as j:
             j.step("save the work")
@@ -199,6 +221,8 @@ def _close_adopted(root: Path, reg: dict, row: dict, slug: str) -> int:
     worktree, its dirty files or its branch, and keep no WIP ref."""
     store, live = store_path(root, slug), state.run_dir(Path(row["worktree"]))
     before = copy.deepcopy(reg)
+    if not _discard_sandbox(live, row, root):
+        return 2
     try:
         with Journal() as j:
             j.step("park the run files")

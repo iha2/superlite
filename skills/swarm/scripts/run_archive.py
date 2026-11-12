@@ -21,12 +21,31 @@ def run_id(slug: str | None, now: datetime, unfinished: bool = False) -> str:
     return f"{now:%Y%m%d-%H%M%S}-{slug or 'run'}" + ("-unfinished" if unfinished else "")
 
 
-def entries(sl: Path) -> list[Path]:
-    """Run files in the live folder, sorted: everything except stationary/config entries and locks."""
+FEATURE = "feature.json"
+OPEN_FEATURE = ("building", "tryout", "approved")
+
+
+def _feature_state(sl: Path) -> dict | None:
+    try:
+        value = json.loads((Path(sl) / FEATURE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def feature_keep(sl: Path) -> set[str]:
+    """Names that stay live while a prototype is open (feature state and its mode file); empty otherwise."""
+    if (_feature_state(sl) or {}).get("status") in OPEN_FEATURE:
+        return {FEATURE, session_registry.ORCH}
+    return set()
+
+
+def entries(sl: Path, keep: tuple = ()) -> list[Path]:
+    """Run files in the live folder, sorted: everything except stationary/config entries, locks and `keep`."""
     if not sl.is_dir():
         return []
     return sorted((p for p in sl.iterdir() if p.name not in KEEP and p.name not in session_registry.STATIONARY
-                   and not p.name.endswith(".lock")), key=lambda p: p.name)
+                   and p.name not in keep and not p.name.endswith(".lock")), key=lambda p: p.name)
 
 
 def runs_dir(checkout: Path) -> Path:
@@ -54,9 +73,9 @@ def _rollback(dest: Path, moved: list[Path]) -> None:
 
 
 def reserve(sl: Path, slug: str | None = None, unfinished: bool = False, now: datetime | None = None,
-            rid: str | None = None) -> Path | None:
+            rid: str | None = None, keep: tuple = ()) -> Path | None:
     """Reserve the final collision-free archive folder, or return None when there are no run files."""
-    if not entries(sl):
+    if not entries(sl, keep):
         return None
     now = (now or datetime.now()).replace(microsecond=0)
     base_id = rid or run_id(slug, now, unfinished)
@@ -143,16 +162,16 @@ def undo_ensure(sl: Path, dest: Path | None, previous: bytes | None) -> None:
 
 def archive(sl: Path, slug: str | None = None, unfinished: bool = False, plan: str | None = None,
             now: datetime | None = None, rid: str | None = None, reserved: Path | None = None,
-            copy: bool = False) -> Path | None:
+            copy: bool = False, keep: tuple = ()) -> Path | None:
     """Move or copy run files into <hub>/.superlite/runs/<id>/ with run.json; None if there are no run files.
-    Takes no registry lock (session ensure already holds it)."""
-    files = entries(sl)
+    Names in `keep` stay live. Takes no registry lock (session ensure already holds it)."""
+    files = entries(sl, keep)
     if not files:
         cancel_reservation(reserved)
         return None
     now = (now or datetime.now()).replace(microsecond=0)
     checkout = Path(sl).parent
-    dest = Path(reserved) if reserved is not None else reserve(sl, slug, unfinished, now, rid)
+    dest = Path(reserved) if reserved is not None else reserve(sl, slug, unfinished, now, rid, keep)
     if dest is None:
         return None
     rid = dest.name
@@ -169,6 +188,10 @@ def archive(sl: Path, slug: str | None = None, unfinished: bool = False, plan: s
         meta = {"id": rid, "slug": slug or "run", "checkout": Path(checkout).resolve().as_posix(), "plan": plan,
                 "archived_at": now.isoformat(timespec="seconds"),
                 "status": "unfinished" if unfinished else "finished", "files": names}
+        sb = _sandbox_rel(sl, checkout)
+        if sb:
+            feature_run = _feature_run_id(sl)
+            meta.update(sandbox=sb, run_id=feature_run or rid)
         tmp = dest / "run.json.tmp"
         tmp.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8", newline="\n")
         os.replace(tmp, dest / "run.json")
@@ -180,6 +203,22 @@ def archive(sl: Path, slug: str | None = None, unfinished: bool = False, plan: s
             else:
                 _rollback(dest, moved)
     return dest
+
+
+def _sandbox_rel(sl: Path, checkout: Path) -> str | None:
+    """The open prototype's sandbox, repo-relative posix when inside the checkout; None without one."""
+    feat = _feature_state(sl) or {}
+    sb = feat.get("sandbox")
+    if feat.get("status") not in OPEN_FEATURE or not isinstance(sb, str) or not sb:
+        return None
+    try:
+        return Path(sb).relative_to(Path(checkout).resolve()).as_posix()
+    except ValueError:
+        return sb
+
+
+def _feature_run_id(sl: Path):
+    return (_feature_state(sl) or {}).get("run_id")
 
 
 def _copy_entry(source: Path, target: Path) -> None:

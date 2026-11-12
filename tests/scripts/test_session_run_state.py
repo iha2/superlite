@@ -68,6 +68,7 @@ def test_main_checkout_without_active_prints_none_here(hub):
 
 def _start(cwd, extra=None):
     env = {**os.environ, "CLAUDE_PLUGIN_ROOT": str(ROOT), "SUPERLITE_HOME": str(cwd / "home")}
+    env.pop("COPILOT_CLI", None)
     env.pop("SUPERLITE_NO_SESSION_HUD", None)
     env.update(extra or {})
     r = subprocess.run([BASH, str(HOOK)], input="", capture_output=True, text=True, encoding="utf-8", env=env,
@@ -94,6 +95,15 @@ def test_session_start_no_row_falls_back_to_orchestrator(hub):
     (hub / ".superlite" / "orchestrator.json").write_text("{}")
     (hub / "docs" / "plans").mkdir(parents=True)
     assert "Project state: run in progress." in _start(hub)
+
+
+def test_session_start_injects_upgrade_skill_once_per_version(hub):
+    first = _start(hub)
+    marker = hub / ".git" / "info" / "superlite-upgrade-scan-4.0.0"
+    assert "Review this repository against the changes in superlite" in first
+    assert "Do not move, edit, or delete anything" in first
+    assert marker.is_file() and not list((hub / ".superlite").glob("upgrade-scan-*"))
+    assert "Review this repository against the changes in superlite" not in _start(hub)
 
 
 def test_project_state_follows_run(hub):

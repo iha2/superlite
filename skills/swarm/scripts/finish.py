@@ -242,6 +242,14 @@ def _shown(path):  # path relative to the cwd when inside it, else absolute
     return full.relative_to(cwd).as_posix() if full.is_relative_to(cwd) else full.as_posix()
 
 
+def _keep(sl_dir):  # O(1): `keep` kwarg for run_archive, empty unless a prototype's feature state is open
+    if not (sl_dir / "feature.json").is_file():
+        return {}
+    import run_archive
+    keep = run_archive.feature_keep(sl_dir)
+    return {"keep": tuple(sorted(keep))} if keep else {}
+
+
 def run_ids(sl_dir):  # O(files) + registry read; reserve the final id before history refers to it
     """The session slug, final archive id and reserved folder; unavailable values are None."""
     reserved = None
@@ -250,7 +258,7 @@ def run_ids(sl_dir):  # O(files) + registry read; reserve the final id before hi
         marker = run_archive.read_current_run(sl_dir)
         slug = (marker or {}).get("slug") or run_archive.current_slug(sl_dir.parent)
         base_id = (marker or {}).get("id") or run_archive.run_id(slug, datetime.now())
-        reserved = run_archive.reserve(sl_dir, slug, rid=base_id)
+        reserved = run_archive.reserve(sl_dir, slug, rid=base_id, **_keep(sl_dir))
         rid = reserved.name if reserved else base_id
         if marker and rid != marker["id"]:
             run_archive.write_current_run(sl_dir, dict(marker, id=rid))
@@ -269,7 +277,7 @@ def archive_run(root, sl_dir, slug, plan, rid, reserved=None):  # O(files); fail
         return None
     try:
         import run_archive
-        return run_archive.archive(sl_dir, slug, plan=plan, rid=rid, reserved=reserved)
+        return run_archive.archive(sl_dir, slug, plan=plan, rid=rid, reserved=reserved, **_keep(sl_dir))
     except (ImportError, OSError, ValueError) as e:
         print(f"run: not archived ({e})", file=sys.stderr)
         return None

@@ -1,0 +1,77 @@
+- start 15a1df6da33673c3fd8eeb8da5823b818fb30427
+- unblocked: dispatched T0 T1 T2 T3 T5 T7 T8 T9 T10 at 14:49:58; waiting on fixes: T4 T6 T11 T12 T13
+- coordinator note 14:52: plan docs/plans/2026-11-11-proto-sandbox.md; coordinator CLI = plugin cache 3.3.0 superlite-cli; tests via repo .venv. In flight: T0 haiku; T5,T1; T8,T2; T9,T7; T3; T10 (pool.json). Pending FIX: T4 (add e.g. under T5 archive Produces), T6 (add e.g. under T1 files Produces), T11/T12 (KIND: add exact test contracts or make design/sonnet), T13 (waits T4), plan over 15k cap (trim), SPEC section mapping lines, MISSED TARGET (accept: sequential T3->T13 sweep).
+- tests fast passed=5 failed=0 skipped=0 seconds=27.0
+- tests fast passed=33 failed=28 skipped=0 seconds=44.8
+- tests fast passed=31 failed=13 skipped=0 seconds=42.0
+- tests fast passed=5 failed=0 skipped=0 seconds=29.9
+- tests fast passed=23 failed=8 skipped=0 seconds=50.1
+- tests fast passed=6 failed=4 skipped=0 seconds=35.0
+- tests fast passed=45 failed=4 skipped=0 seconds=36.7
+- tests fast passed=45 failed=0 skipped=0 seconds=28.8
+Ruling: [T10] a failed sandbox discard during session close warns and continues - close must not be blocked by prototype cleanup; reconcile reports leftovers - a stray sandbox folder until reconcile
+- T10 checkpoint attempted 14:5x (DONE_WITH_CONCERNS: needs T2+T4 real code for test_session_reconcile_cli and test_session_close_archive)
+- TODO after compact: T10 checkpoint did NOT record (no checkpoints.json; output only showed out-of-scope lines) - rerun checkpoint T10 and read full output
+- tests fast passed=11 failed=0 skipped=0 seconds=28.1
+- tests fast passed=11 failed=0 skipped=0 seconds=29.9
+- tests fast passed=26 failed=15 skipped=0 seconds=36.6
+- tests fast passed=11 failed=0 skipped=0 seconds=28.5
+- tests fast passed=16 failed=2 skipped=0 seconds=32.4
+- T2 DONE, T8 DONE_WITH_CONCERNS: test_history_archive.py (3 tests patch proto.originating_run) -> T13 sweep; test_feature_flow.py failures -> T3
+- tests fast passed=41 failed=0 skipped=0 seconds=30.2
+- tests fast passed=31 failed=0 skipped=0 seconds=28.6
+- 15:0x reports in: T1 DONE, T2 DONE, T3 DONE_WITH_CONCERNS, T5 DONE, T7 DONE, T8 DONE_WITH_CONCERNS, T9 DONE_WITH_CONCERNS, T10 DONE_WITH_CONCERNS. All agents idle (T0 haiku still out).
+- BLOCKER: every checkpoint FAILED with "out-of-scope .claude/settings.json" (user's pre-existing uncommitted enabledPlugins change). Added .claude/settings.json + docs/plans/ to plan **Ignore:**; docs/plans cleared but settings.json still blocks (maybe needs re-lint, or settings is hard-checked). Next: re-lint --stable then checkpoint; else ask user to commit/set aside the settings change.
+- Follow-ups: test_history_archive.py (patches proto.originating_run) + test_session_hud_sync.py + test_session_reconcile_cli.py -> T13 sweep/rerun after real T2/T4; T1 open_sandbox non-dict fix not re-tested; T7 ruling: sandbox-relative Owns only for plans inside the sandbox.
+- tests full passed=2158 failed=101 skipped=9 seconds=570.2
+- checkpoint T1 6623ef53a4 sandbox module
+- checkpoint T2 843a1d2f41 session sandboxes list
+- checkpoint T3 7acb7668dd proto start on a sandbox
+- checkpoint T5 919d9b5707 finish keeps the feature state
+- checkpoint T7 914edee69f stay-inside lint
+- checkpoint T8 3f30c759c8 history and report carry the run
+- checkpoint T9 7eedb56cd5 HUD and status show sandboxes
+- checkpoint T10 2343feb9fe close discards, reconcile reports
+- unblocked: dispatched T11 T12 at 15:03:31; waiting on fixes: T4 T6 T13
+- unblocked: dispatched T4 T6 at 15:04:18; T13 waits on T4; waiting on fixes: none
+- tests fast passed=8 failed=0 skipped=0 seconds=21.7
+- tests fast passed=0 failed=0 skipped=0 seconds=14.5
+- tests fast passed=9 failed=0 skipped=0 seconds=16.6
+- tests fast passed=40 failed=0 skipped=0 seconds=18.6
+Ruling: T4 marks a prototype with an unsafe sandbox path discarded and keeps the folder (sandbox_kept) - the folder is never deleted outside sandboxes/, and the state stops blocking the checkout - a stray folder the user removes by hand.
+- tests fast passed=27 failed=1 skipped=0 seconds=57.2
+- checkpoint T4 0beedd5063 proto discard
+- tests fast passed=21 failed=1 skipped=1 seconds=29.5
+- checkpoint T11 7aa9b51b23 prototype guidance
+- checkpoint T12 7fc9c6bcb5 flow docs
+- tests fast passed=5 failed=0 skipped=0 seconds=17.3
+- checkpoint T6 c7793ec9e1 sandbox files visible to checkpoint and packet
+- tests fast passed=64 failed=6 skipped=0 seconds=59.0
+- tests fast passed=0 failed=0 skipped=0 seconds=12.9
+- F-T6-1 fixed (next_tasks._glob_rx globstar, test_owns_match_globstar.py); outside every task's Owns, so not checkpointed; ships with the final commit.
+- tests fast passed=69 failed=1 skipped=0 seconds=59.6
+- tests fast passed=15 failed=0 skipped=0 seconds=19.1
+- checkpoint T13 8763ac5c75 legacy test sweep
+- checkpoint T14 6b55cd82b0 owns globstar fix
+- tests fast passed=30 failed=0 skipped=0 seconds=18.1
+- checkpoint T6 6f56a616fd sandbox files visible to checkpoint and packet
+- checkpoint T10 1746da6264 close discards, reconcile reports
+Ruling: session close discards the sandbox before its journaled steps (undo cannot restore it) - spec says close discards before archiving, and a discarded prototype is throwaway - a failed close loses a sandbox the user meant to drop anyway.
+Ruling: proto start on a new topic while one is approved stays allowed (old behaviour) - out of scope; the approved prototype's report is already saved - an extra open sandbox row until discard or session close.
+Ruling: review fix in session_close (wider except for malformed feature.json) ships without its own test - existing close tests pass - a regression would go unnoticed.
+- tests full passed=2339 failed=1 skipped=9 seconds=231.8
+- tests fast passed=0 failed=0 skipped=0 seconds=14.2
+- tests fast passed=18 failed=0 skipped=0 seconds=16.5
+- checkpoint T6 6418410ab8 sandbox files visible to checkpoint and packet
+- tests full passed=2340 failed=1 skipped=9 seconds=484.4
+- tests fast passed=1 failed=0 skipped=0 seconds=23.2
+- tests fast passed=1 failed=0 skipped=0 seconds=20.0
+- tests fast passed=1 failed=0 skipped=0 seconds=23.6
+- tests fast passed=1 failed=0 skipped=0 seconds=20.6
+- tests fast passed=0 failed=1 skipped=0 seconds=332.3
+- tests fast passed=0 failed=1 skipped=0 seconds=12.8
+- tests fast passed=1 failed=0 skipped=0 seconds=13.1
+- tests fast passed=2 failed=0 skipped=0 seconds=87.8
+- tests fast passed=1 failed=0 skipped=0 seconds=120.9
+- checkpoint T15 3c22ae735c session machine test fix
+- tests full passed=2342 failed=0 skipped=9 seconds=231.9

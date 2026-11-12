@@ -69,6 +69,7 @@ def test_unreadable_settings_are_left_alone(tmp_path, monkeypatch):
 
 def test_session_start_mentions_the_suspension_only_while_it_holds(tmp_path):
     env = dict(os.environ, CLAUDE_PLUGIN_ROOT=str(ROOT), SUPERLITE_HOME=str(tmp_path / "home"))
+    env.pop("COPILOT_CLI", None)
     (tmp_path / "home").mkdir()
     quiet = subprocess.run([BASH, str(HOOK)], cwd=tmp_path, capture_output=True, text=True, encoding="utf-8", env=env)
     assert quiet.returncode == 0

@@ -21,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import base  # noqa: E402
 import planfile  # noqa: E402
+import sandbox  # noqa: E402
 import state  # noqa: E402
 from review_contract import check_interfaces, rel_to, review_focus  # noqa: E402
 
@@ -394,6 +395,20 @@ def _choose(root: Path, items: list[Item], budget: int):  # O(I*B) total
     return chosen, omitted
 
 
+def sandbox_section(root: Path, sl: Path) -> list[str]:  # O(sandbox files)
+    """`## Sandbox files` with one line per file of the open prototype; empty when none is open."""
+    try:
+        rel = sandbox.open_sandbox(sl)
+        names = sandbox.files(root, root / rel) if rel else []
+    except OSError:
+        return []
+    if not rel:
+        return []
+    shown = names[:200]
+    return ["## Sandbox files", f"Open prototype sandbox: {rel}", *[f"- {n}" for n in shown],
+            *([f"- (+ {len(names) - len(shown)} more)"] if len(names) > len(shown) else []), ""]
+
+
 def cmd_packet(a: argparse.Namespace) -> int:  # O(S*B + I*B + I log I) + git/python subprocesses total
     plan = planfile.read(a.plan)
     root = Path(a.root).resolve()
@@ -423,7 +438,7 @@ def cmd_packet(a: argparse.Namespace) -> int:  # O(S*B + I*B + I log I) + git/py
     excerpts = cap_text(source_excerpts(root, a.base, hot), max(2000, cap // 3))
 
     head = _head(plan, fast, n_open, counts, nfail)
-    tail = ["## 4. Test summary", tests_text, "",
+    tail = sandbox_section(root, sl) + ["## 4. Test summary", tests_text, "",
             "## 5. Cross-package seams (calls from one package into another)", seam_text, "",
             "## 6. Diff stat", "```\n" + diff + "\n```", "",
             "## 7. Review Focus", focus, "",

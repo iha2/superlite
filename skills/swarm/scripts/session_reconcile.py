@@ -85,11 +85,52 @@ def _d(cls: str, slug, path, detail: str) -> dict:
     return {"class": cls, "slug": slug, "path": str(path) if path else None, "detail": detail}
 
 
+def _sandbox_drift(root: Path, row: dict) -> list[dict]:
+    """Row entries against the folders under <checkout>/.superlite/sandboxes/<slug>/; reads only."""
+    import session_sandboxes  # lazy: optional module
+    slug = row["slug"]
+    out = []
+    wt = row.get("worktree")
+    base = ident.native(wt) if wt else root
+    for e in session_sandboxes.open_entries(row) if row.get("sandboxes") else []:
+        rel = e.get("path")
+        if rel and not (base / rel).is_dir():
+            out.append(_d("sandbox-missing", slug, rel, f"sandbox {e.get('topic')} is open but its folder is gone"))
+    return out
+
+
+def _sandbox_base_orphans(base: Path, known: set[str]) -> list[dict]:
+    top = base / state.DIR_NAME / "sandboxes"
+    out = []
+    for session in sorted(top.iterdir()) if top.is_dir() else []:
+        if (session / ".git").is_file():
+            continue
+        for folder in sorted(session.iterdir()) if session.is_dir() else []:
+            if folder.is_dir() and not (folder / ".git").is_file() and str(folder.resolve()) not in known:
+                out.append(_d("sandbox-orphan", session.name, folder,
+                              f"sandbox folder {folder.name} has no session row entry"))
+    return out
+
+
+def _sandbox_orphans(root: Path, rows: list[dict]) -> list[dict]:
+    bases = {root.resolve()}
+    known = set()
+    for row in rows:
+        base = ident.native(row["worktree"]) if row.get("worktree") else root
+        bases.add(base.resolve())
+        entries = row.get("sandboxes")
+        for entry in entries if isinstance(entries, list) else []:
+            if isinstance(entry, dict) and isinstance(entry.get("path"), str):
+                known.add(str((base / entry["path"]).resolve()))
+    return [d for base in bases for d in _sandbox_base_orphans(base, known)]
+
+
 def drift(root: Path, reg: dict) -> list[dict]:  # O(N * W)
     out = []
+    rows = reg.get("sessions", [])
     at_map = sr.worktree_map(root)
     stash_oids = {o for _, o, _ in sr.stash_entries(root)}
-    for row in reg.get("sessions", []):
+    for row in rows:
         slug, br, wt = row["slug"], row.get("branch") or sr.branch_for(row["slug"]), row.get("worktree")
         exists, at = sr.branch_exists(root, br), at_map.get(br)
         at = at if at and ident.native(at).is_dir() else None  # git still lists a deleted worktree until prune
@@ -100,9 +141,11 @@ def drift(root: Path, reg: dict) -> list[dict]:  # O(N * W)
             out.append(_d("pruned", slug, wt, f"worktree missing, branch {br} present"))
         elif not exists and not wt_ok:
             out.append(_d("gone", slug, wt, "branch and worktree missing"))
+        out.extend(_sandbox_drift(root, row))
         oid = row.get("stash_oid")
         if oid and oid not in stash_oids and not _wip_exists(root, slug):
             out.append(_d("lost-wip", slug, wt, f"stash {oid[:7]} missing and no {WIP_PREFIX}{slug}"))
+    out.extend(_sandbox_orphans(root, rows))
     for w in _listing(root):
         if _kind(reg, w)[0] == "session" and _row_for(reg, w) is None:
             out.append(_d("unregistered", "-", w["path"],
