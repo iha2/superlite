@@ -23,6 +23,7 @@ def calls(monkeypatch):
     fake = types.ModuleType("learn")
     fake.sync = lambda *a, **k: log.append(("sync", a, k)) or []
     fake.spawn = lambda *a, **k: log.append(("spawn", a, k))
+    fake.sealer = lambda *a, **k: (lambda: log.append(("seal", a, k)))
     monkeypatch.setitem(sys.modules, "learn", fake)
     return log
 
@@ -61,11 +62,14 @@ def test_finish_syncs_before_archive(calls):
 
 
 def test_close_syncs(calls):
-    session_close.learn_sync(Path("live"))
-    assert calls == [("sync", (Path("live"),), {"final": True, "status": "finished"})]
-    for fn in (session_close._close_host, session_close._close_owned):
-        src = inspect.getsource(fn)
-        assert src.index("learn_sync(live)") < src.index("park_run_state(")
+    seal = session_close.learn_sync(Path("live"))
+    assert calls == [("sync", (Path("live"),), {"status": "finished", "report": True})]  # not final: no seal yet
+    session_close.learn_seal(seal)
+    assert calls[-1] == ("seal", (Path("live"),), {})
+    for fn in (session_close._close_host, session_close._close_owned, session_close._close_adopted):
+        src = inspect.getsource(fn)  # sealed only after the close transaction succeeded
+        assert src.index("learn_sync(live)") < src.index("park_run_state(") < src.index("except JournalError") \
+            < src.index("learn_seal(seal)")
 
 
 def test_sync_error_is_advisory(broken, tmp_path):

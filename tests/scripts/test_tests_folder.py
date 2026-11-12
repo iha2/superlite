@@ -183,3 +183,35 @@ def test_background_child_keeps_the_superlite_run_of_its_start(tmp_path, monkeyp
     args = run_tests.argparse.Namespace(summary=str(sl / "tests" / "summary.json"))
     run_tests.start_background(args, ["--fast", "test_pass.py", "--background"])
     assert spawned[0][spawned[0].index("--sl-run") + 1] == "run-A"
+
+
+def test_wait_run_on_an_unfinished_legacy_run_reports_its_sidecar(tmp_path):
+    sl = tmp_path / ".superlite"
+    sl.mkdir()  # only the legacy sidecar exists: no summary in either layout yet
+    (sl / "test-summary-old3.suspect").write_text(json.dumps(
+        {"suspect_hang": {"line": "SUSPECT HANG: BLOCKED legacy - no output for 40s"}}), encoding="utf-8")
+    w = run("run_tests", "--wait", "--run", "old3", "--timeout", "5", cwd=tmp_path)
+    assert w.returncode == 3 and "SUSPECT HANG: BLOCKED legacy" in w.stdout, w.stdout + w.stderr
+
+
+def test_background_child_incidents_carry_the_superlite_run_of_its_start(tmp_path):
+    proj = project(tmp_path, "fail")
+    sl = proj / ".superlite"
+    sl.mkdir()
+    (sl / "current-run.json").write_text(json.dumps({"id": "run-B"}), encoding="utf-8")  # a newer run replaced run-A
+    out = sl / "tests" / "runs" / "x.json"
+    r = run("run_tests", "--fast", "test_fail.py", "--summary", out, "--run-id", "x", "--sl-run", "run-A", cwd=proj)
+    assert r.returncode == 1, r.stdout + r.stderr
+    rows = [json.loads(x) for x in (sl / "incidents.jsonl").read_text(encoding="utf-8").splitlines()]
+    fails = [e for e in rows if e.get("kind") == "test-failure"]
+    assert fails and all(e.get("run") == "run-A" for e in fails), fails
+
+
+def test_next_tasks_add_incidents_passes_the_run(tmp_path, monkeypatch):
+    import next_tasks as nt  # noqa: E402
+    monkeypatch.delenv("SUPERLITE_CLI", raising=False)
+    log = tmp_path / "incidents.jsonl"
+    nt.add_incidents(log, [("a.py", 1, "boom", "test-failure", "run_tests", "open")], run="run-A")
+    nt.add_incidents(log, [("a.py", 2, "boom", "test-failure", "run_tests", "open")])  # the frozen 2-arg call still works
+    rows = [json.loads(x) for x in log.read_text(encoding="utf-8").splitlines()]
+    assert rows[0]["run"] == "run-A" and "run" not in rows[1]

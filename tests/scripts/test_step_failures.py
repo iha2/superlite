@@ -210,6 +210,27 @@ def test_failed_close_changes_only_learn_owned_files(tmp_path_factory, monkeypat
     assert changed and changed <= set(LEARN_OWNED), changed
 
 
+def test_failed_close_leaves_the_run_unsealed(tmp_path, monkeypatch):
+    """The pre-close fold is not final: a close that fails leaves later syncs of the still-active run working; only a
+    close that succeeded seals the run."""
+    monkeypatch.setenv("SUPERLITE_HOME", str(tmp_path / "home"))
+    root = setup_open(tmp_path)
+    (root / ".superlite" / "current-run.json").write_text(json.dumps(
+        {"id": "20261112-000000-a", "topic": "a", "slug": "a", "started_at": "2026-11-12T00:00:00"}))
+    memo = root / ".superlite" / "learn-state.json"
+    with monkeypatch.context() as mp:
+        fault = Fault(1)
+        mp.setattr(base, "git", fault)
+        mp.setattr(session_wip, "_git", fault.wip())
+        rc, out = sess(root, "close", "--slug", "a", "--untracked", "stash")
+    assert rc != 0 and fault.hit is not None, out
+    assert json.loads(memo.read_text(encoding="utf-8")).get("final", {}) == {}
+    rc, out = sess(root, "close", "--slug", "a", "--untracked", "stash")
+    assert rc == 0, out
+    assert list(json.loads(memo.read_text(encoding="utf-8"))["final"]) == [
+        f"{(root / '.superlite').resolve().as_posix()}|20261112-000000-a"]
+
+
 @pytest.mark.slow
 def test_split_each_step_fails_cleanly_apart_from_gitignore(tmp_path_factory, monkeypatch):
     check_each_step(monkeypatch, tmp_path_factory, "split", skip=(".gitignore",))

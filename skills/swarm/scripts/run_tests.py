@@ -179,7 +179,7 @@ def wait_background(a):  # O(timeout / POLL_SECONDS) polls
     limit = a.timeout if a.timeout is not None else DEFAULT_WAIT
     deadline = time.monotonic() + limit
     while True:
-        mine = next((c for c in cands if c.exists()), cands[0])
+        mine = next((c for c in cands if c.exists() or suspect_path(c).exists()), cands[0])  # a legacy run may have only its sidecar
         data = finished_summary(mine)
         if data is not None:
             if a.run and data.get("run_id") != a.run:
@@ -289,7 +289,7 @@ def write_summary(path, mode, counts, failures, seconds, error=None, extra=None)
 
 
 def add_incidents(log, items):  # O(total c) + one locked append (no spawn in process)
-    nt.add_incidents(log, [(f, line, ctx, kind, "run_tests", res) for f, line, ctx, kind, res in items])
+    nt.add_incidents(log, [(f, line, ctx, kind, "run_tests", res) for f, line, ctx, kind, res in items], run=SL_RUN or None)
 
 
 def main(argv=None):  # O(X + T*d + B + F log F) + pytest run + one incident append

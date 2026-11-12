@@ -94,9 +94,9 @@ def taskgraph(plan):  # O(n + e) (memoized parse, see taskgraph_full)
     return {k: list(v) for k, v in taskgraph_full(plan)["graph"].items()}
 
 
-def add_incidents(log, items):  # O(total context) + one append; or one spawn per item with SUPERLITE_CLI
+def add_incidents(log, items, run=None):  # O(total context) + one append; or one spawn per item with SUPERLITE_CLI
     """Log incidents; items are (file, line, context, kind, agent, resolution). In process
-    they go through incident.append in one locked write; failures only warn."""
+    they go through incident.append in one locked write; failures only warn. `run` names the superlite run."""
     if not items:
         return
     if in_process():
@@ -105,7 +105,7 @@ def add_incidents(log, items):  # O(total context) + one append; or one spawn pe
         for f, ln, ctx, k, ag, res in items:
             try:
                 entries.append(inc.make_entry(str(f), int(ln), ctx, agent=ag, kind=k,
-                                              resolution=res or None))
+                                              resolution=res or None, run=run or None))
             except (ValueError, TypeError) as e:
                 print(f"warning: incident not logged ({f}:{ln}): {e}", file=sys.stderr)
         try:
@@ -118,6 +118,8 @@ def add_incidents(log, items):  # O(total context) + one append; or one spawn pe
                "--agent", agent, "--kind", kind, "--log", log]
         if resolution:
             cmd += ["--resolution", resolution]
+        if run:
+            cmd += ["--run", run]
         r = run_tool("incident", *cmd)
         if r.returncode != 0:
             print(f"warning: incident not logged: {(r.stderr or r.stdout).strip()}",

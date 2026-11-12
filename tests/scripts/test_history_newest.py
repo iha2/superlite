@@ -47,6 +47,14 @@ def test_changed_outcome_appended(sl):
     assert sum(b["n"] for b in history.load_stats()["bands"].values()) == 1
 
 
+def test_changed_measurement_appended(sl):
+    history.record_rows([row()], str(sl))
+    assert len(history.record_rows([row(duration_s=90)], str(sl))) == 1
+    assert len(history.record_rows([row(duration_s=90, tokens={"in": 5})], str(sl))) == 1
+    assert len(history.record_rows([row(duration_s=90, tokens={"in": 5}, cost_usd=1.0, tool_calls=3)], str(sl))) == 1
+    assert history.record_rows([row(duration_s=90, tokens={"in": 5}, cost_usd=1.0, tool_calls=3)], str(sl)) == []
+
+
 def test_unique_rows_last_wins():
     rows = [row(first_time_pass=False), row(task="T2"), row(first_time_pass=True, duration_s=70)]
     out = history.unique_rows(rows)

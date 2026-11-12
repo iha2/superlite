@@ -318,7 +318,9 @@ def test_not_killed_by_default():
 
 
 def test_blocked_run_wait_returns_early_and_auto_kill_is_by_pid(tmp_path):
-    proj, env = hang_project(tmp_path, "sleep", auto_kill_blocked=True, auto_kill_after_s=1.5)
+    # the kill lands auto_kill_after_s after the flag and its final summary then wins over the sidecar (exit 1): a slow
+    # CI runner started the first --wait more than 1.5 s late, so leave a wide window for the early exit 3
+    proj, env = hang_project(tmp_path, "sleep", auto_kill_blocked=True, auto_kill_after_s=6.0)
     assert rt(proj, env, "--background").returncode == 0
     w = rt(proj, env, "--wait", "--timeout", "40")
     assert w.returncode == 3, w.stdout + w.stderr           # early exit on the suspect, not a timeout

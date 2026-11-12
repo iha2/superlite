@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import subprocess
 import sys
 from datetime import date as _date
@@ -33,6 +34,7 @@ import state  # noqa: E402
 HOOK_SIGNAL = {"rule-block": "hook-block", "rule-rewrite": "hook-rewrite"}
 SIGNAL_FILES = ("incidents.jsonl", "review-findings.jsonl", "learned.jsonl", "metrics.jsonl")
 AGENTS_DIR = Path(__file__).resolve().parents[3] / "agents"
+TESTS_LINE = re.compile(r"^\s*-\s*tests\s+\S+\s+passed=\d+\s+failed=(\d+)\b")  # run_tests' ledger line
 
 
 def _version() -> str:  # O(1)
@@ -62,18 +64,23 @@ def _head(path: Path) -> str:  # O(1): at most 4 KiB read
 def _tail(path: Path, memo: dict, key: str) -> tuple:  # O(n) in new bytes
     """New rows of path past the stored offset: (rows, start offset); the memo copy is advanced.
     The offset is per checkout and file, not per run: a run change keeps the existing-file boundary, so rows an
-    earlier run already synced are never read again. A replaced file (other first line) restarts at 0."""
+    earlier run already synced are never read again. A replaced file (other first line) restarts at 0, and so does a
+    recreated one (another inode and another mtime: finish moved the old one away, and hook rows carry no timestamp,
+    so its content can repeat). A file kept in place keeps its inode; one copied back (copy2) keeps its mtime."""
     ent = memo["offsets"].get(key, 0)
-    start, head = (int(ent.get("off", 0)), ent.get("head")) if isinstance(ent, dict) else (int(ent), None)
+    ent = ent if isinstance(ent, dict) else {"off": ent}
+    start, head = int(ent.get("off", 0)), ent.get("head")
     cur = _head(path)
     try:
-        size = path.stat().st_size
+        st = path.stat()
+        size, ino, mt = st.st_size, st.st_ino, st.st_mtime_ns
     except OSError:
-        size = 0
-    if (head is not None and head != cur) or start < 0 or start > size:
+        size, ino, mt = 0, None, None
+    recreated = ent.get("ino") not in (None, ino) and ent.get("mt") != mt
+    if (head is not None and head != cur) or recreated or start < 0 or start > size:
         start = 0
     rows, end = learn_signals.read_new_lines(path, start)
-    memo["offsets"][key] = {"off": end, "head": cur}
+    memo["offsets"][key] = {"off": end, "head": cur, "ino": ino, "mt": mt}
     return rows, start
 
 
@@ -100,9 +107,10 @@ def _oid(src: str) -> str:  # O(len)
 
 
 def _queue(store: dict, ctx: dict, signal: str, src: str, **fields) -> None:  # O(1)
-    """Stage an outbox row in the store, saved with its `seen` marker; `_publish` appends it later, deduped by id."""
+    """Stage an outbox row in the store, saved with its `seen` marker; `_publish` appends it later, deduped by id
+    against the user-wide outbox, so the id hashes the repository too (`unknown:incidents.jsonl:0+0` is common)."""
     store["outbox_pending"].append(learn_signals.outbox_row(signal, ctx["repo"], ctx["today"], ctx["version"],
-                                                            id=_oid(src), **fields))
+                                                            id=_oid(f"{ctx['repo']}|{src}"), **fields))
 
 
 def _publish(hub: Path, outbox: Path, saved: dict) -> None:  # O(outbox + pending)
@@ -181,7 +189,7 @@ def _changed(sl: Path, sha: str) -> list:  # O(files)
 
 
 def _tasks(sl: Path, plan: str) -> dict:  # O(tasks + ledger)
-    """Task id -> outcome record {owns, first_time_pass, changed, tests_run, rework_cost, cost_usd}."""
+    """Task id -> outcome record {owns, first_time_pass, changed, tests_run, rework_cost, cost_usd, agent, sha}."""
     import metrics  # noqa: PLC0415
     import plan_tools  # noqa: PLC0415
     owns = {t.id: list(t.owns) for t in plan_tools.Plan.load(plan).tasks}
@@ -192,8 +200,40 @@ def _tasks(sl: Path, plan: str) -> dict:  # O(tasks + ledger)
         changed = _changed(sl, shas[tid]) if tid in shas else []
         out[tid] = {"owns": owns.get(tid, []), "first_time_pass": r.get("first_time_pass"), "changed": changed,
                     "tests_run": [f for f in changed if _is_test(f)],
-                    "rework_cost": r.get("rework_cost") or 0, "cost_usd": r.get("cost_usd") or 0}
+                    "rework_cost": r.get("rework_cost") or 0, "cost_usd": r.get("cost_usd") or 0,
+                    "agent": r.get("agent"), "sha": shas.get(tid)}
     return out
+
+
+def _foreign(memo: dict, ck: str, run: str, tasks: dict) -> set:  # O(tasks)
+    """Task ids another run owns. ensure_run copies an unfinished run but leaves its metrics and ledger live, so a
+    task's provenance (its last build agent, its newest checkpoint) belongs to the first run that saw it; a new
+    dispatch or checkpoint is new provenance. A task with neither (no agent record) is never claimed."""
+    claims, out = memo.setdefault("tasks", {}), set()
+    for tid, t in tasks.items():
+        if t.get("agent") or t.get("sha"):
+            if claims.setdefault(f"{ck}|{tid}|{t.get('agent') or ''}|{t.get('sha') or ''}", run) != run:
+                out.add(tid)
+    return out
+
+
+def _fixed(sl: Path, fixes: list) -> dict:  # O(notes + ledger)
+    """Task id -> whether its fixer succeeded: every fix note of the task says FIXED and the ledger's newest
+    `- tests` line failed nothing (no test run recorded is no success)."""
+    out: dict = {}
+    for p in fixes:
+        try:
+            note = learn_signals.parse_fix_note(learn_signals.decode_note(p.read_bytes()))
+        except OSError:
+            continue
+        if note:
+            out[note["task"]] = out.get(note["task"], True) and note["status"] == "FIXED"
+    ledger, failed = sl / "progress.md", None
+    if out and ledger.is_file():
+        for ln in ledger.read_text(encoding="utf-8", errors="replace").splitlines():
+            m = TESTS_LINE.match(ln)
+            failed = int(m.group(1)) if m else failed
+    return {k: v and failed == 0 for k, v in out.items()}
 
 
 def _history_rows(plan: str, sl: Path, run: str) -> list:  # O(tasks)
@@ -220,9 +260,9 @@ def _fold_incidents(store: dict, rows: list, start: int, run: str, ctx: dict) ->
                 hooks.setdefault((rr, row["kind"], row.get("tool", "")), []).append(src)
         elif row.get("kind") == "verified":
             continue  # a passing check (run_tests, package review), never a pitfall
-        elif row.get("file") and row.get("kind"):
+        elif row.get("file") and row.get("kind"):  # keyed like review findings: the category, else (older rows) kind
             _note_run(store, rr, run)
-            _add(store, "pitfall", lessons_score.module_key(row["file"]), str(row["kind"]),
+            _add(store, "pitfall", lessons_score.module_key(row["file"]), str(row.get("category") or row["kind"]),
                  "avoid: " + str(row.get("context", "")), src, rr)
     for (rr, kind, tool), srcs in sorted(hooks.items()):
         _queue(store, ctx, HOOK_SIGNAL[kind], srcs[0], run=rr, tool=tool, count=len(srcs))
@@ -322,23 +362,28 @@ def _fold_outcomes(store: dict, inp: dict, run: str) -> None:  # O(tasks + deliv
     for tid, t in sorted(tasks.items()):
         _fold_task(store, tid, t, run, {m for m, _ in found_in})
     for d in inp["deliveries"]:
-        t = tasks.get(d.get("task"))
-        if t is not None and d.get("run", run) == run:
-            _record_hits(store, d, bool(t.get("first_time_pass")), found_in, run)
+        if d.get("run", run) != run:
+            continue
+        if d.get("agent") == "fixer":  # a fixer works on a reworked task: scored by its own fix, not first-time pass
+            if d.get("task") in inp["tasks"] and d["task"] in inp["fixed"]:
+                _record_hits(store, d, inp["fixed"][d["task"]], set(), run, "fixer")
+        elif d.get("task") in tasks:
+            _record_hits(store, d, bool(tasks[d["task"]].get("first_time_pass")), found_in, run)
 
 
-def _record_hits(store: dict, d: dict, ftp: bool, found_in: set, run: str) -> None:  # O(lessons)
+def _record_hits(store: dict, d: dict, ok: bool, found_in: set, run: str,
+                 agent: str | None = None) -> None:  # O(lessons)
     for lid in d.get("lessons") or []:
         les = store["lessons"].get(lid)
         if les is None:
             continue
-        hit = ftp and not (les["kind"] == "pitfall" and (les["module"], les.get("key")) in found_in)
+        hit = ok and not (les["kind"] == "pitfall" and (les["module"], les.get("key")) in found_in)
         for e in les["deliveries"]:
-            if e.get("run") == run and e.get("task") == d["task"]:
+            if e.get("run") == run and e.get("task") == d["task"] and e.get("agent") == agent:
                 e["hit"] = hit
                 break
         else:
-            les["deliveries"].append({"run": run, "task": d["task"], "hit": hit})
+            les["deliveries"].append({"run": run, "task": d["task"], "hit": hit, **({"agent": agent} if agent else {})})
 
 
 def _plan_for(memo: dict, sl: Path, run: str, plan: str | None) -> str | None:  # O(1)
@@ -366,22 +411,25 @@ def _gather(sl: Path, memo: dict, run: str, plan: str | None) -> dict:  # O(inpu
             p = plans.get(f"{ck}|{r}")
             cache[r] = _plan_owns(p) if p and Path(p).is_file() else {}
         return cache[r]
+    tasks = _tasks(sl, plan) if plan else {}
+    foreign = _foreign(memo, ck, run, tasks)  # tasks of the copied unfinished run stay out of outcomes and history
+    fixes = sorted((sl / "fixes").glob("*.md")) if (sl / "fixes").is_dir() else []
     return {"ck": ck, "incidents": incidents, "i0": i0, "findings_new": findings_new, "f0": f0, "learned": learned,
-            "l0": l0, "launches": launches, "m0": m0, "tasks": _tasks(sl, plan) if plan else {}, "owns_of": owns_of,
+            "l0": l0, "launches": launches, "m0": m0, "owns_of": owns_of, "foreign": foreign,
+            "tasks": {k: v for k, v in tasks.items() if k not in foreign},
             "findings_all": [r for r in _all_rows(sl / "review-findings.jsonl")
                              if r.get("file") and _run_of(r, run) == run],
-            "fixes": sorted((sl / "fixes").glob("*.md")) if (sl / "fixes").is_dir() else [],
+            "fixes": fixes, "fixed": _fixed(sl, fixes) if plan else {},
             "deliveries": _all_rows(sl / "deliveries.jsonl")}
 
 
 def _owner(path: str, tasks: dict) -> str | None:  # O(tasks * owns)
-    """The one task owning a file (exact path, or a directory it owns); the lowest task id on overlap."""
+    """The one task owning a file (next_tasks.owns_match: path, directory or glob); the lowest task id on overlap."""
+    import next_tasks  # noqa: PLC0415  (only when a plan is given)
     f = str(path).replace("\\", "/")
     for tid in sorted(tasks):
-        for o in tasks[tid].get("owns") or []:
-            o = str(o).replace("\\", "/").rstrip("/")
-            if f == o or f.startswith(o + "/"):
-                return tid
+        if next_tasks.owns_match(f, [str(o).replace("\\", "/") for o in tasks[tid].get("owns") or []]):
+            return tid
     return None
 
 
@@ -393,7 +441,7 @@ def _write_history(sl: Path, plan: str | None, run: str, status: str, repo: str,
         tid = _owner(f["file"], inp["tasks"])
         counts[tid] = counts.get(tid, 0) + 1
     rows = [dict(r, repository=repo, status=status, findings=counts.get(r["task"], 0))
-            for r in _history_rows(plan, sl, run)]
+            for r in _history_rows(plan, sl, run) if r.get("task") not in inp["foreign"]]
     history.record_rows(rows, sl)
 
 
@@ -410,10 +458,11 @@ def _stale(memo: dict, sl: Path, run: str, final: bool, detached: bool) -> bool:
 
 
 def sync(sl, plan=None, run=None, status: str = "unfinished", final: bool = False,
-         detached: bool = False) -> list:  # O(input) per sync
+         detached: bool = False, report: bool | None = None) -> list:  # O(input) per sync
     """One sync, start to end under the hub's learn-state lock: concurrent syncs (detached checkpoint syncs of
     several worktrees) run one after another, each reading the offsets and plans the previous one saved. A final
-    sync seals its run; later non-final and detached syncs of it are no-ops (`_stale`)."""
+    sync seals its run; later non-final and detached syncs of it are no-ops (`_stale`). `report` (default: final)
+    prints the admitted, evicted, proven counts."""
     sl = Path(sl)
     hub, home = lessons_store.hub_dir(sl.parent), history.home()
     run = run or (run_archive.read_current_run(sl) or {}).get("id") or "unknown"
@@ -452,10 +501,27 @@ def sync(sl, plan=None, run=None, status: str = "unfinished", final: bool = Fals
         return memo  # watermarks last: saved only after everything above succeeded
 
     base.locked_update(hub / "learn-state.json", cycle)
-    if final:
+    if final if report is None else report:
         c = {w: sum(1 for e in events if e.startswith(w + " ")) for w in ("admitted", "evicted", "proven")}
         print(f"learn: admitted {c['admitted']}, evicted {c['evicted']}, proven {c['proven']}")
     return events
+
+
+def sealer(sl, run=None):  # O(1) plus hub lookup
+    """A callable that seals this checkout's run (as a final sync would) without folding anything. Hub, key and run
+    are resolved now, while the run folder is live: session close calls it only after its transaction succeeded."""
+    sl = Path(sl)
+    run = run or (run_archive.read_current_run(sl) or {}).get("id") or "unknown"
+    path, key = lessons_store.hub_dir(sl.parent) / "learn-state.json", f"{_ck(sl)}|{run}"
+
+    def seal() -> None:  # O(memo)
+        def mark(memo: dict) -> dict:  # O(1)
+            memo = memo if isinstance(memo, dict) else {}
+            memo.setdefault("final", {})[key] = 1
+            return memo
+        if run != "unknown":
+            base.locked_update(path, mark)
+    return seal
 
 
 def spawn(sl, plan=None) -> None:  # O(1)

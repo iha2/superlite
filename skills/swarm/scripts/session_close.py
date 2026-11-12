@@ -23,10 +23,21 @@ from session_registry import (  # noqa: E402
     owned_worktree, park_run_state, paths_text, read, registry_lock, restore_run_state, row_base, run_entries,
     same, session_stashes, set_run, start_dir, store_path, untracked_files, untracked_gate, validate_slug, write)
 
-def learn_sync(live: Path) -> None:  # O(sync) advisory: fold the run into the lessons before it is archived
+def learn_sync(live: Path):  # O(sync) advisory: fold the run into the lessons before it is archived
+    """A non-final fold (a failed close leaves the run active and its later syncs working); returns the sealer that
+    `learn_seal` runs once the close transaction succeeded, or None."""
     try:
         import learn
-        learn.sync(live, final=True, status="finished")
+        learn.sync(live, status="finished", report=True)
+        return learn.sealer(live)
+    except base.advisory_errors():
+        return None
+
+
+def learn_seal(seal) -> None:  # O(1) advisory: the close succeeded, so later syncs of its run are no-ops
+    try:
+        if seal is not None:
+            seal()
     except base.advisory_errors():
         pass
 
@@ -115,7 +126,7 @@ def _close_host(root: Path, reg: dict, row: dict, slug: str, host: Path, a) -> i
     wip = None
     if not _discard_sandbox(live, row, root):
         return 2
-    learn_sync(live)
+    seal = learn_sync(live)
     try:
         with Journal() as j:
             j.step("save the work")
@@ -135,6 +146,7 @@ def _close_host(root: Path, reg: dict, row: dict, slug: str, host: Path, a) -> i
         reg.update(before)
         print(f"session: could not close {slug}: {e}; {slug} stays active", file=sys.stderr)
         return 2
+    learn_seal(seal)
     if note:
         print(note)
     print(f"session: closed {slug}; archived to {store.as_posix()}" + (f" (wip {W.ref_for(slug)})" if wip else "")
@@ -166,7 +178,7 @@ def _close_owned(root: Path, reg: dict, row: dict, slug: str, a) -> int:
     wip = None
     if not _discard_sandbox(live, row, root):
         return 2
-    learn_sync(live)
+    seal = learn_sync(live)
     try:
         with Journal() as j:
             j.step("save the work")
@@ -185,6 +197,7 @@ def _close_owned(root: Path, reg: dict, row: dict, slug: str, a) -> int:
         reg.update(before)
         print(f"session: could not remove {wt.as_posix()}: {e}; nothing changed", file=sys.stderr)
         return 2
+    learn_seal(seal)
     git("worktree", "prune", cwd=root, check=False)
     branch = row.get("branch") or branch_for(slug)
     if not a.keep_branch and not row.get("adopted_branch") and not wip and not had_run \
@@ -234,7 +247,7 @@ def _close_adopted(root: Path, reg: dict, row: dict, slug: str) -> int:
     before = copy.deepcopy(reg)
     if not _discard_sandbox(live, row, root):
         return 2
-    learn_sync(live)
+    seal = learn_sync(live)
     try:
         with Journal() as j:
             j.step("park the run files")
@@ -247,6 +260,7 @@ def _close_adopted(root: Path, reg: dict, row: dict, slug: str) -> int:
         reg.update(before)
         print(f"session: could not close {slug}: {e}; nothing changed", file=sys.stderr)
         return 2
+    learn_seal(seal)
     print(f"session: closed {slug}; archived to {store.as_posix()}")
     print(f"session: {slug} lives in a harness worktree; leave it with ExitWorktree")
     return 0

@@ -546,3 +546,98 @@ def test_outbox_run_hides_topic_slug(env):
     learn.sync(env.sl)
     text = (env.home / "learn" / "outbox.jsonl").read_text()
     assert "my-topic" not in text and "045224" not in text and json.loads(text)["run"]
+
+
+def test_recreated_hook_log_with_same_rows_restarts(env):
+    """After finish moves the log away, a new log of identical hook rows (no timestamps) is read from 0."""
+    import os
+    jl(env.sl / "incidents.jsonl", {"kind": "rule-block", "tool": "Bash"})
+    sync(env, "r1")
+    (env.sl / "incidents.jsonl").rename(env.repo / "archived.jsonl")  # archive moves it: the inode lives on
+    jl(env.sl / "incidents.jsonl", {"kind": "rule-block", "tool": "Bash"}, {"kind": "rule-block", "tool": "Bash"})
+    st = (env.repo / "archived.jsonl").stat()
+    os.utime(env.sl / "incidents.jsonl", ns=(st.st_atime_ns, st.st_mtime_ns + 10**9))
+    sync(env, "r2")
+    rows = [json.loads(x) for x in (env.home / "learn" / "outbox.jsonl").read_text().splitlines()]
+    assert sorted(r["count"] for r in rows) == [1, 2]
+
+
+def test_restored_copy_keeps_offset(env):
+    """A run file copied back unchanged (session restore uses copy2: a new inode, the same mtime) keeps its offset."""
+    import shutil
+    jl(env.sl / "incidents.jsonl", {"kind": "rule-block", "tool": "Bash"})
+    sync(env, "r1")
+    shutil.copy2(env.sl / "incidents.jsonl", env.repo / "parked.jsonl")
+    (env.sl / "incidents.jsonl").unlink()
+    shutil.copy2(env.repo / "parked.jsonl", env.sl / "incidents.jsonl")
+    sync(env, "r1")
+    assert len((env.home / "learn" / "outbox.jsonl").read_text().splitlines()) == 1
+
+
+def test_outbox_ids_differ_across_repositories(tmp_path, monkeypatch):
+    monkeypatch.setenv("SUPERLITE_HOME", str(tmp_path / "home"))
+    for name in ("a", "b"):
+        sl = tmp_path / name / ".superlite"
+        jl(sl / "incidents.jsonl", {"kind": "rule-block", "tool": "Bash"})
+        learn.sync(sl)  # no current-run marker: both runs are `unknown`
+    rows = [json.loads(x) for x in (tmp_path / "home" / "learn" / "outbox.jsonl").read_text().splitlines()]
+    assert len(rows) == 2 and len({r["repo"] for r in rows}) == 2
+
+
+def test_copied_run_tasks_are_not_credited_to_the_new_run(env):
+    """ensure_run copies an unfinished run but leaves metrics and the ledger live: its tasks stay with it."""
+    env.tasks["T1"] = {"owns": ["skills/x/a.py"], "first_time_pass": True, "agent": "a1", "sha": "abc1234",
+                       "changed": ["skills/x/a.py", "skills/x/test_a.py"], "tests_run": ["skills/x/test_a.py"]}
+    sync(env, "r1", plan="p.md")
+    sync(env, "r2", plan="p.md")
+    assert "r2" not in store(env)["modules"]["skills/x"]
+    assert {r["run"] for r in hist(env)} == {"r1"}
+    assert all(x["runs"] == ["r1"] for x in store(env)["lessons"].values())
+    env.tasks["T1"] = dict(env.tasks["T1"], agent="a2", sha="def5678")  # r2 dispatched and checkpointed it again
+    sync(env, "r2", plan="p.md")
+    assert store(env)["modules"]["skills/x"]["r2"] == {"tasks": 1, "ftp": 1}
+    assert {r["run"] for r in hist(env)} == {"r1", "r2"}
+
+
+def test_incident_category_keys_the_pitfall(env):
+    jl(env.sl / "incidents.jsonl",
+       {"file": "skills/x/y.py", "kind": "exception", "category": "state", "context": "a"},
+       {"file": "skills/x/y.py", "kind": "exception", "category": "encoding", "context": "b"},
+       {"file": "skills/x/y.py", "kind": "exception", "context": "c"})
+    sync(env, "r1")
+    jl(env.sl / "review-findings.jsonl", {"file": "skills/x/y.py", "problem": "p", "category": "state"})
+    sync(env, "r2")
+    les = store(env)["lessons"]
+    assert sorted(x["key"] for x in les.values()) == ["encoding", "exception", "state"]
+    assert les[lessons.lesson_id("pitfall", "skills/x", "state")]["runs"] == ["r1", "r2"]
+
+
+def test_fixer_delivery_scored_by_its_fix(env):
+    """A fixer's delivery is a hit when its fix notes say FIXED and the newest test run failed nothing, though the
+    task itself (reworked) is no first-time pass."""
+    inc(env)
+    sync(env, "r1")
+    inc(env)
+    sync(env, "r2")
+    lid = next(iter(store(env)["lessons"]))
+    (env.sl / "fixes").mkdir()
+    (env.sl / "fixes" / "F-T1-1.md").write_text(FIX_NOTE.replace("F-T2-1", "F-T1-1"), encoding="utf-8")
+    (env.sl / "progress.md").write_text("- tests fast passed=3 failed=1 skipped=0 seconds=1.0\n"
+                                        "- tests fast passed=4 failed=0 skipped=0 seconds=1.0\n")
+    jl(env.sl / "deliveries.jsonl", {"run": "r2", "task": "T1", "agent": "fixer", "lessons": [lid]},
+       {"run": "r2", "task": "T1", "agent": "implementer", "lessons": [lid]})
+    env.tasks["T1"] = {"owns": ["skills/x/y.py"], "first_time_pass": False}
+    sync(env, "r2", plan="p.md")
+    assert store(env)["lessons"][lid]["deliveries"] == [{"run": "r2", "task": "T1", "hit": True, "agent": "fixer"},
+                                                         {"run": "r2", "task": "T1", "hit": False}]
+    with open(env.sl / "progress.md", "a") as fh:
+        fh.write("- tests fast passed=3 failed=1 skipped=0 seconds=1.0\n")
+    sync(env, "r2", plan="p.md")
+    assert store(env)["lessons"][lid]["deliveries"][0]["hit"] is False
+
+
+def test_findings_owner_matches_globs(env):
+    env.tasks["T1"] = {"owns": ["src/**/*.py"], "first_time_pass": False}
+    jl(env.sl / "review-findings.jsonl", {"run": "r1", "file": "src/pkg/a.py", "problem": "p", "category": "state"})
+    sync(env, plan="p.md")
+    assert {r["task"]: r["findings"] for r in hist(env)} == {"T1": 1}

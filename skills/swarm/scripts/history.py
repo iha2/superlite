@@ -254,7 +254,8 @@ def run_rows(plan_path, sl_dir=state.DIR_NAME, run_id=None) -> list:  # O(M + B 
     return rows
 
 
-OUTCOME_KEYS = ("first_time_pass", "rework_s", "rework_cost", "status", "findings")
+OUTCOME_KEYS = ("first_time_pass", "rework_s", "rework_cost", "status", "findings",
+                "duration_s", "tokens", "cost_usd", "tool_calls")
 
 
 def _fresh(rows: list, have: list) -> list:  # O(R + n)
