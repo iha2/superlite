@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Validate docs pages against the real superlite code."""
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
@@ -8,6 +9,24 @@ from pathlib import Path
 GUIDE = {"start", "flows", "run", "sessions"}
 HEADINGS = ["What you do", "What superlite does", "Example"]
 MAX_WORDS = 300
+SITE = Path(__file__).resolve().parent.parent
+# reference tables whose first column holds bare names: page -> real_names key
+NAME_TABLES = {"reference/skills.md": "skill_dirs", "reference/agents.md": "agent_files"}
+
+
+def resolve_main(arg=None):
+    """Main checkout: --main, else env SUPERLITE_MAIN, else <site>/_main if it exists, else the parent folder."""
+    if arg:
+        return Path(arg)
+    if os.environ.get("SUPERLITE_MAIN"):
+        return Path(os.environ["SUPERLITE_MAIN"])
+    if (SITE / "_main").is_dir():
+        return SITE / "_main"
+    return SITE.parent
+
+
+def is_main(path):
+    return (Path(path) / "commands").is_dir() and (Path(path) / "skills").is_dir()
 
 
 def real_names(main_dir):
@@ -18,9 +37,10 @@ def real_names(main_dir):
         for p in (m / d).glob("*"):
             if p.suffix in (".py", ".sh") and not p.name.startswith("_"):
                 tool.add(p.stem)
-    skill = {p.name for p in (m / "skills").glob("*") if p.is_dir()}
-    skill |= {p.stem for p in (m / "agents").glob("*.md")}
-    return {"command": cmd, "tool": tool, "skill": skill}
+    skill_dirs = {p.name for p in (m / "skills").glob("*") if p.is_dir()}
+    agent_files = {p.stem for p in (m / "agents").glob("*.md")}
+    return {"command": cmd, "tool": tool, "skill": skill_dirs | agent_files,
+            "skill_dirs": skill_dirs, "agent_files": agent_files}
 
 
 def _split(text):
@@ -62,12 +82,30 @@ def _link_ok(docs, target):
 
 
 def _pages(docs):
+    return [(p, p.relative_to(docs)) for p in sorted(list(docs.rglob("*.md")) + list(docs.rglob("*.mdx")))]
+
+
+def _links(text):
+    """Site-absolute targets from Markdown links, `href="..."` attributes and frontmatter/YAML `link:` values."""
+    out = set(re.findall(r"\]\((/superlite(?:/[^)\s]*)?)\)", text))
+    out |= set(re.findall(r"""\bhref=["'](/superlite(?:/[^"']*)?)["']""", text))
+    out |= set(re.findall(r"""^\s*(?:-\s+)?link:\s*["']?(/superlite(?:/[^\s"']*)?)""", text, re.M))
+    return sorted(out)
+
+
+def _table_names(body):
+    """Bare names in the first column of Markdown tables, header and separator rows skipped."""
     out = []
-    for p in sorted(list(docs.rglob("*.md")) + list(docs.rglob("*.mdx"))):
-        rel = p.relative_to(docs)
-        if rel.stem == "index":
+    for line in body.split("\n"):
+        s = line.strip()
+        if not s.startswith("|"):
             continue
-        out.append((p, rel))
+        cell = s.strip("|").split("|", 1)[0].strip()
+        if not cell or set(cell) <= set("-: "):
+            continue
+        m = re.fullmatch(r"`([^`]+)`", cell)
+        if m:
+            out.append(m.group(1))
     return out
 
 
@@ -78,16 +116,17 @@ def check(docs_dir, main_dir):
     for p, rel in _pages(docs):
         r = rel.as_posix()
         group = rel.parts[0]
+        index = rel.stem == "index"
         text = p.read_text()
         body = _split(text)
         prose_lines, blocks = _fences(body)
         first = next((l.strip() for l in body.split("\n") if l.strip()), "")
-        guide = group in GUIDE
+        guide = group in GUIDE and not index
         if guide and not (first.startswith("```mermaid") or first.startswith("```text")):
             problems.append(f"{r}: no diagram first")
         prose = [l for l in prose_lines if not l.strip().startswith("|") and not l.startswith("#")]
         words = len(re.findall(r"\S+", " ".join(prose)))
-        if words > MAX_WORDS:
+        if words > MAX_WORDS and not index:
             problems.append(f"{r}: {words} prose words (max {MAX_WORDS})")
         if guide:
             heads = [l[3:].strip() for l in prose_lines if l.startswith("## ")]
@@ -103,10 +142,15 @@ def check(docs_dir, main_dir):
         for s in sorted(set(re.findall(r"(?<![/\w-])superlite:([a-z0-9-]+)", text))):
             if s not in names["skill"]:
                 problems.append(f"{r}: superlite:{s} not a skill or agent")
-        for t in sorted(set(re.findall(r"\]\((/superlite(?:/[^)\s]*)?)\)", text))):
+        for t in _links(text):
             if not _link_ok(docs, t):
                 problems.append(f"{r}: link {t} not found")
-        if group == "flows":
+        if r in NAME_TABLES:
+            key = NAME_TABLES[r]
+            for n in _table_names(body):
+                if n not in names[key]:
+                    problems.append(f"{r}: {n} not {'a skill' if key == 'skill_dirs' else 'an agent'} on main")
+        if group == "flows" and not index:
             flow = main / "assets" / "flows" / f"{p.stem}.txt"
             if flow.exists():
                 want = flow.read_text().rstrip("\n")
@@ -119,9 +163,14 @@ def check(docs_dir, main_dir):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--docs", required=True)
-    ap.add_argument("--main", required=True)
+    ap.add_argument("--main", help="main checkout; default env SUPERLITE_MAIN, then _main, then ..")
     a = ap.parse_args()
-    probs = check(a.docs, a.main)
+    main_dir = resolve_main(a.main)
+    if not is_main(main_dir):
+        print(f"check_pages: no main checkout at {main_dir}; pass --main, set SUPERLITE_MAIN, "
+              f"or run `git worktree add _main main`", file=sys.stderr)
+        return 2
+    probs = check(a.docs, main_dir)
     if probs:
         print("\n".join(probs))
         return 1

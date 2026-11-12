@@ -2,11 +2,17 @@ import re
 import sys
 from pathlib import Path
 
+import pytest
+
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE))
 import check_pages  # noqa: E402
 
-REPO = HERE.parent.parent
+REPO = check_pages.resolve_main()
+needs_main = pytest.mark.skipif(
+    not check_pages.is_main(REPO),
+    reason=f"no main checkout at {REPO}: pass SUPERLITE_MAIN or run `git worktree add _main main`",
+)
 DOCS = HERE.parent / "src" / "content" / "docs"
 FLOWS = DOCS / "flows"
 PAGES = ["choose", "regular", "mvp", "feature", "debug", "small", "review", "research"]
@@ -18,11 +24,13 @@ def test_all_flow_pages_exist():
         assert (FLOWS / f"{name}.md").exists(), name
 
 
+@needs_main
 def test_flow_pages_pass_check():
     probs = check_pages.check(str(DOCS), str(REPO))
     assert [p for p in probs if p.startswith("flows/")] == []
 
 
+@needs_main
 def test_flow_screens_verbatim():
     for mode in SCREENED:
         want = (REPO / "assets" / "flows" / f"{mode}.txt").read_text().rstrip("\n")
