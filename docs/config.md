@@ -2,6 +2,7 @@
 
 In `skills/swarm/config/`:
 
+- Per-repo lessons live in the run folder (`lessons.json`, `learn-state.json`), not in `config/`; manage them with `superlite-cli lessons` (see [Tools](tools.md)).
 - `models.json`: prices (USD per million tokens) and output speed per model. Edit it when they change.
 - `predictor.json`: the time and context coefficients and the size band `predict` uses. Refit with `superlite-cli predict --refit`.
 - `gitignore.json`: ignore entries per language plus common ones; Wave 0 appends the missing ones to `.gitignore` before any agent runs.

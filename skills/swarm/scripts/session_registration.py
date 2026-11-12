@@ -6,6 +6,7 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
+import base  # noqa: E402
 import claude_create  # noqa: E402
 import run_archive  # noqa: E402
 import state  # noqa: E402
@@ -17,9 +18,19 @@ from session_registry import (
 from worktree_home import harness_worktree  # noqa: E402
 
 
+def learn_sync(live: Path) -> None:
+    """Advisory: fold the leftover run's signals into the lessons before it is snapshotted."""
+    try:
+        import learn
+        learn.sync(live)
+    except base.advisory_errors():
+        pass
+
+
 def prepare_run(root: Path, live: Path, topic: str, slug: str, j: Journal | None = None) -> Path | None:
     if j:
         j.step("snapshot the current run")
+    learn_sync(live)
     _, dest, previous = run_archive.ensure_run(live, topic, slug)
     if j:
         j.undo(lambda: run_archive.undo_ensure(live, dest, previous), "run marker")

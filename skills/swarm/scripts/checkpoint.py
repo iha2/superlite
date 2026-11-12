@@ -395,6 +395,14 @@ def approved_plans(plan):
     return [base_path.with_name(stem + suffix) for suffix in PLAN_COMPANIONS]
 
 
+def spawn_learn(plan):  # O(1) advisory: start `learn sync` detached, never wait for it
+    try:
+        import learn
+        learn.spawn(Path(state.DIR_NAME), plan)
+    except base.advisory_errors():
+        pass
+
+
 def checkpoint_one(a, tid, info, own_files):  # O(m*o + py size) + git spawns (status, add, commit-tree, update-ref)
     """Checkpoint one task; (exit code, sha or None). Files other tasks own are left alone."""
     if tid not in info:
@@ -454,6 +462,7 @@ def checkpoint_one(a, tid, info, own_files):  # O(m*o + py size) + git spawns (s
         return 1, None
     sha = save_checkpoint(tid, task["title"], mine, a.plan)  # hidden ref: HEAD, branch, index and tree untouched
     append_ledger(a.ledger, f"- checkpoint {tid} {sha[:10]} {task['title']}")
+    spawn_learn(a.plan)
     launch_probes(sha, a.plan)
     launch_seam_checks(a.plan, tid, a.ledger, a.log)
     return 0, sha

@@ -1,3 +1,4 @@
+import datetime
 import json
 import subprocess
 import sys
@@ -32,7 +33,10 @@ def test_add_writes_one_json_line(tmp_path):
     assert add(log, "a.py", 1, "ctx").returncode == 0
     ls = lines(log)
     assert len(ls) == 1
-    assert set(json.loads(ls[0])) == {"file", "line", "context", "time"}
+    row = json.loads(ls[0])
+    assert {"file", "line", "context", "time"} <= set(row)
+    assert "module" in row
+    assert datetime.date.fromisoformat(row["date"])
 
 
 def test_context_truncated_to_200(tmp_path):

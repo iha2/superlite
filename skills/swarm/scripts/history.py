@@ -19,7 +19,7 @@ ROW SCHEMA (v1), one JSON object per line:
   cost_usd, tool_calls, first_time_pass (true|false|null), rework_s, rework_cost, pred_min,
   phase ("proto" | "build"; absent on older rows; `run` is the run archive's id), run_id (feature run id or null), sandbox
   (repo-relative open sandbox or null), repository (hub checkout path).
-Recording the same (repository, run, task) twice is a no-op; stats and fits read through unique_rows (content duplicates count once per repository).
+Recording the same (repository, run, task) twice is a no-op unless its outcome (first_time_pass, rework_s, rework_cost, status, findings) changed, then the new row is appended and the last row wins; stats and fits read through unique_rows (content duplicates count once per repository).
 STATS (stats.json): {v, updated, rows, bands: {band: S}, tiers: {tier: S}, bands_by_tier: {tier|band: S}} with
   S = {n, ftp_n, ftp_rate, mean_s, p90_s, mean_cost}. Same rows, same stats (sorted keys, no clock in S).
 Stdlib only.
@@ -129,11 +129,23 @@ def _content_key(r: dict) -> tuple:
             tk.get("in"), tk.get("out"), r.get("model"))
 
 
+def _id_key(r: dict) -> tuple:
+    return (r.get("repository"), r.get("run"), r.get("task"))
+
+
+def _keyed(r: dict) -> bool:  # O(1) rows of old files without a repository or run keep content-only dedupe
+    return bool(r.get("repository") and r.get("run") and r.get("task"))
+
+
 def unique_rows(rows: list[dict]) -> list[dict]:  # O(R)
-    """Content duplicates per repository, first kept: date, task, duration, tokens in/out and model, any run id."""
+    """The last row per (repository, run, task) wins; then content duplicates per repository, first kept:
+    date, task, duration, tokens in/out and model, any run id."""
+    last = {_id_key(r): i for i, r in enumerate(rows) if _keyed(r)}
     seen: set = set()
     out = []
-    for r in rows:
+    for i, r in enumerate(rows):
+        if _keyed(r) and last[_id_key(r)] != i:
+            continue
         k = _content_key(r)
         if k not in seen:
             seen.add(k)
@@ -242,9 +254,15 @@ def run_rows(plan_path, sl_dir=state.DIR_NAME, run_id=None) -> list:  # O(M + B 
     return rows
 
 
+OUTCOME_KEYS = ("first_time_pass", "rework_s", "rework_cost", "status", "findings",
+                "duration_s", "tokens", "cost_usd", "tool_calls")
+
+
 def _fresh(rows: list, have: list) -> list:  # O(R + n)
-    known = {(r.get("repository"), r.get("run"), r.get("task")) for r in have}
-    return [r for r in rows if (r.get("repository"), r.get("run"), r.get("task")) not in known]
+    """Rows not yet recorded: new (repository, run, task), or the newest recorded row's outcome differs."""
+    latest = {_id_key(r): r for r in have}
+    return [r for r in rows if _id_key(r) not in latest
+            or any(r.get(k) != latest[_id_key(r)].get(k) for k in OUTCOME_KEYS)]
 
 
 def repository_id(sl_dir) -> str:
@@ -259,18 +277,22 @@ def repository_id(sl_dir) -> str:
 def record_run(plan_path, sl_dir=state.DIR_NAME, run_id=None) -> list:  # O(R + n*w)
     """Append this run's rows (global and project) and refresh both stats files."""
     repo = repository_id(sl_dir)
-    rows = [dict(r, repository=repo) for r in run_rows(plan_path, sl_dir, run_id)]
+    return record_rows([dict(r, repository=repo) for r in run_rows(plan_path, sl_dir, run_id)], sl_dir)
+
+
+def record_rows(rows: list, sl_dir) -> list:  # O(R + n*w)
+    """Append rows to global and project history unless the same (repository, run, task) outcome is already
+    the newest recorded; refresh both stats files. Returns the rows appended to the global history."""
     proj = Path(sl_dir) / "history.jsonl"
-    new = _fresh(rows, read_rows())  # a row already recorded for this (run, task) is not recorded again
+    new = _fresh(rows, read_rows())
     if new:
         append_rows(new)
     new_proj = _fresh(rows, read_rows(proj))
     if new_proj:
         append_rows(new_proj, proj)
-    rows = new
     write_stats(read_rows(), home() / "stats.json")
-    write_stats(read_rows(Path(sl_dir) / "history.jsonl"), Path(sl_dir) / "stats.json")
-    return rows
+    write_stats(read_rows(proj), Path(sl_dir) / "stats.json")
+    return new
 
 
 def import_file(path) -> list:  # O(n)

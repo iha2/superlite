@@ -279,7 +279,7 @@ def test_spinning_run_is_reported_and_hard_timeout_kills_the_whole_tree(tmp_path
     assert r.returncode == 1, r.stdout + r.stderr
     line = next(ln for ln in r.stdout.splitlines() if ln.startswith("SUSPECT HANG"))   # printed at once
     assert "SPINNING" in line and "tests/markdown.test.ts" in line and "infinite loop" in line
-    s = read_json(proj / ".superlite" / "test-summary.json")
+    s = read_json(proj / ".superlite" / "tests" / "summary.json")
     assert {"passed", "failed", "skipped", "seconds", "mode", "failures", "skipped_tests"} <= set(s)   # old shape intact
     assert s["failed"] >= 1 and s["mode"] == "fast" and "running" not in s
     assert s["verdict"] == "SUSPECT HANG" and s["timeout_s"] >= 2.0
@@ -291,7 +291,7 @@ def test_spinning_run_is_reported_and_hard_timeout_kills_the_whole_tree(tmp_path
     inc = [json.loads(x) for x in (proj / ".superlite" / "incidents.jsonl").read_text(encoding="utf-8").splitlines()]
     perf = [e for e in inc if e.get("kind") == "perf"]
     assert len(perf) == 1 and "SUSPECT HANG spinning" in perf[0]["context"] and perf[0]["file"] == "tests/markdown.test.ts"
-    assert not (proj / ".superlite" / "test-summary.suspect").exists()   # a foreground run leaves no sidecar
+    assert not (proj / ".superlite" / "tests" / "summary.suspect").exists()   # a foreground run leaves no sidecar
     time.sleep(0.3)
     assert not alive(int((proj / "child.pid").read_text()))                # the grandchild died with the tree
 
@@ -318,12 +318,14 @@ def test_not_killed_by_default():
 
 
 def test_blocked_run_wait_returns_early_and_auto_kill_is_by_pid(tmp_path):
-    proj, env = hang_project(tmp_path, "sleep", auto_kill_blocked=True, auto_kill_after_s=1.5)
+    # the kill lands auto_kill_after_s after the flag and its final summary then wins over the sidecar (exit 1): a slow
+    # CI runner started the first --wait more than 1.5 s late, so leave a wide window for the early exit 3
+    proj, env = hang_project(tmp_path, "sleep", auto_kill_blocked=True, auto_kill_after_s=6.0)
     assert rt(proj, env, "--background").returncode == 0
     w = rt(proj, env, "--wait", "--timeout", "40")
     assert w.returncode == 3, w.stdout + w.stderr           # early exit on the suspect, not a timeout
     assert w.stdout.startswith("SUSPECT HANG: BLOCKED") and "deadlock or wait" in w.stdout
-    published = proj / ".superlite" / "test-summary.json"
+    published = proj / ".superlite" / "tests" / "summary.json"
     for _ in range(100):                                      # the provisional summary lands right after the sidecar
         if published.exists():
             break
@@ -343,10 +345,10 @@ def test_blocked_run_wait_returns_early_and_auto_kill_is_by_pid(tmp_path):
 
 
 def test_wait_reports_suspect_and_timeout_from_a_sidecar(tmp_path):
-    sl = tmp_path / ".superlite"
-    sl.mkdir()
-    mine = sl / "test-summary-r1.json"
-    (sl / "test-summary.latest").write_text(json.dumps({"id": "r1", "summary": str(mine)}), encoding="utf-8")
+    sl = tmp_path / ".superlite" / "tests"
+    (sl / "runs").mkdir(parents=True)
+    mine = sl / "runs" / "r1.json"
+    (sl / "latest").write_text(json.dumps({"id": "r1", "summary": str(mine)}), encoding="utf-8")
     run_tests.atomic_write(run_tests.suspect_path(mine), json.dumps(
         {"suspect_hang": {"line": "SUSPECT HANG: BLOCKED x - no output for 40s"}}))
     env = {**os.environ}
@@ -366,7 +368,7 @@ def test_windows_minus_one_exit_reads_as_killed_or_crashed(tmp_path):
         encoding="utf-8")
     r = rt(tmp_path, {**os.environ})
     assert r.returncode == 1
-    s = read_json(tmp_path / ".superlite" / "test-summary.json")
+    s = read_json(tmp_path / ".superlite" / "tests" / "summary.json")
     assert s["failures"][0].startswith("-::process killed or crashed (exit -1)") and "4294967295" not in json.dumps(s)
     assert set(s) == {"passed", "failed", "skipped", "seconds", "mode", "failures", "skipped_tests", "run_id"}
 
@@ -377,6 +379,6 @@ def test_a_quiet_fast_run_pays_nothing_and_keeps_its_summary_shape(tmp_path):
         {"language": "go", "test": f'{sys.executable} -c "print(1)"', "test_file": "", "junit": "", "setup": ""}), encoding="utf-8")
     r = rt(tmp_path, {**os.environ})
     assert r.returncode == 0 and "SUSPECT" not in r.stdout
-    assert set(read_json(tmp_path / ".superlite" / "test-summary.json")) == {
+    assert set(read_json(tmp_path / ".superlite" / "tests" / "summary.json")) == {
         "passed", "failed", "skipped", "seconds", "mode", "failures", "skipped_tests", "run_id"}
     assert not list((tmp_path / ".superlite").glob("*.suspect"))

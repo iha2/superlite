@@ -48,7 +48,7 @@ def test_background_returns_at_once_then_wait_reads_green(tmp_path):
     assert w.returncode == 0, w.stdout + w.stderr
     assert json.loads(w.stdout)["failed"] == 0
     assert Path(line[len("summary: "):]).exists()
-    published = json.loads((proj / ".superlite" / "test-summary.json").read_text(encoding="utf-8"))
+    published = json.loads((proj / ".superlite" / "tests" / "summary.json").read_text(encoding="utf-8"))
     assert published["passed"] == 2 and published["mode"] == "fast"
 
 
@@ -63,21 +63,21 @@ def test_wait_exits_1_on_red(tmp_path):
 def test_wait_ignores_stale_summary_and_times_out(tmp_path):
     rt = importlib.import_module("run_tests")
     proj = project(tmp_path, "pass")
-    sl = proj / ".superlite"
-    sl.mkdir()
+    sl = proj / ".superlite" / "tests"
+    (sl / "runs").mkdir(parents=True)
     # an old green summary exists, but the latest run (marker) has not finished
-    (sl / "test-summary.json").write_text(json.dumps({"passed": 9, "failed": 0, "skipped": 0}), encoding="utf-8")
-    (sl / "test-summary.latest").write_text(
-        json.dumps({"id": "fresh", "summary": str(sl / "test-summary-fresh.json")}), encoding="utf-8")
+    (sl / "summary.json").write_text(json.dumps({"passed": 9, "failed": 0, "skipped": 0}), encoding="utf-8")
+    (sl / "latest").write_text(
+        json.dumps({"id": "fresh", "summary": str(sl / "runs" / "fresh.json")}), encoding="utf-8")
     t0 = time.monotonic()
     w = run("run_tests", "--wait", "--timeout", "1", cwd=proj)
     assert w.returncode == 2 and "timed out" in w.stderr
     assert time.monotonic() - t0 < 30
     # once that run writes its own summary, wait returns it
-    (sl / "test-summary-fresh.json").write_text(json.dumps({"passed": 1, "failed": 2, "skipped": 0}), encoding="utf-8")
+    (sl / "runs" / "fresh.json").write_text(json.dumps({"passed": 1, "failed": 2, "skipped": 0}), encoding="utf-8")
     w = run("run_tests", "--wait", "--timeout", "5", cwd=proj)
     assert w.returncode == 1 and json.loads(w.stdout)["failed"] == 2
-    assert rt.pointer_path(sl / "test-summary.json").name == "test-summary.latest"
+    assert rt.pointer_path(sl / "summary.json").name == "latest"
 
 
 def test_wait_without_background_run_exits_2(tmp_path):
@@ -92,7 +92,7 @@ def test_two_background_runs_keep_separate_summaries(tmp_path):
     b = run("run_tests", "--fast", "test_pass.py", "--background", cwd=proj)
     pa, pb = (x.stdout.strip().splitlines()[-1].split(": ", 1)[1] for x in (a, b))
     assert pa != pb
-    ptr = json.loads((proj / ".superlite" / "test-summary.latest").read_text(encoding="utf-8"))
+    ptr = json.loads((proj / ".superlite" / "tests" / "latest").read_text(encoding="utf-8"))
     assert ptr["summary"] == pb  # the pointer names the newest run
     w = run("run_tests", "--wait", "--timeout", "180", cwd=proj)
     assert w.returncode == 0
@@ -101,14 +101,14 @@ def test_two_background_runs_keep_separate_summaries(tmp_path):
         time.sleep(0.5)
     for p in (pa, pb):
         assert json.loads(Path(p).read_text(encoding="utf-8"))["passed"] == 2
-    ptr = json.loads((proj / ".superlite" / "test-summary.latest").read_text(encoding="utf-8"))
+    ptr = json.loads((proj / ".superlite" / "tests" / "latest").read_text(encoding="utf-8"))
     assert ptr["summary"] == pb  # the older run finishing did not move the pointer
 
 
 def test_publish_skips_when_a_newer_run_owns_the_pointer(tmp_path):
     rt = importlib.import_module("run_tests")
     sl = tmp_path / ".superlite"
-    pub = sl / "test-summary.json"
+    pub = sl / "tests" / "summary.json"
     rt.atomic_write(rt.pointer_path(pub), json.dumps({"id": "new", "summary": "x"}))
     mine = rt.run_summary_path(pub, "old")
     rt.atomic_write(mine, json.dumps({"passed": 1, "failed": 0, "skipped": 0}))

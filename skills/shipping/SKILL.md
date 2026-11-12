@@ -9,7 +9,7 @@ Never push, merge or publish without the human. The human's choice is the only a
 
 ## 1. Verify
 
-Read `**Full suite:**` in the plan header. `yes`: run `bash <skill-dir>/../swarm/scripts/superlite-cli run_tests --full --reuse`. `no` or missing: run `bash <skill-dir>/../swarm/scripts/superlite-cli run_tests --affected --base <start sha>` (the sha is the `- start <sha>` line in `.superlite/progress.md`). After `finish`, the run's files live in the folder its `run: archived to <dir>` line names: read the start sha from `<dir>/progress.md`, and pass `--summary <dir>/test-summary.json` with `--full --reuse` so it can see the last green run. It prints one line: `passed failed skipped seconds`. `--reuse` skips a rerun when nothing has changed since a green run (see `superlite:proof`). Red blocks merge and PR: report the failures and stop. Do not offer to merge failing work.
+Read `**Full suite:**` in the plan header. `yes`: run `bash <skill-dir>/../swarm/scripts/superlite-cli run_tests --full --reuse`. `no` or missing: run `bash <skill-dir>/../swarm/scripts/superlite-cli run_tests --affected --base <start sha>` (the sha is the `- start <sha>` line in `.superlite/progress.md`). After `finish`, the run's files live in the folder its `run: archived to <dir>` line names: read the start sha from `<dir>/progress.md`, and pass `--summary <dir>/tests/summary.json` with `--full --reuse` so it can see the last green run. It prints one line: `passed failed skipped seconds`. `--reuse` skips a rerun when nothing has changed since a green run (see `superlite:proof`). Red blocks merge and PR: report the failures and stop. Do not offer to merge failing work.
 
 ## 2. Detect the base branch yourself
 

@@ -186,10 +186,49 @@ def check_each_step(monkeypatch, tmp_path_factory, name, skip=()):
         assert snapshot(root, skip) == before, f"{name} step {n} {fault.hit[0]}: state changed\n{out}"
 
 
+# Close folds the run into the lessons (learn.sync) before its journaled steps. That sync is advisory and
+# idempotent (watermarked per run), so it is deliberately outside the close transaction: a failed close may
+# leave these two learn-owned files updated and a retry just folds the same run again. Nothing else may change.
+LEARN_OWNED = (".superlite/lessons.json", ".superlite/learn-state.json")
+
+
 @pytest.mark.slow
 @pytest.mark.parametrize("name", ["use", "close", "move-out"])
 def test_each_step_fails_cleanly(name, tmp_path_factory, monkeypatch):
-    check_each_step(monkeypatch, tmp_path_factory, name)
+    check_each_step(monkeypatch, tmp_path_factory, name, skip=LEARN_OWNED if name == "close" else ())
+
+
+@pytest.mark.slow
+def test_failed_close_changes_only_learn_owned_files(tmp_path_factory, monkeypatch):
+    """The exclusion above is exact: with it a failed close is clean, and without it only learn files differ."""
+    root, before, fault, rc, out = run_with_fault(monkeypatch, tmp_path_factory.mktemp("learn"), "close", 1)
+    assert rc != 0, out
+    after = snapshot(root)
+    assert before["registry"] == after["registry"] and before["branches"] == after["branches"]
+    changed = {rel for w, files in after["files"].items() for rel, data in files.items()
+               if before["files"].get(w, {}).get(rel) != data}
+    assert changed and changed <= set(LEARN_OWNED), changed
+
+
+def test_failed_close_leaves_the_run_unsealed(tmp_path, monkeypatch):
+    """The pre-close fold is not final: a close that fails leaves later syncs of the still-active run working; only a
+    close that succeeded seals the run."""
+    monkeypatch.setenv("SUPERLITE_HOME", str(tmp_path / "home"))
+    root = setup_open(tmp_path)
+    (root / ".superlite" / "current-run.json").write_text(json.dumps(
+        {"id": "20261112-000000-a", "topic": "a", "slug": "a", "started_at": "2026-11-12T00:00:00"}))
+    memo = root / ".superlite" / "learn-state.json"
+    with monkeypatch.context() as mp:
+        fault = Fault(1)
+        mp.setattr(base, "git", fault)
+        mp.setattr(session_wip, "_git", fault.wip())
+        rc, out = sess(root, "close", "--slug", "a", "--untracked", "stash")
+    assert rc != 0 and fault.hit is not None, out
+    assert json.loads(memo.read_text(encoding="utf-8")).get("final", {}) == {}
+    rc, out = sess(root, "close", "--slug", "a", "--untracked", "stash")
+    assert rc == 0, out
+    assert list(json.loads(memo.read_text(encoding="utf-8"))["final"]) == [
+        f"{(root / '.superlite').resolve().as_posix()}|20261112-000000-a"]
 
 
 @pytest.mark.slow

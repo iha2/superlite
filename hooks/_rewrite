@@ -199,10 +199,10 @@ out="${out//$ph1/>&}"; out="${out//$ph2/&>}"
 esc out
 if [ "$used_fast" = 1 ]; then mode=fast; else mode=full; fi
 if [ "$cursor" = 1 ]; then   # Cursor reads permission plus updated_input, not hookSpecificOutput
-  printf '%s\n' '{"permission":"allow","updated_input":{"command":"'"$out"'"},"agent_message":"raw test run rewritten to a superlite-cli run_tests --'"$mode"'; its summary is in .superlite/test-summary.json"}'
+  printf '%s\n' '{"permission":"allow","updated_input":{"command":"'"$out"'"},"agent_message":"raw test run rewritten to a superlite-cli run_tests --'"$mode"'; its summary is in .superlite/tests/summary.json"}'
   return 0
 fi
-printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","updatedInput":{"command":"'"$out"'","run_in_background":true,"description":"superlite-cli run_tests --'"$mode"' (rewritten from a raw test run)"},"additionalContext":"raw test run rewritten to a background superlite-cli run_tests --'"$mode"'; its result arrives as a notification and in .superlite/test-summary.json; use `superlite-cli run_tests --wait` only at the final gate"}}'
+printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","updatedInput":{"command":"'"$out"'","run_in_background":true,"description":"superlite-cli run_tests --'"$mode"' (rewritten from a raw test run)"},"additionalContext":"raw test run rewritten to a background superlite-cli run_tests --'"$mode"'; its result arrives as a notification and in .superlite/tests/summary.json; use `superlite-cli run_tests --wait` only at the final gate"}}'
 printf '\n'
 return 0
 }
