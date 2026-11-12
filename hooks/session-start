@@ -59,13 +59,15 @@ if [ -f "${PLUGIN_ROOT}/.claude-plugin/plugin.json" ]; then
   [[ $pj =~ $re_ver ]] && version="${BASH_REMATCH[1]}"
 fi
 upgrade_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-upgrade_marker="${upgrade_root}/.superlite/upgrade-scan-${version:-unknown}"
-if [ -d "${upgrade_root}/.superlite" ] && [ ! -e "$upgrade_marker" ]; then
-  if upgrade_context="$("$py" "${PLUGIN_ROOT}/skills/swarm/scripts/session.py" reconcile --legacy-only --root "$upgrade_root" 2>/dev/null)"; then
-    : > "$upgrade_marker" 2>/dev/null || true
-    if [ -n "$upgrade_context" ]; then
-      content="${content}"$'\n\n'"${upgrade_context}"
-    fi
+upgrade_git="$(git -C "$upgrade_root" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+upgrade_marker="${upgrade_git}/info/superlite-upgrade-scan-${version:-unknown}"
+upgrade_skill="${PLUGIN_ROOT}/skills/upgrade-scan/SKILL.md"
+if [ -n "$upgrade_git" ] && [ -f "$upgrade_skill" ] && [ ! -e "$upgrade_marker" ]; then
+  IFS= read -r -d '' upgrade_prompt < "$upgrade_skill" || true
+  if [ -n "$upgrade_prompt" ]; then
+    content="${content}"$'\n\n'"${upgrade_prompt}"
+    { [ -d "${upgrade_git}/info" ] || mkdir -p "${upgrade_git}/info"; } 2>/dev/null \
+      && : > "$upgrade_marker" 2>/dev/null || true
   fi
 fi
 # Same rule as history.home() in skills/swarm/scripts/history.py: change both together.

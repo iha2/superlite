@@ -3,7 +3,6 @@
 Reads git, never changes it. `apply` returns a new registry; the caller writes it under `registry_lock`.
 """
 import copy
-import shlex
 import sys
 from pathlib import Path
 
@@ -111,37 +110,6 @@ def _sandbox_base_orphans(base: Path, known: set[str]) -> list[dict]:
                 out.append(_d("sandbox-orphan", session.name, folder,
                               f"sandbox folder {folder.name} has no session row entry"))
     return out
-
-
-def upgrade_lines(root: Path) -> list[str]:
-    """Report legacy worktree layouts; never move, remove, or otherwise change them."""
-    root = root.resolve()
-    old_home = (root / state.DIR_NAME / "worktrees").resolve()
-    sandbox_home = (root / state.DIR_NAME / "sandboxes").resolve()
-    found, worktrees = [], _listing(root)
-    for worktree in worktrees:
-        path = Path(worktree["path"]).resolve()
-        branch = worktree.get("branch") or ""
-        proto_home = path.parent == sandbox_home and path.name.endswith("-proto")
-        old_location = path.is_relative_to(old_home)
-        if not (proto_home or branch.endswith("-proto") or old_location):
-            continue
-        quoted_path = shlex.quote(path.as_posix())
-        if proto_home or branch.endswith("-proto"):
-            detail = (f"legacy prototype worktree path={path}: move wanted changes into a current sandbox, "
-                      f"or remove with git worktree remove --force {quoted_path}"
-                      + (f" and git branch -D {shlex.quote(branch)}" if branch else ""))
-        else:
-            target = root / ".claude" / "worktrees" / path.name
-            detail = (f"legacy worktree path={path}: move with git worktree move {quoted_path} "
-                      f"{shlex.quote(target.as_posix())}, or remove with git worktree remove --force {quoted_path}")
-        found.append("session: upgrade " + detail)
-    branches = sr.git("for-each-ref", "--format=%(refname:short)", "refs/heads", cwd=root, check=False).stdout
-    linked = {w.get("branch") for w in worktrees}
-    for branch in sorted(b for b in branches.splitlines() if b.endswith("-proto") and b not in linked):
-        found.append(f"session: upgrade legacy prototype branch {branch}: "
-                     f"remove with git branch -D {shlex.quote(branch)}")
-    return sorted(found)
 
 
 def _sandbox_orphans(root: Path, rows: list[dict]) -> list[dict]:

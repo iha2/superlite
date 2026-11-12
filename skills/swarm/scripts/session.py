@@ -106,7 +106,6 @@ def build_parser() -> argparse.ArgumentParser:
     r = sp.add_parser("reconcile", help="report drift between sessions.json and git; --apply fixes the registry only")
     r.add_argument("--apply", action="store_true", help="rewrite sessions.json (never changes git)")
     r.add_argument("--root")
-    r.add_argument("--legacy-only", action="store_true", help=argparse.SUPPRESS)
 
     b = sp.add_parser("branch-name", help="branch-name preference for Claude-created worktrees")
     b.add_argument("value", nargs="?", default="status", help="status | worktree | superlite | PATTERN with {slug}")
@@ -148,11 +147,6 @@ def cmd_status_inventory(a) -> int:
 def cmd_reconcile(a) -> int:
     import session_reconcile as RC
     root = hub_root(start_dir(a))
-    upgrades = getattr(RC, "upgrade_lines", lambda _: [])(root)
-    for line in upgrades:
-        print(line)
-    if a.legacy_only:
-        return 0
     if not a.apply:
         reg = read_reg(root)
         found = RC.drift(root, reg)

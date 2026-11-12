@@ -107,6 +107,20 @@ def test_proto_plan_without_wave0_fails_lint(fake_sandbox, tmp_path, capsys, mon
     assert rc != 0 and "plan needs an explicit in-sandbox Wave 0 task" in out
 
 
+def test_missing_wave0_blocks_all_tasks_from_stable_lint(fake_sandbox, tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    tasks = [{"id": "T1", "time": 2, "owns": f"{SB}/src/app.py"},
+             {"id": "T2", "time": 2, "owns": f"{SB}/src/other.py"}]
+    p = make_plan(tmp_path, tasks, header="**Ignore:** .env", name="x.proto.md")
+    (tmp_path / ".superlite" / "feature.json").parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".superlite" / "feature.json").write_text(
+        f'{{"status":"building","sandbox":"{tmp_path / SB}"}}', encoding="utf-8")
+    plan_lint.cmd_lint_stable(_args(p))
+    out = capsys.readouterr().out
+    stable = plan_lint.base.read_json(tmp_path / ".superlite" / "stable.json", {})
+    assert stable["stable"] == [] and {f["task"] for f in stable["fix"]} == {"T1", "T2"}, out
+
+
 def test_proto_plan_wave0_owns_only_sandbox_paths(fake_sandbox, tmp_path, capsys, monkeypatch):
     monkeypatch.chdir(tmp_path)
     p = make_plan(tmp_path, [{"id": "T1", "title": "Wave 0 skeleton", "time": 2,

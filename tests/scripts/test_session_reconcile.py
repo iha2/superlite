@@ -97,22 +97,6 @@ def test_inventory_skips_hub(hub):
     assert rec.inventory(hub, mkreg()) == []
 
 
-def test_upgrade_scan_reports_legacy_worktrees_and_unchecked_branch(hub):
-    proto = add_wt(hub, ".superlite/sandboxes/old-proto", "legacy-proto")
-    old_home = add_wt(hub, ".superlite/worktrees/legacy", "legacy-session")
-    branched_proto = add_wt(hub, "../proto-elsewhere", "out-of-place-proto")
-    git(hub, "branch", "unused-proto")
-    before = snapshot(hub, with_file=False)
-    lines = rec.upgrade_lines(hub)
-    assert len(lines) == 4
-    assert any("legacy prototype worktree" in line and str(proto) in line and "move wanted changes" in line
-               for line in lines)
-    assert any("legacy worktree" in line and str(old_home) in line and "git worktree move" in line for line in lines)
-    assert any("legacy prototype worktree" in line and str(branched_proto.resolve()) in line for line in lines)
-    assert any("legacy prototype branch unused-proto" in line and "git branch -D" in line for line in lines)
-    assert snapshot(hub, with_file=False) == before
-
-
 def test_inventory_detached(hub):
     p = add_wt(hub, "../elsewhere", detach=True)
     [e] = rec.inventory(hub, mkreg())

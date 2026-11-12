@@ -203,7 +203,7 @@ class _Lint:
             if task_id in {t.id for t in self.plan.tasks}:
                 self.add(msg, [task_id])
             else:
-                self.add(msg, scope="plan")
+                self.add(msg, [t.id for t in self.plan.tasks])
 
     def interfaces(self) -> None:
         """Every Consumes item has a Produces line with the same parameters and return type."""

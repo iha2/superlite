@@ -97,17 +97,13 @@ def test_session_start_no_row_falls_back_to_orchestrator(hub):
     assert "Project state: run in progress." in _start(hub)
 
 
-def test_session_start_reports_legacy_worktree_once_per_version(hub):
-    legacy = hub / ".superlite" / "worktrees" / "old"
-    legacy.parent.mkdir(parents=True, exist_ok=True)
-    git(hub, "worktree", "add", "-q", "-b", "legacy", str(legacy))
-    nested = hub / "nested"
-    nested.mkdir()
-    first = _start(nested)
-    second = _start(hub)
-    assert f"legacy worktree path={legacy}" in first and "git worktree move" in first
-    assert "session: upgrade" not in second
-    assert list((hub / ".superlite").glob("upgrade-scan-*"))
+def test_session_start_injects_upgrade_skill_once_per_version(hub):
+    first = _start(hub)
+    marker = hub / ".git" / "info" / "superlite-upgrade-scan-4.0.0"
+    assert "Review this repository against the changes in superlite" in first
+    assert "Do not move, edit, or delete anything" in first
+    assert marker.is_file() and not list((hub / ".superlite").glob("upgrade-scan-*"))
+    assert "Review this repository against the changes in superlite" not in _start(hub)
 
 
 def test_project_state_follows_run(hub):

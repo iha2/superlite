@@ -195,12 +195,3 @@ def test_real_module_reconcile_and_apply(repo, capfd):
     assert reg_bytes(repo) != b"" and before != b""
     rc, out, err = run(repo, "status", capfd=capfd)
     assert rc == 0 and "session: worktree " in out and err == ""
-
-
-def test_reconcile_reports_legacy_worktree_without_changing_it(repo, capfd):
-    sys.modules.pop("session_reconcile", None)
-    legacy = repo / ".superlite" / "worktrees" / "old"
-    git(repo, "worktree", "add", "-q", "-b", "legacy", str(legacy))
-    rc, out, _ = run(repo, "reconcile", capfd=capfd)
-    assert rc == 0 and f"legacy worktree path={legacy}" in out and "git worktree move" in out
-    assert legacy.is_dir() and git(repo, "branch", "--list", "legacy").strip()
