@@ -1,0 +1,77 @@
+---
+title: "Debug flow"
+description: "Find the root cause first, then fix it with a regression test."
+sidebar:
+  order: 5
+---
+
+:::tip[TL;DR]
+Use Debug for a bug or a failing test. superlite finds the cause before it touches code, writes a test that fails for that cause, fixes it, and proves the suite is green. You get the cause, the fix and the test, and nothing wider.
+:::
+
+```text
+ DEBUG
+ ------------------------------------------------------------------------------
+  [1 BUG]
+      v
+  [2 REPRODUCE]
+      v
+  [3 ROOT CAUSE]
+      v
+  [4 FAILING TEST]
+      v
+  [5 FIX]
+      v
+  [6 VERIFY]
+      v
+  [7 REPORT]
+ ------------------------------------------------------------------------------
+  1  BUG         You describe what fails and how to see it.
+  2  REPRODUCE   Run it and watch it fail.
+  3  ROOT CAUSE  Find the cause before touching code.
+  4  TEST        A regression test that fails for that cause.
+  5  FIX         By how well the cause is understood:
+                 tier 1 known, one module: Sonnet
+                 tier 2 spans modules or a seam: Sonnet high
+                 tier 3 cause unknown: Opus
+  6  VERIFY      The new test passes and the whole suite is green.
+  7  REPORT      The cause, the fix and the test. No widening of scope.
+ ------------------------------------------------------------------------------
+```
+
+## How it works
+
+A fix without a known cause is a guess, and guesses create new bugs. So the flow has two rules. The cause comes first, and the test comes before the fix.
+
+**Reproduce, then trace.** superlite runs the failure and reads the full error, not the first line. It then checks what changed recently, follows a bad value back to where it starts, and states one cause in one sentence: "X is wrong because Y". It tests that sentence with the smallest probe it can think of, one change at a time.
+
+**A test that fails for that cause.** The regression test is written before the fix, so you can see it fail for the right reason. It then passes after the fix.
+
+**Fixes go to agents by tier.** The tier says how well the cause is understood, and it picks the agent. Tier 1 (known, one module) goes to Sonnet. Tier 2 (spans modules or a seam) goes to Sonnet high. Tier 3 (cause unknown) goes to Opus. [Reviews and fixes](/superlite/run/reviews-and-fixes/) uses the same tiers, and [parallel build](/superlite/run/parallel-build/) explains the agents.
+
+**Verify.** The new test passes and the suite is green. The report states the cause, the fix, the test and the evidence. If the cause was never found, it says so instead of shipping a guess.
+
+## Example: a login test that fails
+
+```text
+you        /superlite:debug test_login_after_timeout fails: expects 200, gets 401
+superlite  prints the debug screen and opens a session
+superlite  runs tests/test_login.py::test_login_after_timeout and watches it fail with the 401
+superlite  one batch: what is the correct behavior? what must not change? how far may the fix reach?
+you        a session that expires should log in again; keep the token format; touch auth only
+superlite  root cause: the token is stored with a local-time expiry and checked as UTC
+superlite  writes a regression test that fails for that cause
+superlite  tier 1 (known, one module): a Sonnet fixer changes the expiry check
+superlite  the new test passes and the whole suite is green
+superlite  report: the cause, the fix and the test
+```
+
+The cause is the part you read first. It tells you whether the fix addresses the bug or only hides it. The scenario is illustrative; the order of steps is what the flow does.
+
+## Good to know
+
+- Obvious failures skip the ceremony. A typo, a missing import or a stack trace that points at the bad line is fixed directly and the focused test re-run.
+- After two failed fixes superlite stops and re-reads the evidence from scratch. After three it changes approach. It asks you, or hands the problem to a fresh agent on a stronger model with the repro and the failed attempts. Three failures in different places often signal an architectural problem.
+- The questions round only runs when something material is open. It includes "Run the whole test suite at finish?", and the answer defaults to no: affected tests only.
+- At the end, `superlite-cli finish` marks the [session](/superlite/sessions/sessions/) finished. The fix stays uncommitted in your folder.
+- Prefer a plain request? Say it, and [superlite suggests](/superlite/flows/choose/) Debug from words like "fails" and "broken".

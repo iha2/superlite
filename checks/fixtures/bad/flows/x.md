@@ -5,13 +5,16 @@ sidebar:
   order: 1
 ---
 
-Intro with no diagram first.
+Intro with no TL;DR aside and no diagram.
 
-## What you do
+## How it works
 
 Run /superlite:nope now. See [gone](/superlite/missing/).
 
-## What superlite does
+```mermaid
+pie
+  "a": 1
+```
 
 word word word word word word word word word word word word word word word word word word word word
 word word word word word word word word word word word word word word word word word word word word
@@ -33,7 +36,33 @@ word word word word word word word word word word word word word word word word 
 word word word word word word word word word word word word word word word word word word word word
 word word word word word word word word word word word word word word word word word word word word
 word word word word word word word word word word word word word word word word word word word word
+word word word word word word word word word word word word word word word word word word word word
+word word word word word word word word word word word word word word word word word word word word
+word word word word word word word word word word word word word word word word word word word word
+word word word word word word word word word word word word word word word word word word word word
+word word word word word word word word word word word word word word word word word word word word
+word word word word word word word word word word word word word word word word word word word word
+word word word word word word word word word word word word word word word word word word word word
+word word word word word word word word word word word word word word word word word word word word
+word word word word word word word word word word word word word word word word word word word word
+word word word word word word word word word word word word word word word word word word word word
+word word word word word word word word word word word word word word word word word word word word
+word word word word word word word word word word word word word word word word word word word word
+word word word word word word word word word word word word word word word word word word word word
+word word word word word word word word word word word word word word word word word word word word
+word word word word word word word word word word word word word word word word word word word word
+word word word word word word word word word word word word word word word word word word word word
+word word word word word word word word word word word word word word word word word word word word
+word word word word word word word word word word word word word word word word word word word word
+word word word word word word word word word word word word word word word word word word word word
+word word word word word word word word word word word word word word word word word word word word
+word word word word word word word word word word word word word word word word word word word word
+word word word word word word word word word word word word word word word word word word word word
+word word word word word word word word word word word word word word word word word word word word
+word word word word word word word word word word word word word word word word word word word word
+word word word word word word word word word word word word word word word word word word word word
+word word word word word word word word word word word word word word word word word word word word
 
-## Example
+## Next
 
 Done now.

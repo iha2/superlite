@@ -5,7 +5,38 @@ sidebar:
   order: 5
 ---
 
+:::tip[TL;DR]
+Every tool is one command through one launcher: `superlite-cli <tool>`. The coordinator calls them for you, and you can call them to look at plans, sessions, tests, cost and reports.
+:::
+
+```mermaid
+flowchart LR
+  subgraph Plan
+    A["plan_tools"] --> B["graph"]
+    A --> C["routing"]
+  end
+  subgraph Build
+    D["dispatch"] --> E["checkpoint"]
+    E --> F["run_tests"]
+  end
+  subgraph Watch
+    G["budget"]
+    H["metrics"]
+    I["tail"]
+  end
+  subgraph Close
+    J["finish"] --> K["report"]
+  end
+  Plan --> Build --> Close
+  Build -.-> Watch
+```
+
+The groups are a guide to the order of use. Every tool below works on its own.
+
+## The tools
+
 Run any tool as `bash skills/swarm/scripts/superlite-cli <tool> ...`.
+
 
 | Tool | What it does |
 |---|---|
@@ -46,3 +77,23 @@ Run any tool as `bash skills/swarm/scripts/superlite-cli <tool> ...`.
 The folder `skills/swarm/scripts/` also holds helper modules (session, compact and plan parts) that tools import. They are not called directly.
 
 A checkpoint is a hidden save of one task under `refs/superlite/*`. superlite never commits during a run.
+
+## Example
+
+You are in a folder with existing code and want to know which flow fits a request.
+
+```text
+$ bash skills/swarm/scripts/superlite-cli suggest_flow --text "fix the login bug"
+suggest: debug - existing code, the request reports a fault ("bug") | also fits: feature, regular
+```
+
+The tool is deterministic, so the same request in the same project gives the same line. Starting a background test run is a two-step call.
+
+```text
+$ bash skills/swarm/scripts/superlite-cli run_tests --fast tests/test_login.py --background
+wait: run_tests --wait --run <id>
+summary: .superlite/test-summary.json
+$ bash skills/swarm/scripts/superlite-cli run_tests --wait --run <id>
+```
+
+The first call returns at once. The wait call blocks until the run ends, and returns early with a `SUSPECT HANG` report if the tests stop producing output.
