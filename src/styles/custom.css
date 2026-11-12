@@ -1,0 +1,23 @@
+:root,
+:root[data-theme="dark"] {
+  --sl-color-accent-low: #1e1b4b;
+  --sl-color-accent: #6366f1;
+  --sl-color-accent-high: #c084fc;
+  --sl-color-bg: #0b0b12;
+  --sl-color-bg-nav: #0b0b12;
+  --sl-color-bg-sidebar: #0b0b12;
+  --sl-content-width: 48rem;
+  --sl-sidebar-width: 15rem;
+  --sl-text-base: 0.95rem;
+  --teal: #2dd4bf;
+}
+:root[data-theme="light"] {
+  --sl-color-accent-low: #e0e7ff;
+  --sl-color-accent: #6366f1;
+  --sl-color-accent-high: #4338ca;
+  --teal: #0d9488;
+}
+.sidebar-content { gap: 0.5rem; }
+.sidebar-content a { padding-block: 0.2rem; font-size: 0.875rem; }
+.sl-markdown-content :not(a) > code { color: var(--teal); }
+pre.mermaid, .mermaid { background: transparent; text-align: center; }

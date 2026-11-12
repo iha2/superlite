@@ -1,0 +1,30 @@
+---
+title: superlite
+description: A software factory. Approve a plan once, then it builds the code.
+template: splash
+hero:
+  tagline: A software factory. Approve a plan once, then it builds the code.
+  actions:
+    - text: Use it in 2 minutes
+      link: /superlite/start/quickstart/
+      icon: right-arrow
+---
+
+import { CardGrid, LinkCard } from "@astrojs/starlight/components";
+
+```mermaid
+flowchart LR
+  A[Request] --> B[Pick a flow]
+  B --> C[Plan]
+  C --> D[Approve]
+  D --> E[Build in parallel]
+  E --> F[Review and fix]
+  F --> G[Report]
+```
+
+<CardGrid>
+  <LinkCard title="Use it in 2 minutes" href="/superlite/start/quickstart/" />
+  <LinkCard title="Pick a flow" href="/superlite/flows/choose/" />
+  <LinkCard title="How a run works" href="/superlite/run/orchestrators/" />
+  <LinkCard title="Install" href="/superlite/start/install/" />
+</CardGrid>

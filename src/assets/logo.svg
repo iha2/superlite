@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="superlite: a feather made of neurons">
+  <title>superlite</title>
+  <defs>
+    <linearGradient id="vane" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#2dd4bf"/>
+      <stop offset="0.55" stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#c084fc"/>
+    </linearGradient>
+    <radialGradient id="soma" cx="0.4" cy="0.35" r="0.8">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#a5b4fc"/>
+    </radialGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="2.2" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <g transform="translate(128 128) scale(1.12) translate(-125.5 -135)">
+  <!-- vane outline: the synaptic mesh joining the barb tips -->
+  <g fill="none" stroke="url(#vane)" stroke-width="1.6" stroke-linejoin="round" opacity="0.45">
+    <path d="M73.9 139.5 L92 103.5 L112.8 74 L136.3 53.9 L162 37.4 L184.8 29.9 L202 34"/>
+    <path d="M124.5 180 L151.5 151 L174.4 123.3 L189 96 L201.6 69 L206.8 47.5 L202 34"/>
+  </g>
+
+  <!-- axons: the barbs, growing toward the tip -->
+  <g stroke="url(#vane)" stroke-width="3" stroke-linecap="round" fill="none">
+    <path d="M79.3 185 L73.9 139.5"/><path d="M79.3 185 L124.5 180"/>
+    <path d="M98 157.3 L92 103.5"/><path d="M98 157.3 L151.5 151"/>
+    <path d="M118.8 129.5 L112.8 74"/><path d="M118.8 129.5 L174.4 123.3"/>
+    <path d="M141.6 101.4 L136.3 53.9"/><path d="M141.6 101.4 L189 96"/>
+    <path d="M166.3 73 L162 37.4"/><path d="M166.3 73 L201.6 69"/>
+    <path d="M187.4 49.7 L184.8 29.9"/><path d="M187.4 49.7 L206.8 47.5"/>
+  </g>
+
+  <!-- dendrites: small branches off each axon -->
+  <g stroke="url(#vane)" stroke-width="1.7" stroke-linecap="round" fill="none" opacity="0.8">
+    <path d="M76.5 162.3 L68 155"/><path d="M95 130.3 L87 124"/><path d="M115.9 101.8 L108 95"/>
+    <path d="M138.9 77.7 L131 71"/><path d="M164 55 L157 49"/>
+    <path d="M101.8 182.5 L109 191"/><path d="M124.8 154 L132 162"/><path d="M146.7 126.4 L154 134"/>
+    <path d="M165.3 98.7 L172 106"/><path d="M183.8 71 L190 78"/>
+  </g>
+
+  <!-- rachis: the spine of the feather, ending in a quill -->
+  <path d="M44 241 L58 222 C90 160 140 100 202 34" fill="none" stroke="url(#vane)" stroke-width="4.6" stroke-linecap="round"/>
+
+  <!-- neurons -->
+  <g fill="url(#soma)" stroke="url(#vane)" stroke-width="1.4">
+    <circle cx="73.9" cy="139.5" r="4.4"/><circle cx="92" cy="103.5" r="4.4"/><circle cx="112.8" cy="74" r="4.4"/>
+    <circle cx="136.3" cy="53.9" r="4.4"/><circle cx="162" cy="37.4" r="4.2"/><circle cx="184.8" cy="29.9" r="3.8"/>
+    <circle cx="124.5" cy="180" r="4.4"/><circle cx="151.5" cy="151" r="4.4"/><circle cx="174.4" cy="123.3" r="4.4"/>
+    <circle cx="189" cy="96" r="4.4"/><circle cx="201.6" cy="69" r="4.2"/><circle cx="206.8" cy="47.5" r="3.8"/>
+  </g>
+  <g fill="#a5b4fc" opacity="0.9">
+    <circle cx="68" cy="155" r="2.2"/><circle cx="87" cy="124" r="2.2"/><circle cx="108" cy="95" r="2.2"/>
+    <circle cx="131" cy="71" r="2.2"/><circle cx="157" cy="49" r="2.2"/>
+    <circle cx="109" cy="191" r="2.2"/><circle cx="132" cy="162" r="2.2"/><circle cx="154" cy="134" r="2.2"/>
+    <circle cx="172" cy="106" r="2.2"/><circle cx="190" cy="78" r="2.2"/>
+  </g>
+  <g fill="url(#soma)" stroke="url(#vane)" stroke-width="1.2">
+    <circle cx="79.3" cy="185" r="3.3"/><circle cx="98" cy="157.3" r="3.3"/><circle cx="118.8" cy="129.5" r="3.3"/>
+    <circle cx="141.6" cy="101.4" r="3.3"/><circle cx="166.3" cy="73" r="3.3"/><circle cx="187.4" cy="49.7" r="3.3"/>
+  </g>
+
+  <!-- the spark at the tip: the neuron that fires first -->
+  <circle cx="202" cy="34" r="6" fill="#ffffff" stroke="url(#vane)" stroke-width="2" filter="url(#glow)"/>
+  </g>
+</svg>
