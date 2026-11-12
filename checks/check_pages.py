@@ -7,8 +7,10 @@ import sys
 from pathlib import Path
 
 GUIDE = {"start", "flows", "run", "sessions"}
-HEADINGS = ["What you do", "What superlite does", "Example"]
-MAX_WORDS = 300
+MAX_WORDS = 900
+TLDR = ":::tip[TL;DR]"
+TLDR_WORDS = 60
+MERMAID_TYPES = ("flowchart", "sequenceDiagram", "stateDiagram-v2", "gitGraph")
 SITE = Path(__file__).resolve().parent.parent
 # reference tables whose first column holds bare names: page -> real_names key
 NAME_TABLES = {"reference/skills.md": "skill_dirs", "reference/agents.md": "agent_files"}
@@ -70,6 +72,46 @@ def _fences(body):
     return prose, blocks
 
 
+def _tldr_problem(body):
+    """Problem text for the TL;DR aside (first non-blank body line, `import` lines skipped), else None."""
+    lines = body.split("\n")
+    i = next((n for n, l in enumerate(lines) if l.strip() and not l.startswith("import ")), None)
+    if i is None or lines[i].strip() != TLDR:
+        return "no :::tip[TL;DR] aside first"
+    inner = []
+    for l in lines[i + 1:]:
+        if l.strip() == ":::":
+            break
+        inner.append(l)
+    else:
+        return "TL;DR aside not closed"
+    if len(re.findall(r"\S+", " ".join(inner))) > TLDR_WORDS:
+        return f"TL;DR over {TLDR_WORDS} words"
+    return None
+
+
+def _diagram_before_heading(body):
+    """True when a mermaid or text fence opens before the first `## ` heading outside fences."""
+    infence = False
+    for line in body.split("\n"):
+        s = line.strip()
+        if s.startswith("```"):
+            if not infence and s[3:].strip().split(" ")[0] in ("mermaid", "text"):
+                return True
+            infence = not infence
+        elif not infence and line.startswith("## "):
+            return False
+    return False
+
+
+def _mermaid_type(content):
+    for l in content.split("\n"):
+        s = l.strip()
+        if s and not s.startswith("%%"):
+            return s.split()[0]
+    return ""
+
+
 def _link_ok(docs, target):
     path = re.split(r"[#?]", target, maxsplit=1)[0]
     rel = path[len("/superlite"):].strip("/")
@@ -120,19 +162,27 @@ def check(docs_dir, main_dir):
         text = p.read_text()
         body = _split(text)
         prose_lines, blocks = _fences(body)
-        first = next((l.strip() for l in body.split("\n") if l.strip()), "")
         guide = group in GUIDE and not index
-        if guide and not (first.startswith("```mermaid") or first.startswith("```text")):
-            problems.append(f"{r}: no diagram first")
-        prose = [l for l in prose_lines if not l.strip().startswith("|") and not l.startswith("#")]
+        if not index:
+            bad = _tldr_problem(body)
+            if bad:
+                problems.append(f"{r}: {bad}")
+        if guide:
+            if not _diagram_before_heading(body):
+                problems.append(f"{r}: no diagram before the first ## heading")
+            if not any(l.startswith("## Example") for l in prose_lines):
+                problems.append(f"{r}: no ## Example section")
+        prose = [l for l in prose_lines
+                 if not l.strip().startswith("|") and not l.startswith("#")
+                 and not l.startswith("import ") and l.strip() != ":::"]
         words = len(re.findall(r"\S+", " ".join(prose)))
         if words > MAX_WORDS and not index:
             problems.append(f"{r}: {words} prose words (max {MAX_WORDS})")
-        if guide:
-            heads = [l[3:].strip() for l in prose_lines if l.startswith("## ")]
-            idx = [heads.index(h) if h in heads else -1 for h in HEADINGS]
-            if -1 in idx or idx != sorted(idx):
-                problems.append(f"{r}: headings must be {', '.join(HEADINGS)} in order")
+        for lang, content in blocks:
+            if lang == "mermaid":
+                t = _mermaid_type(content)
+                if t not in MERMAID_TYPES:
+                    problems.append(f"{r}: mermaid type {t} not allowed")
         for c in sorted(set(re.findall(r"/superlite:([a-z0-9-]+)", text))):
             if c not in names["command"]:
                 problems.append(f"{r}: /superlite:{c} not a command")

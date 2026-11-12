@@ -1,0 +1,69 @@
+---
+title: "Which flow?"
+description: "Pick the flow that fits your request, or let superlite suggest one."
+sidebar:
+  order: 1
+---
+
+:::tip[TL;DR]
+You do not have to know the flow names. Say what you want and superlite suggests one from your words and from what is in the folder. You confirm it or pick another.
+:::
+
+```mermaid
+flowchart TD
+  A(["Your request"]) --> S{"A run is open?"}
+  S -->|"yes"| R["Resume or Status"]
+  S -->|"no"| B{"What do you ask for?"}
+  B -->|"bug, failing test"| D["Debug"]
+  B -->|"change existing code"| F["Feature"]
+  B -->|"new project"| M["MVP or Regular"]
+  B -->|"few lines, one file"| X["Small"]
+  B -->|"check a branch"| V["Review"]
+  B -->|"answer a question"| T["Research"]
+  D & F & M & X & V & T --> Y{"You confirm or pick another"}
+```
+
+## How it works
+
+A script, not a guess, makes the first call. `superlite-cli suggest_flow` reads your words and the project state. Then it prints one line, and the same input always gives the same line.
+
+It weighs three signals in order.
+
+1. **The folder.** An empty folder points to MVP or Regular. A run that is still open points to Resume or Status.
+2. **Your words.** Bug words such as "fails" or "broken" point to Debug. Change words such as "add", "extend" or "support" point to Feature. "Rename", "typo" or "bump" point to Small. "Review" points to Review. "Research" or "sources" point to Research, but only when no build, change or bug word competes.
+3. **The size.** One named file or function points to Small. Screens, data and services together point to Feature on existing code, and to Regular on a new project.
+
+The same words can land on different flows. The folder decides:
+
+| You say | Existing code | Empty folder |
+|---|---|---|
+| "Add CSV export for the invoices page" | [Feature](/superlite/flows/feature/) | [MVP](/superlite/flows/mvp/) |
+| "Login test fails with a 401 after the session timeout" | [Debug](/superlite/flows/debug/) | [MVP](/superlite/flows/mvp/) |
+| "Build a REST API for a bookshelf, with tests" | [Feature](/superlite/flows/feature/) | [Regular](/superlite/flows/regular/) |
+| "MVP of a habit tracker" | [MVP](/superlite/flows/mvp/) | [MVP](/superlite/flows/mvp/) |
+| "Rename build to render everywhere" | [Small](/superlite/flows/small/) | [Small](/superlite/flows/small/) |
+| "Review this branch and fix what you find" | [Review](/superlite/flows/review/) | [MVP](/superlite/flows/mvp/) |
+| "Research the state of the art in vector search, for a VP" | [Research](/superlite/flows/research/) | [Research](/superlite/flows/research/) |
+
+An empty folder has no code to debug or review, so those requests read as a new idea there. The table shows what the script prints for these exact sentences. Your own wording may land elsewhere.
+
+## Example
+
+You type a request with no mode. superlite runs the script and shows a menu with the suggestion first.
+
+```text
+you        /superlite:start Add CSV export for the invoices page
+superlite  suggest: feature - existing code, the request changes the app ("add") | also fits: small, regular
+superlite  one question batch: which flow (Feature first, marked Recommended), and who orchestrates
+you        Feature, and I will approve the plan
+superlite  opens a session for csv-export, then prints the feature screen
+```
+
+You pick who orchestrates in the same batch. See [orchestrators](/superlite/run/orchestrators/) for what human and AI change.
+
+## Good to know
+
+- Start with a flow name and skip the suggestion: `/superlite:start debug the login timeout`. The first words `regular`, `mvp`, `feature`, `debug`, `small`, `review` and `research` count. A `/superlite:` command of its own also skips it.
+- superlite may override the script when your request clearly says otherwise. It gives a one-line reason.
+- The menu only lists flows that fit the folder. Every flow opens a [session](/superlite/sessions/sessions/).
+- Every command has its own entry on [Commands](/superlite/start/commands/).

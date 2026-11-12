@@ -1,0 +1,53 @@
+---
+title: "Review flow"
+description: "Review and harden a branch: reviewers fix their findings, a final review ranks the rest."
+sidebar:
+  order: 7
+---
+
+:::tip[TL;DR]
+Use Review to check a branch before you merge it. Package reviewers fix what they find and add regression tests. A fresh final reviewer then ranks what is left in tiers 1 to 3 and edits nothing.
+:::
+
+```mermaid
+flowchart LR
+  A(["Branch or path"]) --> B["Session on the target branch"]
+  B --> C["Read the diff"]
+  C --> D{"You answer one round of questions"}
+  D --> E["Package reviewers fix their own findings"]
+  E --> F["Final reviewer: tiers 1 to 3, no edits"]
+  F --> G(["Report"])
+```
+
+## How it works
+
+Two kinds of reviewer do two different jobs, and the split is the point.
+
+**Package reviewers fix.** Each package reviewer reads its part of the diff and fixes what it finds, with a regression test for each fix. A reviewer that fixes its own findings leaves less for you to triage.
+
+**The final reviewer judges.** It is a fresh agent that did not see the earlier work. It reads the review packet and reports the remaining findings in tiers 1 to 3. It never edits. A reviewer that cannot change the code has no reason to defend it. [Reviews and fixes](/superlite/run/reviews-and-fixes/) says what each tier means and who fixes it.
+
+**The target.** With no argument, the target is the current branch against its base. A branch name picks another branch. A path (a file or folder) keeps the review inside that path on the current branch. The [session](/superlite/sessions/sessions/) starts on the target branch. It works in place when you are already on that branch, and in a [worktree](/superlite/sessions/worktrees/) otherwise, so your checkout is not switched under you.
+
+The questions are one round: the intent of the change, the risk that matters most, and what is out of bounds. They are asked only when something material is open after superlite reads the diff.
+
+## Example: review a branch before the merge
+
+```text
+you        /superlite:review superlite/sessions/csv-export
+superlite  resolves the target and its base, opens a session on that branch
+superlite  reads the diff and asks one batch: intent, the risk that matters most, what is out of bounds, and whether to run the whole suite at finish
+you        the main risk is wrong totals in the export; leave the invoice model alone
+superlite  package reviewers fix their findings and add regression tests
+superlite  a fresh final reviewer reads the packet and reports tiers 1 to 3, no edits
+superlite  report: the fixes made, the findings by tier
+```
+
+Tier 1 and 2 findings are the ones to read first. You decide what to do with anything the final reviewer leaves open.
+
+## Good to know
+
+- Review does not push. Merging or opening a pull request is a separate step, and it stays your call.
+- The fixes land uncommitted in the working tree of the session. You see them as an ordinary diff.
+- The whole-suite question defaults to no: affected tests only.
+- Reviews also run inside every build. Use `/superlite:review` for a branch that was not built by superlite.

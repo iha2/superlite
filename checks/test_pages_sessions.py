@@ -18,7 +18,15 @@ PAGES = ["sessions", "lifecycle", "worktrees", "sandbox"]
 
 
 def _text(name):
-    return (DOCS / "sessions" / f"{name}.md").read_text()
+    return (DOCS / "sessions" / f"{name}.mdx").read_text()
+
+
+def _body(name):
+    return _text(name).split("---", 2)[2].lstrip()
+
+
+def _fenced(name, lang):
+    return re.findall(rf"```{lang}\n(.*?)```", _text(name), re.S)
 
 
 @needs_main
@@ -27,32 +35,63 @@ def test_pages_pass_check():
     assert [p for p in problems if "sessions/" in p] == []
 
 
-def test_diagram_first_and_sections_in_order():
+def test_pages_are_mdx():
+    assert sorted(p.name for p in (DOCS / "sessions").iterdir()) == sorted(f"{n}.mdx" for n in PAGES)
+
+
+def test_tldr_first_then_diagram_before_first_heading():
     for n in PAGES:
-        body = _text(n).split("---", 2)[2].lstrip()
-        assert body.startswith("```mermaid"), n
-        heads = re.findall(r"^## .*$", body, re.M)
-        assert heads == ["## What you do", "## What superlite does", "## Example"], n
+        body = re.sub(r"^import .*\n", "", _body(n), flags=re.M).lstrip()
+        assert body.startswith(":::tip[TL;DR]"), n
+        before = body.split("\n## ", 1)[0]
+        assert "```mermaid" in before, n
+        assert re.search(r"^## Example", body, re.M), n
+
+
+def test_sessions_has_gitgraph_filetree_and_two_chats():
+    t = _text("sessions")
+    assert "gitGraph" in t and "superlite/sessions/export" in t and "superlite/sessions/login-fix" in t
+    assert "<FileTree>" in t and "session-store/" in t and "sessions.json" in t
+    assert "chat 1" in t and "chat 2" in t
+
+
+def test_lifecycle_state_diagram_and_three_steps():
+    t = _text("lifecycle")
+    assert "stateDiagram-v2" in t
+    for s in ("superlite-cli finish", "superlite-cli session close", "/superlite:merged"):
+        assert s in t
+    assert "refs/superlite/wip/<slug>" in t and "git stash list" in t
+
+
+def test_lifecycle_close_matches_session_close():
+    text = _text("lifecycle")
+    assert "Archives the session and unregisters it" in text
+    assert "Worktree Claude Code made" in text and "--untracked keep" in text
+    assert "ExitWorktree" in text
+    assert "shows `export` as `run:finished`" not in text
+    assert "close parks it and keeps the row" not in text
 
 
 def test_worktree_rules():
     t = _text("worktrees")
-    for s in (".claude/worktrees/", ".superlite/worktrees/sessions/", "ASK move", "--branch", "Feature integration"):
+    for s in (".claude/worktrees/", ".superlite/worktrees/sessions/", "ASK move", "--branch", "-int",
+              "EnterWorktree name=", "EnterWorktree path=", "second desk"):
         assert s in t
+    assert "<FileTree>" in t and "flowchart" in t
     assert "sandboxes" in t
+    # the code cuts session worktrees under .claude/worktrees/sessions-<slug>, not .superlite/
+    assert "sessions-export" in t
 
 
 def test_sandbox_is_not_a_worktree():
     t = _text("sandbox")
     assert ".superlite/sandboxes/<session>/<topic>/" in t
     assert "not a worktree" in t
+    assert "<FileTree>" in t and "| Sandbox | Worktree |" in t
+    assert "proto discard" in t and "session close" in t
 
 
-def test_lifecycle_close_matches_session_close():
-    text = _text("lifecycle")
-    assert "archives the session and unregisters it" in text
-    assert "refs/superlite/wip/<slug>" in text
-    assert "Adopted worktree" in text and "--untracked keep" in text
-    assert "shows `export` as `run:finished`" not in text
-    assert "keeps the row and branch" not in text
-    assert "close parks it and keeps the row" not in text
+def test_mermaid_types_allowed():
+    for n in PAGES:
+        for block in _fenced(n, "mermaid"):
+            assert check_pages._mermaid_type(block) in check_pages.MERMAID_TYPES, n

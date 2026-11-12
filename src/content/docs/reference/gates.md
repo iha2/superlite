@@ -5,6 +5,25 @@ sidebar:
   order: 4
 ---
 
+:::tip[TL;DR]
+A gate is a rule a script or hook enforces, not one the model is asked to remember. The coordinator cannot write code, nothing starts before you approve, tests never hang the run, and spend stays under a cap.
+:::
+
+```mermaid
+flowchart LR
+  P["Plan"] --> L["Lint"]
+  L --> A{"You approve?"}
+  A -->|"yes"| D["Dispatch by tier"]
+  D --> B["Agents build"]
+  B --> T["Tests in background"]
+  T --> R["Review and report"]
+  A -->|"no or a question"| P
+```
+
+Along the whole line, the `pre-tool` hook blocks code edits by the coordinator and name-based kills, and the budget line watches cost.
+
+## The gates
+
 Instructions drift. Scripts and hooks do not.
 
 | Gate | What it enforces | How |
@@ -22,3 +41,20 @@ Instructions drift. Scripts and hooks do not.
 | No agent spawns agents | Subagents get explicit tool lists with no `Agent`. | agent definitions |
 
 Any clear approval counts: yes, go ahead, looks good, lgtm. A refusal, a question or a bare mention does not. The reply must be newer than the review plan.
+
+## Example
+
+In human mode the coordinator tries to dispatch before you have approved the plan.
+
+```text
+coordinator  superlite-cli dispatch ...
+pre-tool     Human orchestrator: no build is orchestrated until the human approves
+             the plan. Write the review plan docs/plans/<date>-<topic>.review.md
+             (see skills/drafting/review-plan.md), show its path with a five-line
+             summary, ask the human to reply approve, end your turn, then run
+             superlite-cli orchestrator approve --review <path>. ...
+you          looks good
+coordinator  superlite-cli orchestrator approve --review docs/plans/2026-11-12-csv-export.review.md
+```
+
+The `prompt` hook records your reply, and the approve call checks that it is newer than the review plan. See [Plan and approval](/superlite/run/plan-and-approval/) for the full flow.
