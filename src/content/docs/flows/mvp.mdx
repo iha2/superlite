@@ -5,7 +5,7 @@ sidebar:
   order: 3
 ---
 
-import { FileTree } from "@astrojs/starlight/components";
+import { FileTree, Steps } from "@astrojs/starlight/components";
 
 :::tip[TL;DR]
 Use MVP for a new project when you want to agree on features before any code exists. You click through a fake version in your browser, cut what you do not need, and approve. The build covers only what you kept.
@@ -61,16 +61,7 @@ Cutting a feature from a clickable page is cheap. Cutting it from finished code 
 
 **Features first.** superlite writes an MVP plan organised around features. It opens with a diagram of how the product is used, in the form that fits it: a screen wireframe for a web app, a command tree and a sample session for a CLI, an endpoint table for an API. Each feature has an id, a size, a priority and a recommendation to keep it or leave it out.
 
-**A prototype that is a spec.** superlite builds one self-contained HTML file with fake data. It holds no product code, needs no build step and makes no network call. Its side panel lists the features and tasks with an in or out toggle, a priority order, notes, and a time and cost estimate. Cutting a feature removes it from the mock and updates the estimate.
-
-<FileTree>
-- .superlite/mvp/
-  - mock.html the mock fragment superlite writes
-  - prototype.html the page you open, checked by `superlite-cli mvp_check`
-  - mvp-feedback.json what Save feedback writes
-- docs/plans/
-  - 2026-11-12-habit-tracker.mvp.md the feature plan
-</FileTree>
+**A prototype that is a spec.** superlite builds one self-contained HTML file with fake data. It holds no product code, needs no build step and makes no network call. Its side panel lists the features and tasks with an in or out toggle, a priority order, notes, and a time and cost estimate. Cutting a feature removes it from the mock and updates the estimate. For example, cutting "streak chart" from a habit tracker takes one click, and the estimate drops with it.
 
 **Your reply approves, the button does not.** Save feedback only writes `mvp-feedback.json`. A browser page cannot reach into your project, so you pick the folder, and superlite looks in the project first and in Downloads second. The approval is your reply in chat. After it, superlite writes the task plan from your kept features and lint gates it, as in [plan and approval](/superlite/run/plan-and-approval/). You are not asked again.
 
@@ -78,19 +69,59 @@ Cutting a feature from a clickable page is cheap. Cutting it from finished code 
 
 ## Example: a habit tracker
 
-```text
-you        /superlite:mvp A habit tracker where I tick off my daily habits
-superlite  one question batch: who orchestrates, and whether to run the whole test suite at finish
-you        human, affected tests only
-superlite  writes docs/plans/<date>-habit-tracker.mvp.md: usage diagram, then F1 Add a habit, F2 Tick today, F3 Streak chart
-superlite  builds .superlite/mvp/prototype.html and checks it, then shows the page
-superlite  open it, edit it, press Save feedback, then reply approve
-you        (in the browser) cut F3, move F2 above F1, press Save feedback
-you        approve
-superlite  reads mvp-feedback.json, writes the task plan, F3 under "Out of scope"
-superlite  builds F1 and F2, reviews, fixes, tests
-superlite  report: time and cost, and the features left out: F3 Streak chart
-```
+Say you want a habit tracker and you have no code yet.
+
+<Steps>
+
+1. You ask for an MVP.
+
+   ![Terminal, Claude Code · ~/habits: ❯ /superlite:mvp A habit tracker where I tick off my daily habits](../../../assets/screens/flows/mvp-1.png)
+
+   superlite prints the stored screen above and opens a [session](/superlite/sessions/sessions/) on its own branch. The folder is empty, so nothing exists yet to read.
+
+2. You answer one menu.
+
+   ![Terminal, Claude Code · ~/habits: Who orchestrates? / › 1. Human   you approve before anything is built / 2. AI      hands off / Run the whole test suite at finish?  › No, affected tests only (Recommended)](../../../assets/screens/flows/mvp-2.png)
+
+   **You decide:** human, and no. The human [orchestrator](/superlite/run/orchestrators/) is what makes the prototype wait for you.
+
+3. You read the feature plan. superlite writes it around features, with a diagram of how the product is used first.
+
+   ```md title="docs/plans/2026-11-12-habit-tracker.mvp.md"
+   ### F3 Streak chart
+   What you get: a chart of your longest streaks
+   Size: M · Priority: could · Recommendation: out
+   ```
+
+   The plan is organised by feature because the goal is to agree on features. Each one carries a size, a priority and a keep-or-leave-out recommendation, so you can judge scope before any code exists.
+
+4. The prototype opens in your browser. superlite writes one HTML file with fake data and checks it with `superlite-cli mvp_check`.
+
+   <FileTree>
+   - .superlite/mvp/
+     - prototype.html the page you open
+     - mvp-feedback.json written when you press Save feedback
+   </FileTree>
+
+   It holds no product code, needs no build step and makes no network call. It is a spec you can click, not a first draft of the app.
+
+5. You click through it and cut.
+
+   ![Terminal, prototype.html · side panel: x F1 Add a habit      must / x F2 Tick today       must /   F3 Streak chart     could / estimate: time and cost, updated as you toggle](../../../assets/screens/flows/mvp-3.png)
+
+   **You decide:** cut F3, move F2 above F1, press Save feedback. Cutting a feature removes it from the mock and updates the estimate. A browser page cannot reach into your project, so Save feedback only writes a file. superlite looks in the project first and in Downloads second.
+
+6. You approve in chat.
+
+   ![Terminal, Claude Code · ~/habits: ❯ approve](../../../assets/screens/flows/mvp-4.png)
+
+   Your reply approves, not the button ([plan and approval](/superlite/run/plan-and-approval/)). superlite reads `mvp-feedback.json` and writes the task plan: F2 and F1 become tasks in your order, and F3 goes under "Out of scope". You are not asked again.
+
+7. The build runs without you. [Agents](/superlite/run/parallel-build/) build F1 and F2, reviewers fix, and tests run. The [report](/superlite/run/report/) lists F3 as left out.
+
+</Steps>
+
+**What you end up with:** a working habit tracker with the two features you kept, uncommitted on its session branch. The mock is deleted at finish, and F3 stays on the list for a later run.
 
 ## Good to know
 

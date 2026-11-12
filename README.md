@@ -18,6 +18,18 @@ Local setup, from a clone of the `site` branch:
 
 `_main/` is in `.gitignore`. Tests under `checks/` that need the real `main` files skip, with a reason, when no main checkout is found.
 
+## Screenshots
+
+Terminal screens are PNGs, not code blocks. Each one has a plain-text source in `screens/<section>/<page>-<n>.txt` (a header with `title:`, `ins:`, `mark:`, `words:`, then `---` and the lines as the terminal shows them; see the docstring in `scripts/screens.py`). The page shows the PNG in `src/assets/screens/`. GitHub pages are shot live into `src/assets/screens/github/` in a browser window; `screens/github/copilot-inline.raw.png` is a kept capture that can't be reshot.
+
+To edit a screen, change its `.txt` and re-render it:
+
+    python3 scripts/screens.py render <section>/<name>   # one screen; omit the name to render all
+    python3 scripts/screens.py extract                   # one-time: moved the old text blocks into screens/
+    python3 scripts/screens.py github                    # reshoot the GitHub pages (needs network)
+
+Run them from `site/`. They need Google Chrome (`CHROME=<path>` to override) and Pillow. Commit the `.txt` and the PNG together.
+
 ## Facts
 
 Source facts for the pages live in `research/`. Update them there before editing the pages that cite them.

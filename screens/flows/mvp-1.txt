@@ -1,0 +1,4 @@
+title: Claude Code · ~/habits
+ins: 1
+---
+❯ /superlite:mvp A habit tracker where I tick off my daily habits

@@ -48,6 +48,13 @@ def test_prose_ignores_fences_and_tables(tmp_path):
     assert check_pages.check(docs, MAIN) == []
 
 
+def test_prose_ignores_image_lines(tmp_path):
+    img = "![" + "alt " * 600 + "](../../assets/screens/x.png)"
+    body = TLDR + "```text\nd\n```\n1. Step\n   " + img + "\n" + img + "\n" + GUIDE_TAIL
+    docs = _site(tmp_path, "run", "p.md", body)
+    assert check_pages.check(docs, MAIN) == []
+
+
 def test_link_with_anchor_ok(tmp_path):
     docs = _site(
         tmp_path, "run", "report.md",

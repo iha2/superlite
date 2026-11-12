@@ -5,6 +5,8 @@ sidebar:
   order: 1
 ---
 
+import { Steps } from "@astrojs/starlight/components";
+
 :::tip[TL;DR]
 You do not have to know the flow names. Say what you want and superlite suggests one from your words and from what is in the folder. You confirm it or pick another.
 :::
@@ -25,7 +27,7 @@ flowchart TD
 
 ## How it works
 
-A script, not a guess, makes the first call. `superlite-cli suggest_flow` reads your words and the project state. Then it prints one line, and the same input always gives the same line.
+A script, not a guess, makes the first call. For example, "Add CSV export" in a project with code reads as a change. `superlite-cli suggest_flow` reads your words and the project state. Then it prints one line, and the same input always gives the same line.
 
 It weighs three signals in order.
 
@@ -47,19 +49,35 @@ The same words can land on different flows. The folder decides:
 
 An empty folder has no code to debug or review, so those requests read as a new idea there. The table shows what the script prints for these exact sentences. Your own wording may land elsewhere.
 
-## Example
+## Example: a request with no flow name
 
-You type a request with no mode. superlite runs the script and shows a menu with the suggestion first.
+Say you are in your shop project and you type the request without a mode.
 
-```text
-you        /superlite:start Add CSV export for the invoices page
-superlite  suggest: feature - existing code, the request changes the app ("add") | also fits: small, regular
-superlite  one question batch: which flow (Feature first, marked Recommended), and who orchestrates
-you        Feature, and I will approve the plan
-superlite  opens a session for csv-export, then prints the feature screen
-```
+<Steps>
 
-You pick who orchestrates in the same batch. See [orchestrators](/superlite/run/orchestrators/) for what human and AI change.
+1. You type the request.
+
+   ![Terminal, Claude Code · ~/shop: ❯ /superlite:start Add CSV export for the invoices page](../../../assets/screens/flows/choose-1.png)
+
+   Because you named no flow, superlite asks the script for a suggestion before it asks you anything.
+
+2. The script prints one line. It read your words and the folder.
+
+   ![Terminal, superlite-cli suggest_flow: suggest: feature - existing code, the request changes the app ("add") | also fits: small, regular](../../../assets/screens/flows/choose-2.png)
+
+   The folder has code, and "add" is a change word, so the answer is Feature. The same words in an empty folder would give MVP. The script is plain rules, so the same input always gives the same line.
+
+3. You pick from a menu, with the suggestion first.
+
+   ![Terminal, Claude Code · ~/shop: Which flow? / › 1. Feature (Recommended)  existing code, the request changes the app / 2. Small                  a few files, inline / 3. Regular                size it, plan it, build it / ❯ Feature, and I will appro...](../../../assets/screens/flows/choose-3.png)
+
+   **You decide:** the flow and the orchestrator, in one batch (a second question asks who orchestrates). Take the suggestion or pick another. superlite may override the script when your words clearly say otherwise, and gives a one-line reason ([orchestrators](/superlite/run/orchestrators/)).
+
+4. The flow starts. superlite opens a [session](/superlite/sessions/sessions/) for the topic and prints the Feature screen. From here you are in the [Feature flow](/superlite/flows/feature/).
+
+</Steps>
+
+**What you end up with:** a session on its own branch and the flow that fits, chosen from your words and the folder rather than from flow names you had to remember.
 
 ## Good to know
 

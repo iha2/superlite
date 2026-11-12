@@ -1,0 +1,5 @@
+title: Claude Code · ~/shop
+mark: 2
+---
+T4 tests failed
+dispatch fixer-sonnet  finding F-T4-1  note .superlite/fixes/F-T4-1.md

@@ -1,0 +1,6 @@
+title: Claude Code · ~/shop
+mark: 2
+---
+$ superlite-cli dispatch ...
+Human orchestrator: no build is orchestrated until the human approves the plan.
+Write the review plan docs/plans/<date>-<topic>.review.md ...

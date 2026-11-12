@@ -1,0 +1,9 @@
+title: Chat 2 · ~/shop
+mark: 4
+words: Yes
+---
+Move session export out of the main checkout into
+~/shop/.claude/worktrees/sessions-export? Its chat must be idle.
+
+❯ 1. Yes
+  2. No

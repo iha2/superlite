@@ -1,0 +1,4 @@
+title: Claude Code · ~/shop
+ins: 1
+---
+❯ /superlite:small Rename `build` to `render` everywhere

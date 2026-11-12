@@ -28,7 +28,7 @@ flowchart TD
 
 ## How it works
 
-Think of your project folder as a desk. A branch is the job laid out on it. Switching jobs means clearing the desk. A worktree gives you a second desk: git checks out another branch into another folder, and both desks share one history. Two chats can then work at once without touching each other's files.
+Think of your project folder as a desk. A branch is the job laid out on it. Switching jobs means clearing the desk. A worktree gives you a second desk: git checks out another branch into another folder, and both desks share one history. Two chats can then work at once without touching each other's files. For example, a docs rewrite and a bug fix each get a folder, and neither sees the other's half-finished edits.
 
 By default superlite uses one desk. Sessions take turns in your main checkout. It adds a desk in two cases: a second chat starts while the first session is open, and a feature reaches its integration build. Worktrees live under `.claude/worktrees/`, which git never shows because superlite lists it in `.git/info/exclude`.
 
@@ -59,13 +59,13 @@ ASK move slug=export: export moves from the main checkout to /work/shop/.claude/
 - **Yes** moves `export`, with its run files and uncommitted work, into its own worktree. Your main checkout goes back to the base branch, and the new topic gets a worktree too. If anything fails, superlite puts everything back.
 - **No** stops here. Nothing changes, and the new session does not start. Finish or close the open session, then start again.
 
-Answer yes only when the first chat is idle, because its files move to a new folder. Before the move, superlite may ask what to do with untracked files: stash them with the session, or keep them in the main checkout.
+Answer yes only when the first chat is idle, because its files move. superlite may first ask what to do with untracked files: stash them with the session, or keep them in the main checkout.
 
-If the open session is already on the base branch, it stays. The base branch cannot be checked out twice, so only the new session gets a worktree, and superlite asks nothing.
+If the open session is already on the base branch, it stays, and only the new session gets a worktree. superlite asks nothing.
 
 ### The integration worktree
 
-A feature runs twice. The prototype lives in a [sandbox](/superlite/sessions/sandbox/), a plain folder. After you approve it, the integration build gets its own worktree, named after the topic with `-int`. One feature, one worktree: never two features in one checkout.
+A feature runs twice. The prototype lives in a [sandbox](/superlite/sessions/sandbox/), a plain folder. After you approve it, the integration build gets its own worktree, named after the topic with `-int`.
 
 ### Entering a worktree under Claude Code
 
@@ -81,23 +81,64 @@ A new worktree is a different folder, so your chat has to step into it. Follow t
 
 Other tools: `cd` to the path on the `SESSION worktree=` line.
 
-## Example: the integration build for a feature
+## Example: this docs session moves to its own desk
 
-```text
-you        approve the prototype (it works)
-superlite  session: create EnterWorktree name=export-int base=main
-superlite  calls EnterWorktree name=export-int, then reruns superlite-cli session create --slug export-int --worktree inside it
-superlite  ports the prototype's code into the real project, task by task
-superlite  review, fixes, finish
-superlite  deletes the sandbox, closes the session, leaves and removes the integration worktree
-```
+This docs site was built in a session called `docs-site`, in the main checkout `~/superlite`, on the branch `superlite/sessions/docs-site`. Then a second piece of work started next to it.
 
-Without Claude Code, superlite cuts the folder itself, as `.claude/worktrees/sessions-export-int`.
+<Steps>
+
+1. **A second run starts in the same folder.** The two would share one `.superlite/` and one checked-out branch.
+
+   ![Terminal, Chat 2 · ~/superlite: ❯ /superlite:feature <your next request>](../../../assets/screens/sessions/worktrees-1.png)
+
+   Underneath, `session ensure` finds the open session and does not touch it unasked. It asks you.
+
+2. **You decide: move the docs session out?** You check that the docs chat is idle, then answer.
+
+   ![Terminal, Chat 2 · ~/superlite: Move session docs-site out of the main checkout into / ~/superlite/.claude/worktrees/sessions-docs-site? Its chat must be idle. / ❯ 1. Yes / 2. No](../../../assets/screens/sessions/worktrees-2.png)
+
+   Underneath, the question is the `ASK move` line from [the move question](#the-move-question). No leaves everything as it is and the new run does not start.
+
+3. **superlite moves the session.** It adds a worktree on the existing branch and moves the run files and uncommitted work into it. A failure puts everything back.
+
+   <FileTree>
+
+   - superlite/  main checkout
+     - .claude/
+       - worktrees/
+         - sessions-docs-site/  the docs session, on superlite/sessions/docs-site
+
+   </FileTree>
+
+4. **The docs chat steps over.** Its old folder no longer holds the session, so its status line says so.
+
+   ![Terminal, Chat 1 · ~/superlite: superlite session: docs-site moved to ~/superlite/.claude/worktrees/sessions-docs-site — move the agent root there / ❯](../../../assets/screens/sessions/worktrees-3.png)
+
+   Underneath, git allows a branch in only one folder. Under Claude Code the chat calls `EnterWorktree path=<abs>`; elsewhere you `cd` there. It carries on with the same plan and files.
+
+5. **Later, a feature builds in a worktree of its own.** The per-repo learning feature (PR #60) tried its prototype in a [sandbox](/superlite/sessions/sandbox/). After you approved it, the real build went to an `-int` worktree.
+
+   <FileTree>
+
+   - superlite/
+     - .claude/
+       - worktrees/
+         - sessions-docs-site/  the docs session
+         - sessions-per-repo-learning-int/  the learning feature's integration build
+     - .superlite/
+       - sandboxes/per-repo-learning/  the prototype, not a worktree
+
+   </FileTree>
+
+   Underneath, one feature gets one worktree. The prototype's code is ported into it task by task.
+
+</Steps>
+
+**What you end up with:** the docs session and the learning feature each in their own folder and branch. When a session closes, `session close` removes the worktree superlite cut for it and keeps the branch for the pull request.
 
 ## Good to know
 
 - `session close` removes a worktree superlite cut. `ExitWorktree` only leaves it.
-- A worktree Claude Code made ends with `ExitWorktree` set to `remove` or `keep`. `session close` only archives its run files.
 - A review of another branch uses `superlite-cli session ensure --branch <target>`.
 - Merging at shipping never switches your main checkout when it hosts another open session. superlite merges in a temporary `merge-<base>` worktree and removes it.
 

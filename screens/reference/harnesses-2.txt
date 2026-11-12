@@ -1,0 +1,4 @@
+title: Terminal · ~/shop
+ins: 1
+---
+$ gemini extensions install https://github.com/iha2/superlite

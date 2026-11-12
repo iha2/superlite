@@ -5,6 +5,8 @@ sidebar:
   order: 7
 ---
 
+import { Steps } from "@astrojs/starlight/components";
+
 :::tip[TL;DR]
 Use Review to check a branch before you merge it. Package reviewers fix what they find and add regression tests. A fresh final reviewer then ranks what is left in tiers 1 to 3 and edits nothing.
 :::
@@ -23,7 +25,7 @@ flowchart LR
 
 Two kinds of reviewer do two different jobs, and the split is the point.
 
-**Package reviewers fix.** Each package reviewer reads its part of the diff and fixes what it finds, with a regression test for each fix. A reviewer that fixes its own findings leaves less for you to triage.
+**Package reviewers fix.** Each package reviewer reads its part of the diff and fixes what it finds, with a regression test for each fix. A reviewer that fixes its own findings leaves less for you to triage. For example, a reviewer that spots a missing empty-table case adds the case and a test for it.
 
 **The final reviewer judges.** It is a fresh agent that did not see the earlier work. It reads the review packet and reports the remaining findings in tiers 1 to 3. It never edits. A reviewer that cannot change the code has no reason to defend it. [Reviews and fixes](/superlite/run/reviews-and-fixes/) says what each tier means and who fixes it.
 
@@ -33,17 +35,43 @@ The questions are one round: the intent of the change, the risk that matters mos
 
 ## Example: review a branch before the merge
 
-```text
-you        /superlite:review superlite/sessions/csv-export
-superlite  resolves the target and its base, opens a session on that branch
-superlite  reads the diff and asks one batch: intent, the risk that matters most, what is out of bounds, and whether to run the whole suite at finish
-you        the main risk is wrong totals in the export; leave the invoice model alone
-superlite  package reviewers fix their findings and add regression tests
-superlite  a fresh final reviewer reads the packet and reports tiers 1 to 3, no edits
-superlite  report: the fixes made, the findings by tier
-```
+Say a branch adds CSV export and you want it checked before you merge.
 
-Tier 1 and 2 findings are the ones to read first. You decide what to do with anything the final reviewer leaves open.
+<Steps>
+
+1. You name the branch.
+
+   ![Terminal, Claude Code · ~/shop: ❯ /superlite:review superlite/sessions/csv-export](../../../assets/screens/flows/review-1.png)
+
+   superlite resolves the branch and its base, then opens a [session](/superlite/sessions/sessions/) on that branch. It works in place if you are already on it, and in a [worktree](/superlite/sessions/worktrees/) otherwise, so your checkout is not switched under you.
+
+2. You answer one batch, once superlite has read the diff.
+
+   ![Terminal, Claude Code · ~/shop: What is the intent of this change? / Which risk matters most? / What is out of bounds? / Run the whole test suite at finish?  › No, affected tests only (Recommended) / ❯ The main risk is wrong totals in the export. Le...](../../../assets/screens/flows/review-2.png)
+
+   **You decide:** the risk and the fence. They tell the reviewers where to look hardest and what not to touch. The batch is asked only when the diff leaves something material open.
+
+3. Package reviewers work through the diff. Each takes its part, fixes what it finds and adds a regression test for each fix.
+
+   ![Terminal, Claude Code · ~/shop: package reviewer: export totals ignored the active filter. Fixed, test added.](../../../assets/screens/flows/review-3.png)
+
+   A reviewer that fixes its own finding leaves less for you to triage. The fixes land uncommitted in the session's working tree, so you see them as an ordinary diff.
+
+4. A fresh reviewer ranks what is left. The final reviewer did not see the earlier work and edits nothing.
+
+   ![Terminal, Claude Code · ~/shop: tier 2  the export has no limit on row count / tier 3  the filename ignores the locale](../../../assets/screens/flows/review-4.png)
+
+   It reads the review packet and sorts the remaining findings into tiers 1 to 3 ([reviews and fixes](/superlite/run/reviews-and-fixes/)). A reviewer that cannot change the code has no reason to defend it.
+
+5. You read the report.
+
+   ![Terminal, superlite report: fixes made: 1, tests added: 1 / open findings: tier 2 x1, tier 3 x1](../../../assets/screens/flows/review-5.png)
+
+   It lists the fixes made and the findings by tier, so the open list is short and ranked.
+
+</Steps>
+
+**What you end up with:** the branch with the reviewers' fixes in your working tree, and a short list of what is still open. Read tiers 1 and 2 first. You decide what to do with them, and you decide when to merge.
 
 ## Good to know
 

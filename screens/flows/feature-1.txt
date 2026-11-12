@@ -1,0 +1,4 @@
+title: Claude Code · ~/superlite
+ins: 1
+---
+❯ /superlite:feature Each run should teach superlite how work goes in this repo, and brief the agents that write code here

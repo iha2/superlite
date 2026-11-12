@@ -1,0 +1,7 @@
+title: prototype.html · side panel
+mark: 4
+---
+[x] F1 Add a habit      must
+[x] F2 Tick today       must
+[ ] F3 Streak chart     could
+estimate: time and cost, updated as you toggle

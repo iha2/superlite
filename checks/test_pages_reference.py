@@ -6,15 +6,15 @@ import pytest
 DOCS = Path(__file__).resolve().parent.parent / "src" / "content" / "docs"
 MAIN = Path(__file__).resolve().parent.parent.parent
 PATHS = [
-    "reference/skills.md",
-    "reference/agents.md",
-    "reference/hooks.md",
-    "reference/gates.md",
-    "reference/cli.md",
-    "reference/config.md",
-    "reference/language.md",
-    "reference/harnesses.md",
-    "results/benchmark.md",
+    "reference/skills.mdx",
+    "reference/agents.mdx",
+    "reference/hooks.mdx",
+    "reference/gates.mdx",
+    "reference/cli.mdx",
+    "reference/config.mdx",
+    "reference/language.mdx",
+    "reference/harnesses.mdx",
+    "results/benchmark.mdx",
 ]
 MERMAID = ("flowchart", "sequenceDiagram", "stateDiagram-v2", "gitGraph")
 
@@ -39,7 +39,8 @@ def _prose_words(body):
 
 
 def _tldr(body):
-    lines = body.strip("\n").split("\n")
+    lines = [l for l in body.strip("\n").split("\n") if not l.startswith("import ")]
+    lines = [l for l in lines if l.strip()]
     assert lines[0] == ":::tip[TL;DR]", "TL;DR aside must come first"
     end = lines.index(":::", 1)
     return " ".join(lines[1:end]), "\n".join(lines[end + 1:])
@@ -79,8 +80,8 @@ def test_table_cells_are_one_sentence(rel):
 
 def test_skill_and_agent_tables_match_repo():
     for rel, folder, pat in (
-        ("reference/skills.md", "skills", None),
-        ("reference/agents.md", "agents", ".md"),
+        ("reference/skills.mdx", "skills", None),
+        ("reference/agents.mdx", "agents", ".md"),
     ):
         _, body = _parts(rel)
         names = set(re.findall(r"^\| `([a-z0-9-]+)` \|", body, re.M))
@@ -92,13 +93,22 @@ def test_skill_and_agent_tables_match_repo():
 
 
 def test_benchmark_numbers_from_the_report():
-    _, body = _parts("results/benchmark.md")
+    _, body = _parts("results/benchmark.mdx")
     for figure in ("34.4 min", "8.8 min", "$8.15", "$3.28", "89 / 89", "16.1 min", "177 / 177"):
         assert figure in body
     assert "one run per arm" in body.lower()
 
 
+@pytest.mark.parametrize("rel", PATHS)
+def test_example_is_a_walkthrough(rel):
+    _, body = _parts(rel)
+    ex = body.split("\n## Example", 1)[1]
+    assert "<Steps>" in ex, "walkthrough steps expected"
+    assert "What you end up with" in ex
+    assert re.search(r"!\[[^\]]*\]\([^)]*assets/screens/[^)]*\.png\)", ex) or 'title="' in ex, "a screen expected"
+
+
 def test_config_lists_every_overlay_key():
-    _, body = _parts("reference/config.md")
+    _, body = _parts("reference/config.mdx")
     for key in ("cap", "gitignore", "hosts", "testprobe", "models", "compact_tokens"):
         assert f"| `{key}` |" in body

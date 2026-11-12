@@ -5,7 +5,7 @@ sidebar:
   order: 5
 ---
 
-import { FileTree } from "@astrojs/starlight/components";
+import { FileTree, Steps } from "@astrojs/starlight/components";
 
 :::tip[TL;DR]
 When the tests are green, `finish` archives the run, lists the decisions superlite made for you, and writes a report that compares the forecast with what happened. Then it asks how to ship. You decide.
@@ -25,66 +25,76 @@ flowchart LR
 
 ## How it works
 
-`superlite-cli finish --plan PLAN` closes the run. It moves the run's files into `.superlite/runs/<id>/`, lists the rulings, and prints a short report summary. In human mode it also prints the approval time.
+`superlite-cli finish --plan PLAN` closes the run. It moves the run's files into `.superlite/runs/<id>/`, lists the rulings, and prints a short report summary. In human mode it also prints the approval time. For example, the docs site run wrote `2026-11-12-docs-site.report.md` and `.report.json` next to its two plans.
 
 <FileTree>
 
 - docs/plans/
-  - 2026-11-12-csv-export.review.md
-  - 2026-11-12-csv-export.md
-  - 2026-11-12-csv-export.report.md full report
-  - 2026-11-12-csv-export.report.json same data, for tools
+  - 2026-11-12-docs-site.review.md
+  - 2026-11-12-docs-site.md
+  - 2026-11-12-docs-site.report.md full report
+  - 2026-11-12-docs-site.report.json same data, for tools
 - .superlite/runs/ archive of each finished run, never committed
 
 </FileTree>
 
 Three things feed the report. Lint saves a forecast before the first dispatch, so the projection is fixed and cannot drift toward the result. Hooks capture each agent's tokens, cost and time into `.superlite/metrics.jsonl`. Then `superlite-cli history write` appends the run's rows to `~/.superlite/history.jsonl`, which the next run uses for its predictions.
 
-## Example: reading a report
+## Example: reading the docs site report, line by line
 
-This is the top of a real report, from the build of this docs site. Run `/superlite:report` to list reports, newest first, plus the last 5 history rows. `/superlite:report <plan>` shows the summary, and `/superlite:report <plan> full` shows everything.
+<Steps>
 
-```text
-# superlite build report
+1. **You see the summary.** When the tests are green, `finish` prints your rulings and the top of the report, before any shipping question.
 
-projection: fixed forecast saved at lint 2026-11-12T04:04:54
+   ```md title="docs/plans/2026-11-12-docs-site.report.md" mark={3}
+   # superlite build report
 
-                         Projected    Actual  Delta
-wall-clock (min)               6.8       6.3  -0.5 (-7%)
-agent cost (USD, +rework)      1.83      2.66  +0.83 (+45%)
-task-minutes                  23.6      23.4  -0.2 (-1%)
-agents                          12        19  +7 (+58%)
-cost split: agents $2.60, rework $0.06, coordinator $6.81, total $9.47
-concurrency: peak 6 at once (projected 6); critical path actual T4 T11; projected T1 > T8 > T12 (6.8 min)
-model mix: sonnet 11 tasks $2.60, unknown 1 tasks $0.06, coordinator opus $6.81
-quality: tests 36 passed, 0 failed; first-time pass n/a; rework dispatches 1; open incidents 18
+   projection: fixed forecast saved at lint 2026-11-12T04:04:54
+   ```
 
-task  model      pred  actual  delta             cost
-T12   ?           1.8     0.0  -1.8 (-100%)    $0.058
-T3    sonnet      1.8     3.3  +1.5 (+85%)     $0.478
-T4    sonnet      1.8     3.3  +1.5 (+82%)     $0.407
-T2    sonnet      1.8     2.8  +1.0 (+59%)     $0.367
-T10   sonnet      1.8     1.0  -0.7 (-42%)     $0.141
-(+7 smaller misses; `superlite-cli report --json` lists all)
+   The forecast was saved at lint, before the first dispatch, so it cannot drift toward the result. Run `/superlite:report` to list reports, newest first. `/superlite:report <plan>` shows the summary, and `/superlite:report <plan> full` shows everything.
 
-takeaway: ran 7% faster than projected; cost 45% over; biggest miss T12
-```
+2. **You read time and agents.**
+
+   ![Terminal, docs/plans/2026-11-12-docs-site.report.md: Projected    Actual  Delta / wall-clock (min)               6.8       6.3  -0.5 (-7%) / task-minutes                  23.6      23.4  -0.2 (-1%) / agents                          12        19  +7 (+58%)](../../../assets/screens/run/report-1.png)
+
+   Wall-clock is the minutes on the clock. Task-minutes add up each task's own time, so it is far above wall-clock when agents work side by side. The report counts every agent that ran, not only the twelve planned, so 7 more ran than forecast.
+
+3. **You read the cost.** This is where the surprise is.
+
+   ![Terminal, docs/plans/2026-11-12-docs-site.report.md: agent cost (USD, +rework)      1.83      2.66  +0.83 (+45%) / cost split: agents $2.60, rework $0.06, coordinator $6.81, total $9.47](../../../assets/screens/run/report-2.png)
+
+   The forecast covers agents only, and they ran 45% over. The coordinator, Opus planning and dispatching, cost $6.81 of the $9.47 total. That is why the cost split is shown: the part you can predict is not the biggest part.
+
+4. **You read how parallel it was.**
+
+   ![Terminal, docs/plans/2026-11-12-docs-site.report.md: concurrency: peak 6 at once (projected 6); critical path actual T4 T11; projected T1 > T8 > T12 (6.8 min)](../../../assets/screens/run/report-3.png)
+
+   The critical path is the longest chain of waiting tasks, and it sets the minimum time. It moved from the forecast's T1 > T8 > T12 to T4 > T11 because the reference facts (T4) ran 82% over their estimate. See [parallel build](/superlite/run/parallel-build/).
+
+5. **You read quality.**
+
+   ![Terminal, docs/plans/2026-11-12-docs-site.report.md: quality: tests 36 passed, 0 failed; first-time pass n/a; rework dispatches 1; open incidents 18](../../../assets/screens/run/report-4.png)
+
+   First-time pass counts tasks that passed with no rework. It says n/a here because the run measured none. A rework dispatch is a fix round. Open incidents are logged problems, such as the failing test runs the [reviews](/superlite/run/reviews-and-fixes/) page shows.
+
+6. **You read the takeaway, then decide.**
+
+   ![Terminal, docs/plans/2026-11-12-docs-site.report.md: takeaway: ran 7% faster than projected; cost 45% over; biggest miss T12](../../../assets/screens/run/report-5.png)
+
+   The takeaway is the report in one sentence. T12's miss is a gap in measurement: it shows 0.0 actual minutes and model `?`, so it looks untimed. `history write` has by now appended this run's rows to `~/.superlite/history.jsonl`, which sharpens the next forecast. Now `superlite:shipping` asks how to ship. **You decide:** commit, merge, push and open a PR, or keep the branch.
+
+</Steps>
+
+**What you end up with:** a report in `docs/plans/`, a history row for the next forecast, and the shipping choice in your hands. This run ended in PR #58.
+
+Other lines in the report:
 
 | Line | What it tells you |
 |---|---|
-| Projected, Actual, Delta | The forecast, the result, and the difference. A negative delta on time is faster than forecast. |
-| wall-clock | Minutes on the clock, start to finish. |
-| agent cost (+rework) | Agent spend, including the fix rounds. |
-| task-minutes | Minutes of agent work added up. It exceeds wall-clock when agents run side by side. |
-| agents | How many agents ran. Fix rounds start extra agents, so this is often above the forecast. |
-| cost split | Agents, rework (fixers), and the coordinator. The total is the sum. |
-| concurrency | Most agents running at once. The critical path is the longest chain of waiting tasks. It sets the minimum time. |
-| model mix | Tasks and cost per model. |
-| quality | Tests passed and failed. First-time pass counts tasks that passed with no rework (n/a when none is measured). Rework dispatches are fix rounds. Open incidents are logged problems. |
-| task table | The biggest misses between predicted and actual minutes, with cost. A `first-time miss` tag marks tasks that needed rework. |
-| takeaway | The whole report in one sentence. |
-
-The full report also has an agent cost table and a line `cost source: est`, meaning the cost is estimated from tokens.
+| model mix | Tasks and cost per model. Here Sonnet had 11 tasks. |
+| task table | The biggest misses between predicted and actual minutes, with cost. |
+| `cost source: est` | In the full report: the cost is estimated from tokens. |
 
 ## Good to know
 

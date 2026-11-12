@@ -1,0 +1,79 @@
+---
+title: Harnesses and install
+description: How to install superlite in Claude Code and the other supported harnesses.
+sidebar:
+  order: 8
+---
+
+import { Steps } from "@astrojs/starlight/components";
+
+:::tip[TL;DR]
+superlite installs as a plugin in 15 harnesses. Install it once per harness you use, then open a fresh session and send a build request to check it works.
+:::
+
+```mermaid
+flowchart LR
+  S["Skills use Claude Code tool names"] --> A["Agent: dispatch an agent"]
+  A --> CC["Claude Code: Agent"]
+  A --> CX["Codex: spawn_agent"]
+  A --> CU["Cursor: Task"]
+  A --> GE["Gemini CLI: invoke_agent"]
+  A --> AG["Antigravity: invoke_subagent"]
+  A --> HE["Hermes: delegate_task"]
+```
+
+Skills are written in Claude Code's vocabulary. Each other harness gets a mapping file in `skills/using-superlite/references/` that says which native tool does the same job. Claude Code needs no mapping. The diagram shows one job, dispatching an agent, and six of the harnesses.
+
+## Install commands
+
+| Harness | Install |
+|---|---|
+| Claude Code | `/plugin marketplace add iha2/superlite` then `/plugin install superlite@superlite-dev` |
+| Antigravity | `agy plugin install https://github.com/iha2/superlite` |
+| Codex App | `codex plugin marketplace add iha2/superlite`, then add from the Plugins sidebar (unverified) |
+| Codex CLI | `codex plugin marketplace add iha2/superlite`, then `/plugins` (unverified) |
+| Cursor | `/add-plugin superlite` in Agent chat |
+| Devin CLI | `devin plugins install iha2/superlite` |
+| Factory Droid | `droid plugin marketplace add https://github.com/iha2/superlite`, then `droid plugin install superlite@superlite-dev` |
+| Gemini CLI | `gemini extensions install https://github.com/iha2/superlite` |
+| GitHub Copilot CLI | `copilot plugin marketplace add iha2/superlite`, then `copilot plugin install superlite@superlite-dev` |
+| Grok Build CLI | `grok plugin marketplace add iha2/superlite`, then `grok plugin install superlite@superlite-dev --trust` (unverified) |
+| Kimi Code | `/plugins install https://github.com/iha2/superlite`, then `/new` |
+| OpenCode | Tell OpenCode to follow `.opencode/INSTALL.md` from the repository |
+| Pi | `pi install git:github.com/iha2/superlite` |
+| Qwen Code | `qwen extensions install iha2/superlite` |
+| Hermes Agent | `hermes plugins install iha2/superlite --enable` |
+
+Claude Code can also load a checkout for one session: `claude --plugin-dir <path-to-superlite>`.
+
+To verify, open a fresh session and send `Let's make a react todo list`. A working install starts `inventing` before any code. Install separately for each harness you use.
+
+## Example: installing in two harnesses and checking
+
+Say you use Claude Code and Gemini CLI.
+
+<Steps>
+
+1. In Claude Code you add the marketplace, then install:
+
+   ![Terminal, Claude Code · ~/shop: /plugin marketplace add iha2/superlite / /plugin install superlite@superlite-dev](../../../assets/screens/reference/harnesses-1.png)
+
+   Claude Code needs no mapping file, because the skills are written in its own tool names.
+
+2. In a terminal you install the extension for Gemini CLI:
+
+   ![Terminal, Terminal · ~/shop: $ gemini extensions install https://github.com/iha2/superlite](../../../assets/screens/reference/harnesses-2.png)
+
+   Gemini CLI gets a mapping file from `skills/using-superlite/references/`, which says that "dispatch an agent" means `invoke_agent` there. Install is per harness, so this step does not cover Claude Code.
+
+3. **You decide:** open a fresh session in either tool and send the check request.
+
+   ![Terminal, Gemini CLI · ~/shop: Let's make a react todo list](../../../assets/screens/reference/harnesses-3.png)
+
+4. A working install starts `inventing` before any code is written, and asks you about the design.
+
+   If code appears first, the install did not load in that harness. Repeat the install there, or try `claude --plugin-dir <path-to-superlite>` for a single Claude Code session.
+
+</Steps>
+
+**What you end up with:** superlite installed in two harnesses, each confirmed by the same request. The plugin is the same in both, and the mapping file covers the tool names.

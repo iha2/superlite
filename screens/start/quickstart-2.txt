@@ -1,0 +1,9 @@
+title: Claude Code · the Regular flow screen
+mark: 2-4
+---
+ REGULAR
+ 1  ASK      You say what you want.
+ 2  SIZE     Trivial, bounded or large. Large gets one batch of questions.
+ 3  PLAN     The design and the task plan. Human mode adds a review plan.
+ 4  APPROVE  Human mode: you approve before anything runs. AI mode: skipped.
+ ...

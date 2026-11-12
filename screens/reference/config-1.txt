@@ -1,0 +1,4 @@
+title: Terminal · ~/shop
+ins: 1
+---
+$ bash skills/swarm/scripts/superlite-cli dispatch --cap 10

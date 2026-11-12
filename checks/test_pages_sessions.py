@@ -15,6 +15,7 @@ needs_main = pytest.mark.skipif(
 )
 DOCS = HERE.parent / "src" / "content" / "docs"
 PAGES = ["sessions", "lifecycle", "worktrees", "sandbox"]
+SCREEN = re.compile(r"!\[[^\]]*\]\([^)]*assets/screens/[^)]*\.png\)")
 
 
 def _text(name):
@@ -52,7 +53,34 @@ def test_sessions_has_gitgraph_filetree_and_two_chats():
     t = _text("sessions")
     assert "gitGraph" in t and "superlite/sessions/export" in t and "superlite/sessions/login-fix" in t
     assert "<FileTree>" in t and "session-store/" in t and "sessions.json" in t
-    assert "chat 1" in t and "chat 2" in t
+    assert "Chat 1" in t and "Chat 2" in t
+    assert SCREEN.search(t) and "<Steps>" in t and "**What you end up with:**" in t
+
+
+def test_examples_are_framed_walkthroughs():
+    for n in PAGES:
+        t = _text(n)
+        assert re.search(r"^## Example: ", t, re.M), n
+        assert "<Steps>" in t and SCREEN.search(t), n
+        assert "**What you end up with:**" in t, n
+        assert "illustrative" not in t.lower(), n
+
+
+def test_lifecycle_walks_one_real_session():
+    t = _text("lifecycle")
+    assert "proto-sandbox" in t and "PR #56" in t and "/superlite:merged 56" in t
+    assert "pr-56.png" in t
+    assert (HERE.parent / "src" / "assets" / "screens" / "github" / "pr-56.png").stat().st_size < 250_000
+
+
+def test_worktrees_example_is_this_docs_session():
+    t = _text("worktrees")
+    assert "sessions-docs-site" in t and "docs-site" in t and "sessions-per-repo-learning-int" in t
+
+
+def test_sandbox_example_is_the_per_repo_learning_prototype():
+    t = _text("sandbox")
+    assert "per-repo-learning" in t and "PR #60" in t and "tryout.py" in t
 
 
 def test_lifecycle_state_diagram_and_three_steps():

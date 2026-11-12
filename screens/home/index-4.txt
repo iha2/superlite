@@ -1,0 +1,6 @@
+title: Claude Code · build report
+mark: 2
+---
+                         Projected    Actual
+wall-clock (min)               6.8       6.3
+agent cost (USD, +rework)      1.83      2.66

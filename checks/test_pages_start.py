@@ -32,7 +32,7 @@ def strip_fences(body):
 
 
 def prose_words(body):
-    lines = [l for l in strip_fences(body).splitlines() if not l.lstrip().startswith("|")]
+    lines = [l for l in strip_fences(body).splitlines() if not l.lstrip().startswith("|") and not re.match(r"^\s*(\d+\.\s+)?!\[", l)]
     return len(re.findall(r"\w+", "\n".join(lines)))
 
 
@@ -75,6 +75,31 @@ def test_quickstart_is_a_full_first_run():
     assert "inventing" in body
     assert "Python 3.12" in body
     assert "/superlite:finish" in body
+    # the walkthrough follows the docs site's own run, in screens
+    assert "PR #58" in body
+    assert "docs/plans/2026-11-12-docs-site.review.md" in body
+    assert re.search(r"!\[[^\]]*\]\([^)]*assets/screens/[^)]*\.png\)", body)
+    assert "**You decide:**" in body
+    assert "illustrative" not in body
+
+
+@pytest.mark.parametrize("name", ["quickstart", "concepts", "install", "commands"])
+def test_examples_are_walkthroughs(name):
+    _, body = page(name)
+    example = body[re.search(r"^## Example", body, re.M).start():]
+    assert "<Steps>" in example
+    assert re.search(r"!\[[^\]]*\]\([^)]*assets/screens/[^)]*\.png\)", example) or 'title="docs/plans' in example
+    assert "illustrative" not in body
+    for img in re.findall(r"\]\((\.\./[^)]*\.png)\)", body):
+        assert (START / img).resolve().exists(), img
+
+
+def test_index_walkthrough():
+    text = (DOCS / "index.mdx").read_text()
+    run = text[text.index("## What a run looks like"):text.index("## Where to go")]
+    assert "<Steps>" in run
+    assert 5 >= len(re.findall(r"^\d+\. \*\*", run, re.M)) >= 4
+    assert "not exact output" not in text
 
 
 def test_concepts_links_every_home():

@@ -5,7 +5,7 @@ sidebar:
   order: 8
 ---
 
-import { FileTree } from "@astrojs/starlight/components";
+import { FileTree, Steps } from "@astrojs/starlight/components";
 
 :::tip[TL;DR]
 Use Research to answer a question with sources instead of code. Parallel researchers fill a sourced ledger, conflicts are listed with causes, and you get a report written at your level: Director, VP, Researcher or Simple.
@@ -54,44 +54,75 @@ Use Research to answer a question with sources instead of code. Parallel researc
 
 The report is not where research happens. Researchers write to a **ledger**, and the report is rendered from it. This is why the levels cannot disagree.
 
-**One ledger, many views.** Each researcher takes one sub-question. It records sources (with a date and an evidence grade you defined) and claims (each tied to a source). Researchers never write to the report. The four levels are four renderings of the same ledger. They carry the same claim ids, citations, numbers and conflicts. Only the wording changes, so Simple never loses a fact that Researcher has.
+**One ledger, many views.** Each researcher takes one sub-question. It records sources (with a date and an evidence grade you defined) and claims (each tied to a source). Researchers never write to the report. The four levels are four renderings of the same ledger. For example, a claim like "recall drops at 95% on large indexes" has one id and one source, and appears in all four. They carry the same claim ids, citations, numbers and conflicts. Only the wording changes, so Simple never loses a fact that Researcher has.
 
 **Conflicts get a cause.** When two claims disagree, superlite records why: definition, date, population, method, source quality or error. It resolves the conflict or leaves it open and visible. A gap sends the run back to the researchers with a new sub-question.
 
 **Lint before write.** Lint checks that every claim has a source and every conflict has a cause. After the write step, a second check confirms that all levels match.
 
-<FileTree>
-- docs/plans/
-  - 2026-11-12-vector-search.research.md the plan: scope, sub-questions, tiers
-  - 2026-11-12-vector-search.findings.md the report at your level
-  - 2026-11-12-vector-search.sources.md every source
-  - 2026-11-12-vector-search.contradictions.md conflicts and causes
-</FileTree>
-
 ## Example: vector search, for a VP
 
-```text
-you        /superlite:research State of the art in vector search, for a VP
-superlite  prints the research screen and opens a session
-superlite  asks who orchestrates and which evidence tiers you want, for example A,B,C with A best
-you        human; A is peer-reviewed benchmarks, B is vendor docs, C is blog posts
-superlite  writes the plan: scope, sub-questions, search strategy, tiers
-superlite  one batch of critical questions about scope and time range
-you        approve
-superlite  researchers run side by side, one sub-question each, and write sources and claims to the ledger
-superlite  two claims about recall disagree: recorded as a conflict, cause "method"
-superlite  lint: every claim sourced, every conflict has a cause
-superlite  writes the findings, sources and contradictions files at VP level
-superlite  lists the files you could download, with name, source and size; fetches nothing yet
-you        no downloads
-```
+Say you need a briefing on vector search and you want to know where every number came from.
 
-Later you want the same report in plain language. No new research is needed:
+<Steps>
 
-```text
-you        /superlite:research --level simple
-superlite  re-renders the report from the ledger and lints that the levels match
-```
+1. You give the topic and the level.
+
+   ![Terminal, Claude Code · ~/notes: ❯ /superlite:research State of the art in vector search, for a VP](../../../assets/screens/flows/research-1.png)
+
+   superlite prints the stored screen above and opens a [session](/superlite/sessions/sessions/). Research needs no code, but the session keeps its files on their own branch.
+
+2. You answer a short menu.
+
+   ![Terminal, Claude Code · ~/notes: Who orchestrates? / › 1. Human   you approve the plan first / 2. AI      answers its own questions / Evidence tiers? A = peer-reviewed benchmarks, B = vendor docs, C = blog posts](../../../assets/screens/flows/research-2.png)
+
+   **You decide:** the orchestrator and what counts as strong evidence. The tiers are yours, and they grade every source later. See [orchestrators](/superlite/run/orchestrators/).
+
+3. You read the plan and approve it.
+
+   ```md title="docs/plans/2026-11-12-vector-search.research.md"
+   ## Sub-questions
+   1. Which index types lead on recall at scale?
+   2. What do they cost to run?
+   ```
+
+   **You decide:** approve, after superlite's batch of critical questions about scope and time range. The plan splits the topic into sub-questions, one per researcher, so the work can run side by side ([plan and approval](/superlite/run/plan-and-approval/)).
+
+4. Researchers run in parallel. Each takes one sub-question and writes sources and claims to a ledger, never to the report.
+
+   <FileTree>
+   - docs/plans/
+     - 2026-11-12-vector-search.research.md the plan
+     - 2026-11-12-vector-search.sources.md every source, graded A, B or C
+   </FileTree>
+
+   Writing to a ledger and rendering the report later is what keeps the levels from disagreeing ([parallel build](/superlite/run/parallel-build/)).
+
+5. superlite finds a conflict.
+
+   ![Terminal, Claude Code · ~/notes: two claims about recall disagree: cause "method"](../../../assets/screens/flows/research-3.png)
+
+   It records why they disagree: definition, date, population, method, source quality or error. It resolves the conflict or leaves it open and visible. A gap sends researchers back with a new sub-question.
+
+6. Lint, then the report. Lint checks that every claim has a source and every conflict has a cause. The report is written at VP level, and downloads are listed with name, source and size but fetched only after your yes.
+
+   ![Terminal, Claude Code · ~/notes: Download any of these files?  (none fetched yet) / ❯ no downloads](../../../assets/screens/flows/research-4.png)
+
+   <FileTree>
+   - docs/plans/
+     - 2026-11-12-vector-search.findings.md the VP report
+     - 2026-11-12-vector-search.contradictions.md conflicts and causes
+   </FileTree>
+
+7. Later you want it in plain language. No new research is needed.
+
+   ![Terminal, Claude Code · ~/notes: ❯ /superlite:research --level simple](../../../assets/screens/flows/research-5.png)
+
+   superlite re-renders the report from the ledger and lints that the levels match.
+
+</Steps>
+
+**What you end up with:** a sourced report, its sources and its conflicts, all in `docs/plans/`. Nothing was downloaded without your yes.
 
 ## Good to know
 

@@ -1,0 +1,5 @@
+title: Claude Code · ~/shop
+ins: 1-2
+---
+/plugin marketplace add iha2/superlite
+/plugin install superlite@superlite-dev

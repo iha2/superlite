@@ -1,0 +1,6 @@
+title: Claude Code · ~/superlite
+words: Push and open a pull request
+---
+❯ 1. Merge locally into the base branch
+  2. Push and open a pull request
+  3. Keep the branch as is

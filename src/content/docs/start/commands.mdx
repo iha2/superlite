@@ -5,6 +5,8 @@ sidebar:
   order: 4
 ---
 
+import { Steps } from "@astrojs/starlight/components";
+
 :::tip[TL;DR]
 Every command is a shortcut for something you can say in plain words. Start with `/superlite:start`, which suggests a mode. Use `/superlite:approve` to say yes to a plan, `/superlite:status` to look in, and `/superlite:finish` to ship.
 :::
@@ -28,7 +30,7 @@ flowchart TD
 
 You can type a command or say the same thing in words. A command skips the guessing. `/superlite:start` is the front door: it runs `superlite-cli suggest_flow` on your request, shows the suggested mode first and marked Recommended, then asks you to confirm it and pick who orchestrates.
 
-A first word of regular, mvp, feature, debug, small, review or research skips the suggestion: `/superlite:start debug the login test`. The suggestion is deterministic. The same input prints the same line.
+A first word of regular, mvp, feature, debug, small, review or research skips the suggestion. For example, `/superlite:start debug the login test` goes straight to Debug and asks only who orchestrates. The suggestion is deterministic. The same input prints the same line.
 
 ## Command table
 
@@ -78,24 +80,41 @@ A first word of regular, mvp, feature, debug, small, review or research skips th
 | `/superlite:intro` | The intro screen |
 | `/superlite:help [section]` | The detailed help |
 
-## Example: a run you interrupt
+## Example: from a running build to a clean checkout
 
-You start a debug run, stop it to step away, then pick it up. The superlite lines describe what each command does.
+Say a build is running and you want to follow it, step away, ship it and clean up. Each step is one command. The last one is a real case: PR #57 added `/superlite:merged` itself.
 
-```text
-you        /superlite:debug The leap-day test fails
-superlite  reproduces it, finds the cause, writes a failing test
-you        /superlite:status
-superlite  mode, orchestrator, approved or not, tasks done/running/waiting, cost and time so far
-you        /superlite:stop
-superlite  dispatches nothing new, lets running agents finish, writes .superlite/stopped.md
-you        /superlite:resume
-superlite  skips checkpointed, passing tasks and runs only the rest
-you        /superlite:finish
-superlite  runs the full tests, then offers merge or PR options
-```
+<Steps>
 
-For where each mode leads, see [Pick a flow](/superlite/flows/choose/).
+1. **You look in.**
+
+   ![Terminal, Claude Code · superlite: ❯ /superlite:status](../../../assets/screens/start/commands-1.png)
+
+   You get under 15 lines: the orchestrator, whether the plan is approved, tasks done, running and waiting, cost and time so far, and the next step. The command only reads. Nothing changes.
+
+2. **You step away and come back.** **You decide:** stop, then resume when ready.
+
+   ![Terminal, Claude Code · superlite: ❯ /superlite:stop / ❯ /superlite:resume](../../../assets/screens/start/commands-2.png)
+
+   `/superlite:stop` dispatches nothing new, lets running agents finish and writes `.superlite/stopped.md`. `/superlite:resume` skips every task that is checkpointed and passing, and runs only the rest.
+
+3. **You ship the work.** **You decide:** how.
+
+   ![Terminal, Claude Code · superlite: ❯ /superlite:finish / 1. Merge locally into the base branch / › 2. Push and open a pull request / 3. Keep the branch as is](../../../assets/screens/start/commands-3.png)
+
+   It runs the full tests first, and a red result blocks the options. It never pushes without your yes.
+
+4. **After the PR merges, you clean up.**
+
+   ![Terminal, Claude Code · superlite: ❯ /superlite:merged 57](../../../assets/screens/start/commands-4.png)
+
+   superlite confirms the merge with `gh`, checks that the local branch holds nothing the PR lacks, closes the session, fast-forwards local `main` and deletes the local branch. It never pushes and never touches the remote branch.
+
+   ![Pull request 57 on GitHub, merged from superlite/sessions/pr-merged into main, listing what the command does](../../../assets/screens/github/pr-57.png)
+
+</Steps>
+
+**What you end up with:** the work merged, your checkout back on `main` and up to date, and no leftover session branch. For where each mode leads, see [Pick a flow](/superlite/flows/choose/).
 
 ## Good to know
 

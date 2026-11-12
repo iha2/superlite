@@ -1,0 +1,4 @@
+title: Claude Code · ~/shop
+ins: 1
+---
+❯ /superlite:debug test_login_after_timeout fails: expects 200, gets 401

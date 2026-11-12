@@ -16,6 +16,7 @@ needs_main = pytest.mark.skipif(
 DOCS = HERE.parent / "src" / "content" / "docs"
 FLOWS = DOCS / "flows"
 PAGES = ["choose", "regular", "mvp", "feature", "debug", "small", "review", "research"]
+SCREEN = re.compile(r"!\[[^\]]*\]\([^)]*assets/screens/[^)]*\.png\)")
 SCREENED = ["regular", "mvp", "feature", "debug", "research"]
 CONCEPT_LINKS = [
     "/superlite/sessions/sessions/",
@@ -97,19 +98,49 @@ def test_every_flow_page_teaches_with_an_example():
         assert "Good to know" in heads, name
 
 
-def test_example_is_a_transcript():
+def example_section(name):
+    example = re.split(r"^## Example[^\n]*\n", body(name), flags=re.M)[1]
+    return re.split(r"^## ", example, flags=re.M)[0]
+
+
+def test_example_is_an_annotated_walkthrough():
     for name in PAGES:
-        example = re.split(r"^## Example[^\n]*\n", body(name), flags=re.M)[1]
-        example = re.split(r"^## ", example, flags=re.M)[0]
-        blocks = re.findall(r"```text\n(.*?)\n```", example, re.S)
-        assert blocks, name
-        assert any(re.search(r"^you +", b, re.M) and re.search(r"^superlite +", b, re.M) for b in blocks), name
+        head = re.search(r"^## (Example.*)$", body(name), re.M).group(1)
+        assert head.startswith("Example: ") or name == "choose", name
+        example = example_section(name)
+        assert "<Steps>" in example and "</Steps>" in example, name
+        steps = re.findall(r"^\d+\. ", example, re.M)
+        assert 4 <= len(steps) <= 8, (name, len(steps))
+        assert "**You decide:**" in example, name
+        assert "**What you end up with:**" in example, name
+        assert re.search(r"^import .*\bSteps\b", page(name), re.M), name
+
+
+def test_example_uses_framed_screens_and_no_plumbing():
+    for name in PAGES:
+        example = example_section(name)
+        assert SCREEN.search(example), name
+        low = example.lower()
+        assert "illustrative" not in low, name
+        for token in ("proto:", "SESSION worktree=", "ASK move", "checkpoint "):
+            assert token not in example, (name, token)
+        for block in re.findall(r"```text[^\n]*\n(.*?)\n\s*```", example, re.S):
+            assert len(block.strip().split("\n")) <= 6, (name, block)
+
+
+def test_real_runs_have_a_screenshot():
+    for name, shot in (("regular", "pr-58.png"), ("feature", "pr-60.png")):
+        assert f"assets/screens/github/{shot}" in page(name), name
+        assert (HERE.parent / "src" / "assets" / "screens" / "github" / shot).exists(), shot
+        size = (HERE.parent / "src" / "assets" / "screens" / "github" / shot).stat().st_size
+        assert size < 250_000, shot
 
 
 def test_prose_budget():
     for name in PAGES:
         text = re.sub(r"```.*?```", "", body(name), flags=re.S)
-        prose = [l for l in text.split("\n") if not l.lstrip().startswith(("|", "#", "import "))]
+        prose = [l for l in text.split("\n") if not l.lstrip().startswith(("|", "#", "import ", "!["))
+                 and not re.match(r"^\s*\d+\.\s+!\[", l)]
         assert len(" ".join(prose).split()) <= 900, name
 
 

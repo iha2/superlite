@@ -1,0 +1,4 @@
+title: Claude Code · ~/shop
+mark: 1
+---
+package reviewer: export totals ignored the active filter. Fixed, test added.

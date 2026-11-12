@@ -1,0 +1,10 @@
+title: Try-out · ~/superlite/.superlite/sandboxes/per-repo-learning/per-repo-learning
+ins: 1
+mark: 2,6
+---
+❯ python3 tryout.py
+learn: admitted 2, evicted 0, proven 0
+run-3 brief:
+In this repo (learned from past runs):
+...
+superlite files changed: none
