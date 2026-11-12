@@ -1,0 +1,101 @@
+---
+title: "MVP flow"
+description: "Plan the smallest working version on a clickable prototype, then build it."
+sidebar:
+  order: 3
+---
+
+import { FileTree } from "@astrojs/starlight/components";
+
+:::tip[TL;DR]
+Use MVP for a new project when you want to agree on features before any code exists. You click through a fake version in your browser, cut what you do not need, and approve. The build covers only what you kept.
+:::
+
+```text
+ MVP
+ ------------------------------------------------------------------------------
+  [1 ASK]
+      v
+  [2 FEATURES]
+      v
+.- SANDBOX: one HTML file, fake data -------------------.
+: [3 PROTOTYPE]                                         :
+:     v                                                 :
+: [4 FEEDBACK]                                          :
+'-------------------------------------------------------'
+      v
+  [5 APPROVE]
+      v
+  [6 PLAN]
+      v
+  [7 BUILD]
+      |
+      +-----------+-----------+
+      v           v           v
+  [Haiku]     [Sonnet]    [Sonnet]
+  3 tasks     3 tasks     2 tasks
+      |           |           |
+      +-----------+-----------+
+      v
+  [8 REVIEW + FIX]
+      v
+  [9 REPORT]
+ ------------------------------------------------------------------------------
+  1  ASK        You say what you want.
+  2  FEATURES   The MVP plan: every feature, each marked in or out.
+  3  PROTOTYPE  One clickable HTML file in a sandbox, with fake data. No
+                product code.
+  4  FEEDBACK   You open it, cut features, press Save feedback.
+  5  APPROVE    Human mode: you approve. AI mode: it checks and logs a ruling.
+  6  PLAN       The task plan from the features you kept. Lint gates it.
+  7  BUILD      Agents run side by side, sized to the load. Cut features
+                stay out.
+  8  REVIEW     Package reviews, one final review, fixes by tier, tests.
+  9  REPORT     Time and cost, and the list of what was left out.
+ ------------------------------------------------------------------------------
+```
+
+## How it works
+
+Cutting a feature from a clickable page is cheap. Cutting it from finished code is not. So MVP moves the decision to the front.
+
+**Features first.** superlite writes an MVP plan organised around features. It opens with a diagram of how the product is used, in the form that fits it: a screen wireframe for a web app, a command tree and a sample session for a CLI, an endpoint table for an API. Each feature has an id, a size, a priority and a recommendation to keep it or leave it out.
+
+**A prototype that is a spec.** superlite builds one self-contained HTML file with fake data. It holds no product code, needs no build step and makes no network call. Its side panel lists the features and tasks with an in or out toggle, a priority order, notes, and a time and cost estimate. Cutting a feature removes it from the mock and updates the estimate.
+
+<FileTree>
+- .superlite/mvp/
+  - mock.html the mock fragment superlite writes
+  - prototype.html the page you open, checked by `superlite-cli mvp_check`
+  - mvp-feedback.json what Save feedback writes
+- docs/plans/
+  - 2026-11-12-habit-tracker.mvp.md the feature plan
+</FileTree>
+
+**Your reply approves, the button does not.** Save feedback only writes `mvp-feedback.json`. A browser page cannot reach into your project, so you pick the folder, and superlite looks in the project first and in Downloads second. The approval is your reply in chat. After it, superlite writes the task plan from your kept features and lint gates it, as in [plan and approval](/superlite/run/plan-and-approval/). You are not asked again.
+
+**Build.** [Agents](/superlite/run/parallel-build/) are sized to the load. Cut features go under "Out of scope" and the [report](/superlite/run/report/) lists them. With the AI [orchestrator](/superlite/run/orchestrators/) superlite checks the prototype itself, logs a ruling and does not stop.
+
+## Example: a habit tracker
+
+```text
+you        /superlite:mvp A habit tracker where I tick off my daily habits
+superlite  one question batch: who orchestrates, and whether to run the whole test suite at finish
+you        human, affected tests only
+superlite  writes docs/plans/<date>-habit-tracker.mvp.md: usage diagram, then F1 Add a habit, F2 Tick today, F3 Streak chart
+superlite  builds .superlite/mvp/prototype.html and checks it, then shows the page
+superlite  open it, edit it, press Save feedback, then reply approve
+you        (in the browser) cut F3, move F2 above F1, press Save feedback
+you        approve
+superlite  reads mvp-feedback.json, writes the task plan, F3 under "Out of scope"
+superlite  builds F1 and F2, reviews, fixes, tests
+superlite  report: time and cost, and the features left out: F3 Streak chart
+```
+
+## Good to know
+
+- Prototype code is never copied into your project. It is a spec for behavior. The one exception is a web target where your feedback keeps it as the frontend's starting file. superlite then converts the page to the plan's framework.
+- Otherwise `.superlite/mvp/` is deleted at finish.
+- Features you add in the panel are marked unreviewed for the final review.
+- After approval, a change of scope becomes a logged ruling, and `superlite-cli finish` lists it under "Changed from the approved plan".
+- The run works in its own [session](/superlite/sessions/sessions/). The prototype stays in `.superlite/mvp/`, away from your project code. To change code that already exists, use the [Feature flow](/superlite/flows/feature/).

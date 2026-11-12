@@ -1,0 +1,105 @@
+---
+title: "Regular flow"
+description: "Size the request, plan it, build it in parallel, review it and fix it."
+sidebar:
+  order: 2
+---
+
+import { Tabs, TabItem } from "@astrojs/starlight/components";
+
+:::tip[TL;DR]
+Use Regular to build something when you do not need a prototype first. You get a plan, code built by agents side by side, reviewed and fixed, and a report with time and cost. Nothing is committed.
+:::
+
+```text
+ REGULAR
+ ------------------------------------------------------------------------------
+  [1 ASK]
+      v
+  [2 SIZE]
+      v
+  [3 PLAN]
+      v
+  [4 APPROVE]
+      v
+  [5 GATE]
+      v
+  [6 BUILD]
+      |
+      +-----------+-----------+
+      v           v           v
+  [Haiku]     [Sonnet]    [Sonnet]
+  3 tasks     3 tasks     2 tasks
+      |           |           |
+      +-----------+-----------+
+      v
+  [7 REVIEW + TEST]
+      v
+  [8 FINAL REVIEW]
+      v
+  [9 FIX]
+      v
+  [10 REPORT]
+ ------------------------------------------------------------------------------
+  1  ASK      You say what you want.
+  2  SIZE     Trivial, bounded or large. Large gets one batch of questions.
+  3  PLAN     The design and the task plan. Human mode adds a review plan.
+  4  APPROVE  Human mode: you approve before anything runs. AI mode: skipped.
+  5  GATE     Lint checks the plan. Only stable tasks go out.
+  6  BUILD    Agents run side by side, sized to the load. Haiku: mechanical.
+              Sonnet: the rest.
+  7  REVIEW   Reviewers fix their own findings. Tests run in the background.
+  8  FINAL    One fresh reviewer reads the packet and tiers the findings.
+  9  FIX      Fixers by tier (Sonnet, Sonnet high, Opus), then tests again.
+  10 REPORT   Time and cost, projected vs actual. Nothing is committed.
+ ------------------------------------------------------------------------------
+```
+
+## How it works
+
+Regular is the default build path. The other build flows add a step in front of it: a prototype you try ([MVP](/superlite/flows/mvp/), [Feature](/superlite/flows/feature/)).
+
+**Size first.** superlite sorts your request into trivial, bounded or large. A trivial change is just done, after a yes in chat if you approve plans. A bounded change gets a short design in chat. A large request gets one batch of questions (up to four) and one document that holds the design and the task plan. Sizing keeps a one-line change away from a full plan, and a big project away from guesses.
+
+**Gate before agents.** Lint checks the task plan. Only stable tasks go out. The rest wait with a reason. A plan that looks fine on paper does not send agents off in the wrong direction. See [plan and approval](/superlite/run/plan-and-approval/).
+
+**Then the build.** [Agents](/superlite/run/parallel-build/) run side by side. Haiku takes mechanical work and Sonnet takes the rest. Reviewers fix their own findings while tests run in the background. One fresh reviewer reads the whole packet and ranks what is left by tier, and fixers take those by tier. [Reviews and fixes](/superlite/run/reviews-and-fixes/) explains the tiers.
+
+The last step is the [report](/superlite/run/report/): time and cost, projected against actual.
+
+<Tabs>
+  <TabItem label="Human orchestrator">
+    You read a plain-language review plan and reply with any clear approval. Nothing is linted or dispatched before that reply.
+  </TabItem>
+  <TabItem label="AI orchestrator">
+    The approve step is skipped. superlite plans, lints, dispatches and rules on open choices itself. Choose this when you are away.
+  </TabItem>
+</Tabs>
+
+[Orchestrators](/superlite/run/orchestrators/) covers the choice in full.
+
+## Example: a REST API for a bookshelf
+
+The folder is empty, so you ask for a build with a mode.
+
+```text
+you        /superlite:start regular Build a REST API for a bookshelf, with tests
+superlite  one question batch: who orchestrates, and the few design choices a large request needs
+you        human. SQLite is fine, no auth
+superlite  opens a session on its own branch, superlite/sessions/<topic>
+superlite  writes docs/plans/<date>-<topic>.review.md: plain words, diagrams, rough time and cost
+superlite  Reply approve to start, or tell me what to change
+you        looks good, go ahead
+superlite  writes the task plan, lint splits stable tasks from waiting ones, agents start
+superlite  package reviewers fix their findings, final review, fixers by tier, tests again
+superlite  report: time and cost, projected vs actual
+```
+
+Your folder now holds the new code, uncommitted. When you ship, superlite asks once whether to commit to the session branch or leave the work uncommitted.
+
+## Good to know
+
+- Nothing is committed during the run. Finished tasks are saved as hidden checkpoints, not as commits on your branch.
+- Both modes stop for destructive, outward or security-sensitive actions: a push, a merge, a publish.
+- The run works on its own [session](/superlite/sessions/sessions/) branch, so your current branch stays as it was.
+- Watch the run in `.superlite/`: `progress.md` has the rulings and the log.
