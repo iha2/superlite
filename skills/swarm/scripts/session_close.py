@@ -12,6 +12,7 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
+import base  # noqa: E402
 import session_archive as A  # noqa: E402
 import run_archive  # noqa: E402
 import session_wip as W  # noqa: E402
@@ -21,6 +22,14 @@ from session_registry import (  # noqa: E402
     branch_for, branch_owner, current_branch, drop_stashes, find_row, git, hub_root, in_progress, now_ms,
     owned_worktree, park_run_state, paths_text, read, registry_lock, restore_run_state, row_base, run_entries,
     same, session_stashes, set_run, start_dir, store_path, untracked_files, untracked_gate, validate_slug, write)
+
+def learn_sync(live: Path) -> None:  # O(sync) advisory: fold the run into the lessons before it is archived
+    try:
+        import learn
+        learn.sync(live, final=True, status="finished")
+    except base.advisory_errors():
+        pass
+
 
 def cmd_close(a) -> int:  # O(tree)
     slug = validate_slug(a.slug)
@@ -106,6 +115,7 @@ def _close_host(root: Path, reg: dict, row: dict, slug: str, host: Path, a) -> i
     wip = None
     if not _discard_sandbox(live, row, root):
         return 2
+    learn_sync(live)
     try:
         with Journal() as j:
             j.step("save the work")
@@ -156,6 +166,7 @@ def _close_owned(root: Path, reg: dict, row: dict, slug: str, a) -> int:
     wip = None
     if not _discard_sandbox(live, row, root):
         return 2
+    learn_sync(live)
     try:
         with Journal() as j:
             j.step("save the work")
@@ -223,6 +234,7 @@ def _close_adopted(root: Path, reg: dict, row: dict, slug: str) -> int:
     before = copy.deepcopy(reg)
     if not _discard_sandbox(live, row, root):
         return 2
+    learn_sync(live)
     try:
         with Journal() as j:
             j.step("park the run files")

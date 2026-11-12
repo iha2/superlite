@@ -611,7 +611,7 @@ def test_run_tests_writes_summary_packet_can_read(tmp_path):
     proj = project(tmp_path, "pass", "fail")
     r = run("run_tests", "--full", cwd=proj)
     assert r.returncode == 1, r.stdout + r.stderr
-    summary = proj / ".superlite" / "test-summary.json"
+    summary = proj / ".superlite" / "tests" / "summary.json"
     d = json.loads(summary.read_text(encoding="utf-8"))
     assert (d["passed"], d["failed"], d["skipped"], d["mode"]) == (3, 1, 1, "full")
     assert len(d["failures"]) == 1 and d["failures"][0].startswith("test_fail.py::test_broken")
@@ -625,7 +625,7 @@ def test_run_tests_writes_summary_packet_can_read(tmp_path):
 
 def test_run_tests_summary_on_fast_green_and_on_pytest_failure(tmp_path):
     proj = project(tmp_path, "pass")
-    summary = proj / ".superlite" / "test-summary.json"
+    summary = proj / ".superlite" / "tests" / "summary.json"
     assert run("run_tests", "--fast", "test_pass.py", cwd=proj).returncode == 0
     d = json.loads(summary.read_text(encoding="utf-8"))
     assert (d["passed"], d["failed"], d["mode"], d["failures"]) == (2, 0, "fast", [])

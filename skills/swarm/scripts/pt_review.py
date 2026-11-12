@@ -141,7 +141,7 @@ def build_parser() -> argparse.ArgumentParser:
             sp.add_argument("--probes")
             sp.add_argument("--out")
             sp.add_argument("--max-tokens", type=int, default=20000)
-            sp.add_argument("--tests", help="test summary JSON (default: the run folder's test-summary.json)")
+            sp.add_argument("--tests", help="test summary JSON (default: the run folder's tests/summary.json)")
             sp.add_argument("--base", help="git ref for the diff stat and source excerpts (default: the root commit)")
         else:
             sp.add_argument("--seam", help="Ta,Tb: run parts 1-3 for that seam")

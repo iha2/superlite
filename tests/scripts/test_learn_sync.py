@@ -1,0 +1,280 @@
+"""learn.py: sync, note, spawn and main, against the real lessons_store, lessons_score and learn_signals."""
+from __future__ import annotations
+
+import ast
+import json
+import sys
+from pathlib import Path
+
+import pytest
+
+SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "swarm" / "scripts"
+sys.path.insert(0, str(SCRIPTS))
+import base  # noqa: E402
+import learn  # noqa: E402
+import lessons_store as lessons  # noqa: E402
+
+
+def jl(path, *rows, raw=None):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as fh:
+        for r in rows:
+            fh.write(json.dumps(r) + "\n")
+        if raw:
+            fh.write(raw)
+
+
+@pytest.fixture
+def env(tmp_path, monkeypatch):
+    """A checkout folder (not a git repo), its run dir, and an isolated history home."""
+    repo = tmp_path / "repo"
+    sl = repo / ".superlite"
+    sl.mkdir(parents=True)
+    home = tmp_path / "home"
+    monkeypatch.setenv("SUPERLITE_HOME", str(home))
+    tasks: dict = {}
+    monkeypatch.setattr(learn, "_tasks", lambda _sl, _plan: tasks)
+    monkeypatch.setattr(learn, "_history_rows", lambda _plan, _sl, run: [
+        {"v": 1, "run": run, "task": tid, "first_time_pass": t.get("first_time_pass"),
+         "rework_cost": t.get("rework_cost", 0), "cost_usd": t.get("cost_usd", 0)} for tid, t in sorted(tasks.items())])
+    return type("Env", (), {"sl": sl, "hub": sl, "home": home, "tasks": tasks, "repo": repo})()
+
+
+def sync(e, run="r1", plan=None, **kw):
+    return learn.sync(e.sl, plan, run, **kw)
+
+
+def store(e):
+    return lessons.load(e.hub)
+
+
+def inc(e, ctx="assert fails"):
+    jl(e.sl / "incidents.jsonl", {"file": "skills/x/y.py", "kind": "test-failure", "context": ctx})
+
+
+def hist(e):
+    p = e.home / "history.jsonl"
+    return [json.loads(x) for x in p.read_text().splitlines()] if p.exists() else []
+
+
+def test_incident_becomes_pitfall(env):
+    inc(env)
+    sync(env)
+    les = next(iter(store(env)["lessons"].values()))
+    assert les["kind"] == "pitfall" and les["module"] == "skills/x" and les["text"] == "avoid: assert fails"
+    assert les["sources"] == ["r1:incidents.jsonl:0+0"]
+
+
+def test_two_runs_admit_and_second_sync_empty(env):
+    inc(env)
+    sync(env, "r1")
+    inc(env)
+    ev = sync(env, "r2")
+    assert len(ev) == 1 and ev[0].startswith("admitted L-")
+    assert sync(env, "r2") == []
+
+
+def test_practices_from_first_time_pass(env):
+    env.tasks["T1"] = {"owns": ["skills/x/a.py"], "first_time_pass": True,
+                       "changed": ["skills/x/a.py", "skills/x/test_a.py"], "tests_run": ["test_a.py"]}
+    sync(env, plan="p.md")
+    texts = sorted(x["text"] for x in store(env)["lessons"].values())
+    assert texts == ["do: change skills/x/a.py with skills/x/test_a.py", "do: run test_a.py"]
+    assert all(x["kind"] == "practice" for x in store(env)["lessons"].values())
+
+
+def test_no_practice_when_module_has_finding(env):
+    env.tasks["T1"] = {"owns": ["skills/x/a.py"], "first_time_pass": True, "changed": ["skills/x/a.py"],
+                       "tests_run": ["t.py"]}
+    jl(env.sl / "review-findings.jsonl", {"file": "skills/x/a.py", "problem": "p", "category": "state"})
+    sync(env, plan="p.md")
+    assert [x["kind"] for x in store(env)["lessons"].values()] == ["pitfall"]
+
+
+def test_fix_note_verified(env):
+    (env.sl / "fixes").mkdir()
+    (env.sl / "fixes" / "F-T2-1.md").write_text(
+        "# F-T2-1 · tier 1 · round 1 · FIXED\nFile: skills/x/y.py\nCause: bad path\nFix: use state.path\n")
+    (env.sl / "fixes" / "F-T2-2.md").write_text(
+        "# F-T2-2 · tier 1 · round 1 · NOT_FIXED\nFile: skills/x/y.py\nCause: c\nFix: f\n")
+    ev = sync(env)
+    les = list(store(env)["lessons"].values())
+    assert len(les) == 1 and les[0]["kind"] == "fix" and les[0]["text"] == "do: use state.path (was: bad path)"
+    assert les[0]["status"] == "cached" and ev[0].startswith("admitted")
+
+
+def test_learned_row_key_is_tag(env):
+    learn.note(env.sl, "r1", "T1", "pairing", "a.py goes with test_a.py")
+    assert json.loads((env.sl / "learned.jsonl").read_text()) == {
+        "v": 1, "run": "r1", "task": "T1", "tag": "pairing", "text": "a.py goes with test_a.py"}
+    sync(env)
+    les = next(iter(store(env)["lessons"].values()))
+    assert les["key"] == "pairing" and les["text"] == "a.py goes with test_a.py"
+    assert lessons.lesson_id("practice", ".", "pairing") in store(env)["lessons"]
+
+
+def test_outbox_only_for_hooks_and_mismatches(env):
+    jl(env.sl / "incidents.jsonl",
+       {"kind": "rule-block", "agent": "a", "tool": "Bash", "command": "rm /secret/x"},
+       {"kind": "rule-block", "agent": "a", "tool": "Bash", "command": "rm y"},
+       {"kind": "rule-rewrite", "agent": "a", "tool": "Edit", "target": "/home/u/f"})
+    jl(env.sl / "metrics.jsonl", {"ev": "launch", "agent_id": "a1", "model": "claude-opus-5-5"})
+    (env.sl / "dispatch.json").write_text(json.dumps({"a1": "sonnet"}))
+    sync(env)
+    out = env.home / "learn" / "outbox.jsonl"
+    rows = [json.loads(x) for x in out.read_text().splitlines()]
+    assert {(r["signal"], r.get("tool"), r.get("count")) for r in rows if r["signal"] != "model-mismatch"} == \
+        {("hook-block", "Bash", 2), ("hook-rewrite", "Edit", 1)}
+    assert any(r["signal"] == "model-mismatch" and r["requested"] == "sonnet" and r["ran"] == "opus" for r in rows)
+    assert all(r["run"] == "r1" for r in rows)
+    blob = json.dumps(rows)
+    assert "/secret" not in blob and "/home" not in blob and str(env.repo) not in blob
+    assert store(env)["lessons"] == {}
+    sync(env)
+    assert len(out.read_text().splitlines()) == len(rows)
+
+
+def test_partial_line_waits(env):
+    jl(env.sl / "incidents.jsonl", raw='{"file": "skills/x/y.py", "kind": "k", "context": "c"')
+    sync(env)
+    assert store(env)["lessons"] == {}
+    with open(env.sl / "incidents.jsonl", "a") as fh:
+        fh.write("}\n")
+    sync(env)
+    assert len(store(env)["lessons"]) == 1
+
+
+def test_crash_between_store_save_and_watermark(env):
+    inc(env)
+    env.tasks["T1"] = {"owns": ["skills/x/y.py"], "first_time_pass": True, "changed": []}
+    jl(env.sl / "incidents.jsonl", {"kind": "rule-block", "tool": "Bash"})
+    sync(env, plan="p.md")
+    (env.hub / "learn-state.json").unlink()  # watermark lost, store and history kept
+    sync(env, plan="p.md")
+    assert all(len(x["sources"]) == len(set(x["sources"])) == 1 for x in store(env)["lessons"].values())
+    assert len(hist(env)) == 1
+    assert len((env.home / "learn" / "outbox.jsonl").read_text().splitlines()) == 1
+
+
+def test_history_newest_outcome_wins(env):
+    env.tasks["T1"] = {"owns": ["skills/x/y.py"], "first_time_pass": False, "rework_cost": 2, "cost_usd": 1}
+    sync(env, plan="p.md", status="unfinished")
+    sync(env, plan="p.md", status="unfinished")
+    assert len(hist(env)) == 1
+    env.tasks["T1"] = {"owns": ["skills/x/y.py"], "first_time_pass": True, "rework_cost": 0, "cost_usd": 1}
+    sync(env, plan="p.md", status="finished")
+    rows = hist(env)
+    assert len(rows) == 2 and rows[-1]["first_time_pass"] is True and rows[-1]["status"] == "finished"
+    assert rows[-1]["repository"] and rows[-1]["findings"] == 0
+    assert store(env)["modules"]["skills/x"]["r1"] == {"tasks": 1, "ftp": 1}
+
+
+def test_delivery_hit_newest_outcome(env):
+    inc(env)
+    sync(env, "r1")
+    inc(env)
+    sync(env, "r2")
+    lid = next(iter(store(env)["lessons"]))
+    jl(env.sl / "deliveries.jsonl", {"run": "r2", "task": "T1", "agent": "implementer", "lessons": [lid]})
+    env.tasks["T1"] = {"owns": ["skills/x/y.py"], "first_time_pass": False}
+    sync(env, "r2", plan="p.md")
+    assert store(env)["lessons"][lid]["deliveries"] == [{"run": "r2", "task": "T1", "hit": False}]
+    env.tasks["T1"] = {"owns": ["skills/x/y.py"], "first_time_pass": True}
+    sync(env, "r2", plan="p.md")
+    sync(env, "r2", plan="p.md")
+    assert store(env)["lessons"][lid]["deliveries"] == [{"run": "r2", "task": "T1", "hit": True}]
+
+
+def test_pitfall_not_hit_when_key_found(env):
+    jl(env.sl / "review-findings.jsonl", {"file": "skills/x/y.py", "problem": "p", "category": "state"})
+    sync(env, "r1")
+    jl(env.sl / "review-findings.jsonl", {"file": "skills/x/y.py", "problem": "p", "category": "state"})
+    sync(env, "r2")
+    lid = next(iter(store(env)["lessons"]))
+    jl(env.sl / "deliveries.jsonl", {"run": "r2", "task": "T1", "lessons": [lid]})
+    env.tasks["T1"] = {"owns": ["skills/x/y.py"], "first_time_pass": True}
+    sync(env, "r2", plan="p.md")
+    assert store(env)["lessons"][lid]["deliveries"][0]["hit"] is False
+
+
+def test_no_plan_ok(env):
+    """A sync without a plan keeps the outcomes an earlier plan sync recorded."""
+    env.tasks["T1"] = {"owns": ["skills/x/y.py"], "first_time_pass": True}
+    sync(env, plan="p.md")
+    inc(env)
+    sync(env)
+    assert store(env)["modules"]["skills/x"]["r1"] == {"tasks": 1, "ftp": 1}
+    assert len(hist(env)) == 1 and len(store(env)["lessons"]) == 1
+
+
+def test_final_prints_summary(env, capsys):
+    inc(env)
+    sync(env, "r1", final=True)
+    inc(env)
+    sync(env, "r2", final=True)
+    assert capsys.readouterr().out.splitlines() == [
+        "learn: admitted 0, evicted 0, proven 0", "learn: admitted 1, evicted 0, proven 0"]
+
+
+def test_run_id_from_current_run(env):
+    (env.sl / "current-run.json").write_text(json.dumps(
+        {"id": "20261112-000000-a", "topic": "t", "slug": "s", "started_at": "2026-11-12T00:00:00Z"}))
+    inc(env)
+    learn.sync(env.sl)
+    assert next(iter(store(env)["lessons"].values()))["runs"] == ["20261112-000000-a"]
+
+
+def test_changed_files_from_checkpoint(tmp_path):
+    base.git("init", "-q", cwd=tmp_path)
+    base.git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "base", cwd=tmp_path)
+    (tmp_path / "a.py").write_text("x\n")
+    (tmp_path / "test_a.py").write_text("y\n")
+    base.git("add", "a.py", "test_a.py", cwd=tmp_path)
+    base.git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "x", cwd=tmp_path)
+    sha = base.git("rev-parse", "HEAD", cwd=tmp_path).stdout.strip()
+    sl = tmp_path / ".superlite"
+    sl.mkdir()
+    (sl / "progress.md").write_text(f"- checkpoint T1 {sha[:10]} title\n")
+    assert learn._checkpoint_shas(sl) == {"T1": sha[:10]}
+    assert learn._changed(sl, sha[:10]) == ["a.py", "test_a.py"]
+    assert learn._changed(sl, "deadbeef") == []
+    assert learn._changed(tmp_path / "nowhere" / ".superlite", sha) == []
+
+
+def test_spawn_detached(env, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(base, "spawn_background", lambda argv, log: seen.update(argv=argv, log=log) or 1)
+    learn.spawn(env.sl, "plan.md")
+    assert seen["argv"][1:] == [str(Path(learn.__file__).resolve()), "sync", "--plan", "plan.md"]
+    assert seen["log"] == env.repo / ".superlite" / "learn.log"
+
+    def boom(argv, log):
+        raise OSError("no")
+    monkeypatch.setattr(base, "spawn_background", boom)
+    learn.spawn(env.sl)  # never raises
+
+
+def test_main_sync_note_and_errors(env, capsys):
+    sl = str(env.sl)
+    assert learn.main(["note", "--sl", sl, "--run", "r1", "--task", "T1", "--tag", "test", "--text", "x"]) == 0
+    assert learn.main(["sync", "--sl", sl, "--run", "r1"]) == 0
+    (env.hub / "lessons.json").write_text("{not json")
+    assert learn.main(["sync", "--sl", sl, "--run", "r1"]) == 0
+
+
+def test_main_sync_without_args(env, monkeypatch):
+    monkeypatch.chdir(env.repo)
+    assert learn.main(["sync"]) == 0
+
+
+def test_no_network_imports():
+    banned = {"socket", "urllib", "http", "requests", "ftplib", "smtplib", "ssl"}
+    for f in (SCRIPTS / "learn.py", SCRIPTS / "learn_signals.py", SCRIPTS / "lessons_store.py", SCRIPTS / "lessons.py"):
+        for node in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
+            names = [a.name for a in node.names] if isinstance(node, ast.Import) else \
+                [node.module or ""] if isinstance(node, ast.ImportFrom) else []
+            assert not {n.split(".")[0] for n in names} & banned, f.name
+
+
+def test_version_from_manifest():
+    assert learn._version() == json.loads((SCRIPTS.parents[2] / ".claude-plugin" / "plugin.json").read_text())["version"]

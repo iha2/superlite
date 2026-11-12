@@ -47,7 +47,7 @@ def config(tmp_path, **kw):
 
 
 def summary(tmp_path):
-    return json.loads((tmp_path / ".superlite" / "test-summary.json").read_text(encoding="utf-8"))
+    return json.loads((tmp_path / ".superlite" / "tests" / "summary.json").read_text(encoding="utf-8"))
 
 
 def resolved(tmp_path, *fast):
@@ -123,7 +123,7 @@ def test_exit_code_fallback_for_a_runner_without_junit(tmp_path):
     assert cp.returncode == 1, cp.both
     s = summary(tmp_path)
     assert s["mode"] == "fast" and s["failed"] >= 1 and s["failures"] == ["-::TestSlug: failed"]
-    log = (tmp_path / ".superlite" / "test-output.log").read_text(encoding="utf-8")
+    log = (tmp_path / ".superlite" / "tests" / "output.log").read_text(encoding="utf-8")
     assert "--- FAIL: TestSlug" in log
 
 

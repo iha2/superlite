@@ -271,6 +271,15 @@ def run_ids(sl_dir):  # O(files) + registry read; reserve the final id before hi
         return None, None, None
 
 
+def learn_sync(sl_dir, plan, rid):  # O(sync) advisory: fold the run into the lessons; same run id as history
+    try:
+        import base
+        import learn
+        learn.sync(sl_dir, plan, run=rid, status="finished", final=True)
+    except base.advisory_errors():
+        pass
+
+
 def archive_run(root, sl_dir, slug, plan, rid, reserved=None):  # O(files); fail open, only the ledger's own run folder is archived
     """Move the run's files into `<hub>/.superlite/runs/<id>`; None when nothing moved or it failed."""
     if root.name != state.DIR_NAME or rid is None:
@@ -299,6 +308,7 @@ def _finish_locked(a, root, sl_dir):  # O(R*w + I*w)
         except (ImportError, OSError, ValueError, KeyError, TypeError):
             pass
         print(exclusive.release(sl_dir, lock_held=True))
+        learn_sync(sl_dir, a.plan, rid)
         dest = archive_run(root, sl_dir, slug, a.plan, rid, reserved)  # after release: the archive empties the folder
         if dest:
             print(f"run: archived to {_shown(dest)}")
@@ -325,7 +335,7 @@ def main(argv=None):  # O(R*w + I*w)
     root = Path(a.ledger).resolve().parent  # .superlite, or the ledger's directory
     sl_dir = root if root.name == state.DIR_NAME else root / state.DIR_NAME
     import run_tests  # no background test run may write live state after the archive: drain them first
-    live = sl_dir / "test-summary.json"
+    live = run_tests.summary_path(sl_dir)
     if run_tests.pending_runs(live) and run_tests.wait_all(live) != 0:
         print("finish: not archived; a background test run is still going. Run finish again when it ends.")
         return 2

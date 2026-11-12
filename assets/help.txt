@@ -125,6 +125,7 @@
    A plan must lint before work starts            lint --stable
    Same plan, same model tiers                    routing.json
    Every run is measured                          capture hooks, history
+   Each repo's lessons carry to the next run      lessons, learn
 
  ------------------------------------------------------------------------------
  WHERE THINGS ARE

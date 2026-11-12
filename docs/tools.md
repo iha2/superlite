@@ -19,11 +19,14 @@ A checkpoint is a hidden save of one task under `refs/superlite/*`. superlite ne
 | `checkpoint` | Checks scope, then records one or more tasks' owned files as hidden checkpoints (`refs/superlite/*`, branch untouched); `--dispatch` also prints the next dispatch |
 | `cost` | `line` (live host-reported spend, silent before the host reports usage) and `table` (per-agent cost table) |
 | `agent_specs` | `on`/`off`/`status` opt-in pre-impl specs (`.superlite/agent-specs.json`, env `SUPERLITE_AGENT_SPECS`); `open on\|off` toggles `open_in_harness` (opens plans and specs; `status` always shows it); `prefer on\|off` records the first-session global default in `$SUPERLITE_HOME/preferences.json`. Spec = done+why; plan = how |
-| `run_tests` | Runs the project's test command, with `--background`, then `--wait` for the summary. `--affected [--base REF] [--files F...]` runs only tests for changed files, `--full --reuse` skips a rerun when the working tree is unchanged since a green run; writes `.superlite/test-summary.json`. Probes for a hung run (see below) |
+| `run_tests` | Runs the project's test command, with `--background`, then `--wait` for the summary. `--affected [--base REF] [--files F...]` runs only tests for changed files, `--full --reuse` skips a rerun when the working tree is unchanged since a green run; writes `.superlite/tests/summary.json`. Probes for a hung run (see below) |
 | `testprobe` | The hung-test probe `run_tests` uses; run alone it prints the CPU-time method in use and the effective config |
 | `testcmd` | Resolves the project's test command: `.superlite/test-cmd.json`, else detection (npm, go, cargo, dotnet, Python) |
 | `pt_review` | `adapter`, `packet` (the final review packet) and `contract` (seam checks) |
 | `probe_run` | Parallel robustness probes with no agents (Python projects only) |
+| `lessons` | Per-repo lessons cache: `list`, `show ID`, `drop ID`, `pin ID`, `restore ID`, `report`, and `brief --task Tn [--plan P] [--agent implementer\|fixer\|reviewer\|drafter] [--file F] [--files P...]` (a short brief for an agent) |
+| `learn` | `sync [--plan P] [--final] [--status finished]` learns from the run's signals (advisory); `note --task Tn --tag T --text X` records a `Learned:` line. Anonymised rows go to an outbox under the superlite home |
+| `review_findings` | `record [--file F]` (stdin otherwise) stores the final reviewer's `file:line - problem - fix - tier N` lines in the run folder |
 | `incident` | Records and queries the shared incident log (file, line, context) |
 | `budget` | One line of elapsed time and cost against the plan's target and cap |
 | `metrics` | Per-task time, tokens and cost from `.superlite/metrics.jsonl` and agent transcripts |
@@ -56,7 +59,7 @@ flowchart LR
   L -- stable / fix --> W
   W --> B[run-widget-before.html]
   B --> BL["lint: widget: line<br/>before DISPATCH NOW"]
-  M[metrics.jsonl<br/>test-summary.json] --> R[report.write_report]
+  M[metrics.jsonl<br/>tests/summary.json] --> R[report.write_report]
   R --> RJ[report.json]
   RJ --> W2[run_widget]
   G[progress.md rulings<br/>checkpoints.json] --> W2
@@ -73,7 +76,7 @@ Both cards are HTML fragments on the host's CSS variables (so they follow light 
 
 A probe, not a watchdog: tests can legitimately run long, so by default it reports and never kills. While `run_tests` has a test process alive it samples every `sample_interval_s` (12 s) the output bytes of the process tree, its CPU time and its set of child processes, but only after the run passes 3x its expected time (`--expect SECONDS`, else env `SUPERLITE_TEST_EXPECT_S`, else the last green run of the same mode, else `fallback_expected_s`), so a normal run pays nothing. Two consecutive samples classify the run: output and children flat with CPU flat is `blocked` (deadlock or wait), with CPU busy `spinning` (likely an infinite loop), with CPU time unavailable `stalled`; anything else keeps waiting. A verdict that holds for `min_flat_s` is a SUSPECT HANG.
 
-On a suspect `run_tests` prints one `SUSPECT HANG: <VERDICT> <test file> - no output for Ns, cpu P% (...); process tree: ...` line, logs a `perf` incident, and writes a provisional `test-summary.json` (`failed: 1`, `running: true`) plus a `test-summary-<id>.suspect` sidecar for a background run. The run itself keeps going. `run_tests --wait` returns at once with exit 3 and that line when it sees the sidecar (`--patient` keeps waiting); a wait that runs out exits 2 with `TIMEOUT`. A killed or crashed test command is worded `process killed or crashed (exit -1)` (Windows exit 4294967295), never a bare exit code.
+On a suspect `run_tests` prints one `SUSPECT HANG: <VERDICT> <test file> - no output for Ns, cpu P% (...); process tree: ...` line, logs a `perf` incident, and writes a provisional `tests/summary.json` (`failed: 1`, `running: true`) plus a `test-summary-<id>.suspect` sidecar for a background run. The run itself keeps going. `run_tests --wait` returns at once with exit 3 and that line when it sees the sidecar (`--patient` keeps waiting); a wait that runs out exits 2 with `TIMEOUT`. A killed or crashed test command is worded `process killed or crashed (exit -1)` (Windows exit 4294967295), never a bare exit code.
 
 `config/testprobe.json` holds the thresholds (data, not code): `enabled`, `multiplier` (3), `fallback_expected_s` (60), `min_start_s` (30), `sample_interval_s` (12), `min_flat_s` (30), `cpu_idle_pct` (2), `cpu_busy_pct` (20), `auto_kill_blocked` (false), `auto_kill_after_s` (300), `hard_timeout_s` (0, off), `max_tree_listed` (8). `auto_kill_blocked` kills a BLOCKED run at about 0% CPU after `auto_kill_after_s`; `hard_timeout_s` kills any run after that many seconds and records a TIMEOUT. Both are process-tree kills by PID (`taskkill /T /F /PID`, or `killpg`), never by name. Override the file with env `SUPERLITE_TESTPROBE_CONFIG=<path>`, turn the probe off with `SUPERLITE_TESTPROBE=0`.
 

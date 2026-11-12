@@ -4,7 +4,7 @@
     report.py --plan PLAN.md [--dir .superlite] [--full | --json]
     report.py --list [--plans docs/plans]  |  --show NAME [--full]
 
-Actual: metrics.task_records / coordinator_record (agent transcripts), test-summary.json, incidents.jsonl.
+Actual: metrics.task_records / coordinator_record (agent transcripts), tests/summary.json (older archives: test-summary.json), incidents.jsonl, history (a trend line) and the lessons cache.
 Projected: `.superlite/projection.json`, saved by `plan_tools lint --stable` (a fixed forecast); without it the
 projection is recomputed from the plan as it is now, and the report says so. Projected wall-clock is the
 critical path of the task graph under the predictor's estimates (plan_tools.schedule_report: parse_taskgraph +
@@ -32,6 +32,9 @@ import metrics  # noqa: E402
 import plan_tools as pt  # noqa: E402
 import planfile  # noqa: E402
 import predict  # noqa: E402
+import history  # noqa: E402
+import lessons_store  # noqa: E402
+import run_tests  # noqa: E402
 import state  # noqa: E402
 
 PROJECTION = "projection.json"
@@ -155,7 +158,7 @@ def collect(plan_path, sl_dir) -> dict:  # O(M + B + n*(n + e))
         m = mix.setdefault(r["model"] or "unknown", {"tasks": 0, "cost_usd": 0.0})
         m["tasks"] += 1
         m["cost_usd"] += r["cost_usd"] + (r["rework_cost"] or 0)
-    tests = _read_json(sl / "test-summary.json")
+    tests = read_tests(sl)
     import finish
     incidents = finish.open_incidents(sl / "incidents.jsonl")
     ftp = [r["first_time_pass"] for r in rows if r["first_time_pass"] is not None]
@@ -185,8 +188,58 @@ def collect(plan_path, sl_dir) -> dict:  # O(M + B + n*(n + e))
         "quality": {"tests": tests, "first_time_pass": sum(1 for x in ftp if x), "first_time_n": len(ftp),
                     "rework_dispatches": sum(r["rework_dispatches"] for r in rows), "open_incidents": len(incidents)},
         "tasks": per,
+        "trend": trend_for(sl), "lessons": lessons_for(sl),
         "cost_table": cost.est_summary(sl),  # additive: est agent table / cost-summary.json
     }
+
+
+def read_tests(sl):  # O(file) the run folder's test summary (new tests folder, else an old archive's root file)
+    return _read_json(run_tests.summary_path(sl))
+
+
+def _pct(num, den) -> int | None:  # O(1)
+    return round(100 * num / den) if den else None
+
+
+def trend_line(rows: list, last_n: int = 10) -> str:  # O(R)
+    """First-time pass, findings and rework cost share over the last runs, oldest first; "" with no rows."""
+    runs: dict = {}
+    for r in rows:
+        runs.setdefault(r.get("run"), []).append(r)
+    runs = dict(list(runs.items())[-last_n:])
+    if not runs:
+        return ""
+    ftp, fnd, rw = [], [], []
+    for rs in runs.values():
+        known = [r["first_time_pass"] for r in rs if r.get("first_time_pass") is not None]
+        ftp.append(_pct(sum(1 for x in known if x), len(known)))
+        fnd.append(sum(r["findings"] for r in rs if isinstance(r.get("findings"), (int, float))))
+        extra = sum((r.get("rework_cost") or 0) + (r.get("fixer_cost") or 0) for r in rs)
+        rw.append(_pct(extra, sum((r.get("cost_usd") or 0) for r in rs)))
+    chain = lambda xs, u="": " -> ".join("n/a" if x is None else f"{x}{u}" for x in xs)  # noqa: E731
+    n = len(runs)
+    return (f"trend (last {n} run{'s' if n != 1 else ''}): first-time pass {chain(ftp, '%')}; "
+            f"findings {chain(fnd)}; rework+fixer cost {chain(rw, '%')}")
+
+
+def lessons_line(store: dict) -> str:  # O(n) "lessons: N cached, M proven", "" when none are cached
+    cached = [x for x in store.get("lessons", {}).values() if x.get("status") == "cached"]
+    return f"lessons: {len(cached)} cached, {sum(1 for x in cached if x.get('proven'))} proven" if cached else ""
+
+
+def trend_for(sl) -> str:  # O(R) advisory: "" when history or the repository id is unreadable
+    try:
+        repo = history.repository_id(sl)
+        return trend_line([r for r in history.unique_rows(history.read_rows()) if r.get("repository") == repo])
+    except base.advisory_errors():
+        return ""
+
+
+def lessons_for(sl) -> str:  # O(n) advisory
+    try:
+        return lessons_line(lessons_store.load(lessons_store.hub_dir(Path(sl).resolve().parent)))
+    except base.advisory_errors():
+        return ""
 
 
 def _num(v, fmt) -> str:
@@ -251,7 +304,7 @@ def render(c) -> str:  # O(n)
             out.append(f"| {r['agent']} | {r['model']} | {r['wall_min']} | {r['tokens']} | {r['usd']} |")
         out.append(f"| totals |  | {ct.get('wall_min')} | {ct.get('tokens')} | {ct.get('usd')} |")
         out.append(f"cost source: {ct.get('source', 'est')}")
-    out += ["", "takeaway: " + takeaway(c)]
+    out += [""] + [x for x in (c.get("trend"), c.get("lessons")) if x] + ["takeaway: " + takeaway(c)]
     return "\n".join(out) + "\n"
 
 
@@ -272,6 +325,7 @@ def summary(c, path) -> str:  # O(n)
     miss = next((r for r in c["tasks"] if r["delta"]["abs"] is not None), None)
     if miss:
         out.append(f"  biggest miss {miss['task']}: predicted {_num(miss['pred_min'], '.1f')} actual {miss['actual_min']:.1f} min {_delta(miss['delta'])}")
+    out += [f"  {x}" for x in (c.get("trend"), c.get("lessons")) if x]
     out += ["  takeaway: " + takeaway(c), f"Full report: {path}"]
     return "\n".join(out) + "\n"
 

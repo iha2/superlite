@@ -51,7 +51,7 @@ def _legacy(checkout: Path, st: dict) -> None:
 
 def drain_tests(sl: Path) -> bool:
     import run_tests
-    live = Path(sl) / "test-summary.json"
+    live = run_tests.summary_path(sl)
     if run_tests.pending_runs(live) and run_tests.wait_all(live) != 0:
         print("proto: tests still running; retry when they finish", file=sys.stderr)
         return False

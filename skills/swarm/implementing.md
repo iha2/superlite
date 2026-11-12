@@ -21,6 +21,7 @@ After DONE you stay available. A message may hold any number of tasks (a batch):
 
 Report, at most 200 words per task (a batch: one block per task, headed by its id), no file contents or logs:
 - Status: DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT or BLOCKED
+- Optional `Learned: <setup|test|pairing|convention>: <one line>` for a durable repo fact the next run should know
 - Files changed (paths only)
 - Test command and its result line
 - Concerns or open questions

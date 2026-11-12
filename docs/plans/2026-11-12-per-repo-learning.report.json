@@ -1,0 +1,289 @@
+{
+ "projection_note": "projection: fixed forecast saved at lint 2026-11-12T04:21:08 (plan edited since)",
+ "headline": {
+  "wall_min": {
+   "projected": 8.024,
+   "actual": 28.243
+  },
+  "cost_usd_agents": {
+   "projected": 1.418661,
+   "actual": 3.019551
+  },
+  "task_min": {
+   "projected": 20.927,
+   "actual": 53.487
+  },
+  "agents": {
+   "projected": 11,
+   "actual": 8
+  }
+ },
+ "feature": null,
+ "cost_split": {
+  "agents_usd": 2.773179,
+  "rework_usd": 0.246372,
+  "coordinator_usd": 23.929869,
+  "total_usd": 26.94942
+ },
+ "concurrency": {
+  "peak": 4,
+  "projected_peak": 5
+ },
+ "critical_path": {
+  "actual": [
+   "T4",
+   "T7",
+   "T8"
+  ],
+  "projected": [
+   "T3",
+   "T5",
+   "T7",
+   "T8"
+  ],
+  "projected_min": 8.024
+ },
+ "model_mix": {
+  "haiku": {
+   "tasks": 1,
+   "cost_usd": 0.029335
+  },
+  "unknown": {
+   "tasks": 1,
+   "cost_usd": 0.035532
+  },
+  "sonnet": {
+   "tasks": 10,
+   "cost_usd": 2.9546839999999994
+  }
+ },
+ "coordinator_cost_by_model": {
+  "opus": 23.929869
+ },
+ "quality": {
+  "tests": {
+   "passed": 40,
+   "failed": 0,
+   "skipped": 0,
+   "seconds": 76.9,
+   "mode": "fast",
+   "failures": [],
+   "skipped_tests": [],
+   "run_id": "20261112T044917-34291-2ebaca"
+  },
+  "first_time_pass": 0,
+  "first_time_n": 0,
+  "rework_dispatches": 2,
+  "open_incidents": 41
+ },
+ "tasks": [
+  {
+   "task": "T9",
+   "model": "sonnet",
+   "pred_min": 2.608,
+   "actual_min": 8.038,
+   "delta": {
+    "abs": 5.4303,
+    "pct": 208.2
+   },
+   "cost_usd": 0.634095,
+   "first_time_pass": null
+  },
+  {
+   "task": "T4",
+   "model": "sonnet",
+   "pred_min": 2.035,
+   "actual_min": 6.793,
+   "delta": {
+    "abs": 4.7583,
+    "pct": 233.8
+   },
+   "cost_usd": 0.413875,
+   "first_time_pass": null
+  },
+  {
+   "task": "T11",
+   "model": "sonnet",
+   "pred_min": 2.204,
+   "actual_min": 6.557,
+   "delta": {
+    "abs": 4.3527,
+    "pct": 197.5
+   },
+   "cost_usd": 0.201802,
+   "first_time_pass": null
+  },
+  {
+   "task": "T1",
+   "model": null,
+   "pred_min": 1.475,
+   "actual_min": 0.0,
+   "delta": {
+    "abs": -1.475,
+    "pct": -100.0
+   },
+   "cost_usd": 0.035532,
+   "first_time_pass": null
+  },
+  {
+   "task": "T7",
+   "model": "sonnet",
+   "pred_min": 1.887,
+   "actual_min": 2.708,
+   "delta": {
+    "abs": 0.8213,
+    "pct": 43.5
+   },
+   "cost_usd": 0.393933,
+   "first_time_pass": null
+  },
+  {
+   "task": "T8",
+   "model": "sonnet",
+   "pred_min": 2.913,
+   "actual_min": 3.463,
+   "delta": {
+    "abs": 0.5503,
+    "pct": 18.9
+   },
+   "cost_usd": 0.521496,
+   "first_time_pass": null
+  },
+  {
+   "task": "T5",
+   "model": "sonnet",
+   "pred_min": 1.671,
+   "actual_min": 2.03,
+   "delta": {
+    "abs": 0.359,
+    "pct": 21.5
+   },
+   "cost_usd": 0.139456,
+   "first_time_pass": null
+  },
+  {
+   "task": "T3",
+   "model": "sonnet",
+   "pred_min": 1.553,
+   "actual_min": 1.842,
+   "delta": {
+    "abs": 0.2887,
+    "pct": 18.6
+   },
+   "cost_usd": 0.081756,
+   "first_time_pass": null
+  },
+  {
+   "task": "T6",
+   "model": "sonnet",
+   "pred_min": 1.671,
+   "actual_min": 1.832,
+   "delta": {
+    "abs": 0.1607,
+    "pct": 9.6
+   },
+   "cost_usd": 0.216491,
+   "first_time_pass": null
+  },
+  {
+   "task": "T0",
+   "model": "haiku",
+   "pred_min": null,
+   "actual_min": 15.397,
+   "delta": {
+    "abs": null,
+    "pct": null
+   },
+   "cost_usd": 0.029335,
+   "first_time_pass": null
+  },
+  {
+   "task": "T12",
+   "model": "sonnet",
+   "pred_min": null,
+   "actual_min": 4.56,
+   "delta": {
+    "abs": null,
+    "pct": null
+   },
+   "cost_usd": 0.302351,
+   "first_time_pass": null
+  },
+  {
+   "task": "T13",
+   "model": "sonnet",
+   "pred_min": null,
+   "actual_min": 0.267,
+   "delta": {
+    "abs": null,
+    "pct": null
+   },
+   "cost_usd": 0.049429,
+   "first_time_pass": null
+  }
+ ],
+ "cost_table": {
+  "source": "est",
+  "usd": 3.1977,
+  "tokens": 10753708,
+  "wall_min": 29908001.8533,
+  "rows": [
+   {
+    "agent": "a452431e1e84fb6cf",
+    "model": "sonnet",
+    "wall_min": 4.2433,
+    "tokens": 425221,
+    "usd": 0.2108
+   },
+   {
+    "agent": "a5319b61568fe9366",
+    "model": "sonnet",
+    "wall_min": 13.2479,
+    "tokens": 3331689,
+    "usd": 0.9364
+   },
+   {
+    "agent": "a6df12fd7c2117760",
+    "model": "haiku",
+    "wall_min": 15.4115,
+    "tokens": 1066538,
+    "usd": 0.0293
+   },
+   {
+    "agent": "a9efee59680e62081",
+    "model": "sonnet",
+    "wall_min": 29907936.1401,
+    "tokens": 0,
+    "usd": 0.0
+   },
+   {
+    "agent": "a9f642f24f2069167",
+    "model": "sonnet",
+    "wall_min": 17.0965,
+    "tokens": 1836350,
+    "usd": 0.6157
+   },
+   {
+    "agent": "ac1709099454b0314",
+    "model": "sonnet",
+    "wall_min": 14.7446,
+    "tokens": 4020980,
+    "usd": 1.1917
+   },
+   {
+    "agent": "af4a47a4325afb1df",
+    "model": "sonnet",
+    "wall_min": 0.4792,
+    "tokens": 38893,
+    "usd": 0.0355
+   },
+   {
+    "agent": "afebc6d08828e6014",
+    "model": "opus",
+    "wall_min": 0.4902,
+    "tokens": 34037,
+    "usd": 0.1783
+   }
+  ]
+ }
+}

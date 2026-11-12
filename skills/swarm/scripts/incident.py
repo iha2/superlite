@@ -6,7 +6,7 @@ import os
 import sys
 import time
 from collections import Counter
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import state  # noqa: E402
@@ -48,8 +48,8 @@ def _die(msg):
 
 
 def make_entry(file, line, context, agent=None, kind=None, resolution=None,  # O(c)
-               confidence=None):
-    """One validated log entry; ValueError on bad input."""
+               confidence=None, date=None, run=None, module=None, category=None):
+    """One validated log entry; ValueError on bad input. date defaults to today, module to the file's parent dir."""
     if line < 0:
         raise ValueError("line must be >= 0")
     if kind is not None and kind not in KINDS:
@@ -67,6 +67,11 @@ def make_entry(file, line, context, agent=None, kind=None, resolution=None,  # O
         if val is not None:
             entry[key] = val
     entry["time"] = time.strftime("%H:%M:%S")
+    entry["date"] = date or time.strftime("%Y-%m-%d")
+    entry["module"] = module if module is not None else PurePosixPath(_norm(file)).parent.as_posix()
+    for key, val in (("run", run), ("category", category)):
+        if val is not None:
+            entry[key] = val
     return entry
 
 
@@ -91,14 +96,15 @@ def append(log, entries):  # O(total c) + one open, lock and fsync for the whole
 def cmd_add(a):  # O(c) + file append O(c) + fsync
     try:
         entry = make_entry(a.file, a.line, a.context, a.agent, a.kind, a.resolution,
-                           a.confidence)
+                           a.confidence, run=a.run, category=a.category)
     except ValueError as e:
         _die(str(e))
     append(a.log, [entry])
     return 0
 
 
-def _read(log):  # O(B)
+def read_all(log):  # O(B)
+    """Every JSON object row of the log, hook rows (no file/line) included."""
     path = Path(log)
     if not path.exists():
         return []
@@ -112,9 +118,13 @@ def _read(log):  # O(B)
                 e = json.loads(ln)
             except json.JSONDecodeError:
                 continue
-            if isinstance(e, dict) and "file" in e and "line" in e:
+            if isinstance(e, dict):
                 out.append(e)
     return out
+
+
+def _read(log):  # O(B)
+    return [e for e in read_all(log) if "file" in e and "line" in e]
 
 
 def _norm(p):  # O(len(path))
@@ -145,12 +155,12 @@ def cmd_hotspots(a):  # O(B + i log i)
 
 
 def cmd_summary(a):  # O(B + i + d log d + f)
-    entries = _read(a.log)
+    entries = read_all(a.log)
     print(f"total: {len(entries)}")
     for name in ("kind", "resolution"):
         c = Counter(e.get(name, "-") for e in entries)
         print(f"{name}: " + ", ".join(f"{k}={v}" for k, v in sorted(c.items())))
-    c = Counter(_norm(e["file"]) for e in entries)
+    c = Counter(_norm(e["file"]) for e in entries if "file" in e)
     print("files: " + ", ".join(f"{k}={v}" for k, v in c.most_common(10)))
     return 0
 
@@ -166,6 +176,8 @@ def main(argv=None):
     s.add_argument("--kind")
     s.add_argument("--resolution")
     s.add_argument("--confidence")
+    s.add_argument("--run")
+    s.add_argument("--category")
     s.add_argument("--log", default=DEFAULT_LOG)
     s.set_defaults(fn=cmd_add)
     s = sub.add_parser("hotspots")

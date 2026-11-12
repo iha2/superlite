@@ -4,7 +4,7 @@
                               [--max-tokens 20000] [--tests F] [--base REF]
 
 Reads probe failures from the run folder's probes/probe-results.json and the test summary from
-test-summary.json (written by run_tests.py) by default. Incidents are read straight from the
+tests/summary.json (written by run_tests.py) by default. Incidents are read straight from the
 JSONL format, never through incident.py. Review Focus section lines: `- <package>: deep, numeric`.
 """
 from __future__ import annotations
@@ -307,9 +307,14 @@ def source_excerpts(root: Path, ref: str | None, files: list[str],  # O(X) + one
     return "\n".join(out) or "- none (no changed hunks in the hot-spot files)"
 
 
+def _summary_in(sl: Path) -> Path:  # O(1) tests/summary.json, else an old archive's root test-summary.json
+    new, old = sl / "tests" / "summary.json", sl / "test-summary.json"
+    return old if not new.exists() and old.exists() else new
+
+
 def read_test_summary(path: Path) -> tuple[str, int]:  # O(file size) total
     try:  # the pointer names the newest background run; its summary may not be written yet
-        ptr = json.loads(path.with_name("test-summary.latest").read_text(encoding="utf-8"))
+        ptr = json.loads((path.parent / "latest" if path.name == "summary.json" else path.with_name("test-summary.latest")).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         ptr = None
     if isinstance(ptr, dict) and isinstance(ptr.get("summary"), str) and not Path(ptr["summary"]).exists():
@@ -416,7 +421,7 @@ def cmd_packet(a: argparse.Namespace) -> int:  # O(S*B + I*B + I log I) + git/py
     log = Path(a.log) if a.log else sl / "incidents.jsonl"
     probes = Path(a.probes) if a.probes else sl / "probes"
     out = Path(a.out) if a.out else sl / "review-packet.md"
-    tests = Path(a.tests) if a.tests else sl / "test-summary.json"
+    tests = Path(a.tests) if a.tests else _summary_in(sl)
     cap = int(a.max_tokens * CHARS_PER_TOKEN)
 
     items, mismatches, n_checked = _collect(plan, root, log, probes)

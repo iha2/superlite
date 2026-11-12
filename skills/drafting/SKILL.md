@@ -28,6 +28,7 @@ Save to `docs/plans/YYYY-MM-DD-<topic>.md`. When called from `superlite:inventin
 
 In both modes, write for the split:
 
+0. **Lessons.** Before sizing tasks, run `superlite-cli lessons brief --agent drafter --files <paths the plan will touch>` and honour what it prints.
 1. **One Write, written as if in chunks.** Write the plan whole, in one Write, but order it as if it were written in chunks, so the first tasks stand alone as a stable prefix: the header, Global constraints and the main diagram with its `%% taskgraph`; then, optionally, a Wave 0 skeleton task (`Kind: mechanical`, `Model: haiku`; if you omit it, `superlite-cli wave0` builds the skeleton brief from your Produces lines and Global constraints, so state the language and test command there); then the root and producer tasks (no incoming edges), each with exact `Produces` lines, the correct `Kind` and a size inside the band; then the consumers, each after its producers. Every block is complete, with no placeholders, so lint can mark it stable and the prefix dispatches before any later task is fixed.
 2. **Producers first, with exact `Produces` lines.** Lint resolves each `Consumes` against some task's `Produces` line, so write producers before their consumers: exact name, parameter types and return type. A consumer is then stable the moment it's written, even while its producer is still building or being fixed.
 3. **Finish each task block before starting the next.** No placeholders, and every field filled. A half-written task is a fix task, and so is everything with an edge to it.
