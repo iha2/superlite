@@ -233,9 +233,9 @@ FAST = {"enabled": True, "multiplier": 3, "fallback_expected_s": 0.1, "min_start
         "min_flat_s": 0.8, "cpu_idle_pct": 2, "cpu_busy_pct": 20, "auto_kill_blocked": False,
         "auto_kill_after_s": 1.0, "hard_timeout_s": 0, "max_tree_listed": 8}
 
-PARENT = """import subprocess, sys, time
+PARENT = """import os, subprocess, sys, time
 c = subprocess.Popen([sys.executable, "-c", {child!r}])
-open("child.pid", "w").write(str(c.pid))
+open("child.pid", "w").write(f"{{c.pid}} {{os.getpid()}}")
 {body}
 """
 
@@ -263,8 +263,19 @@ def rt(proj, env, *args, timeout=60):
                           encoding="utf-8", timeout=timeout)
 
 
-def alive(pid):
-    return pid in tp.read_table()[0]
+def child_alive(proj, wait_s=5.0):
+    """True while the grandchild hang.py started is still running, polled up to wait_s for a kill to land.
+    On Windows the pid counts only while its recorded parent is still hang.py: Windows reuses a freed pid within
+    moments, and keeps the creator as the parent of an orphan. POSIX reparents an orphan, so there the pid alone counts."""
+    pid, parent = map(int, (proj / "child.pid").read_text().split())
+    end = time.monotonic() + wait_s
+    while True:
+        e = tp.read_table()[0].get(pid)
+        if e is None or (os.name == "nt" and e[0] != parent):
+            return False
+        if time.monotonic() >= end:
+            return True
+        time.sleep(0.1)
 
 
 def read_json(p):
@@ -292,8 +303,7 @@ def test_spinning_run_is_reported_and_hard_timeout_kills_the_whole_tree(tmp_path
     perf = [e for e in inc if e.get("kind") == "perf"]
     assert len(perf) == 1 and "SUSPECT HANG spinning" in perf[0]["context"] and perf[0]["file"] == "tests/markdown.test.ts"
     assert not (proj / ".superlite" / "test-summary.suspect").exists()   # a foreground run leaves no sidecar
-    time.sleep(0.3)
-    assert not alive(int((proj / "child.pid").read_text()))                # the grandchild died with the tree
+    assert not child_alive(proj)                                            # the grandchild died with the tree
 
 
 def _watch_py(code, **cfg):
@@ -338,8 +348,7 @@ def test_blocked_run_wait_returns_early_and_auto_kill_is_by_pid(tmp_path):
     assert "killed the process tree" in s["failures"][0] and "exit code" not in s["failures"][0]
     final = read_json(published)
     assert final["verdict"] == "SUSPECT HANG" and "running" not in final   # the real summary replaced the provisional one
-    time.sleep(0.3)
-    assert not alive(int((proj / "child.pid").read_text()))
+    assert not child_alive(proj)
 
 
 def test_wait_reports_suspect_and_timeout_from_a_sidecar(tmp_path):
