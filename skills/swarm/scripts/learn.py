@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Learning sync for the per-repo learning loop: a run folder's signals become lessons, history rows and outbox rows.
 
-    learn.py sync [--plan P] [--final] [--status finished|unfinished]   fold new signals into the lessons cache
+    learn.py sync [--plan P] [--final] [--status finished|unfinished] [--run ID] [--detached]   fold new signals in
     learn.py note --task Tn --tag setup|test|pairing|convention --text "..."   record a `Learned:` line
 
 Reads incidents, review findings, fix notes, learned lines, launches and (with --plan, or the plan an earlier sync of
@@ -397,9 +397,23 @@ def _write_history(sl: Path, plan: str | None, run: str, status: str, repo: str,
     history.record_rows(rows, sl)
 
 
-def sync(sl, plan=None, run=None, status: str = "unfinished", final: bool = False) -> list:  # O(input) per sync
+def _stale(memo: dict, sl: Path, run: str, final: bool, detached: bool) -> bool:  # O(1)
+    """True for a sync that must do nothing, checked under the learn-state lock the final sync also holds: a
+    non-final sync of a run a final sync already sealed (it would turn `finished` rows back to `unfinished`), or a
+    detached checkpoint sync whose originating run is no longer the live one (finish renamed or archived it, or a
+    new run began): it would read an emptied folder, erase the run's module totals or recreate live state."""
+    if final:
+        return False
+    if f"{_ck(sl)}|{run}" in memo["final"]:
+        return True
+    return detached and (run_archive.read_current_run(sl) or {}).get("id") != run
+
+
+def sync(sl, plan=None, run=None, status: str = "unfinished", final: bool = False,
+         detached: bool = False) -> list:  # O(input) per sync
     """One sync, start to end under the hub's learn-state lock: concurrent syncs (detached checkpoint syncs of
-    several worktrees) run one after another, each reading the offsets and plans the previous one saved."""
+    several worktrees) run one after another, each reading the offsets and plans the previous one saved. A final
+    sync seals its run; later non-final and detached syncs of it are no-ops (`_stale`)."""
     sl = Path(sl)
     hub, home = lessons_store.hub_dir(sl.parent), history.home()
     run = run or (run_archive.read_current_run(sl) or {}).get("id") or "unknown"
@@ -411,6 +425,9 @@ def sync(sl, plan=None, run=None, status: str = "unfinished", final: bool = Fals
         memo = memo if isinstance(memo, dict) else {}
         memo.setdefault("offsets", {})
         memo.setdefault("plans", {})
+        memo.setdefault("final", {})
+        if _stale(memo, sl, run, final, detached):
+            return memo
         p = _plan_for(memo, sl, run, plan)
         inp = _gather(sl, memo, run, p)
 
@@ -430,6 +447,8 @@ def sync(sl, plan=None, run=None, status: str = "unfinished", final: bool = Fals
         saved = lessons_store.update(hub, fn)
         _write_history(sl, p, run, status, ctx["repo"], inp)
         _publish(hub, home / "learn" / "outbox.jsonl", saved)
+        if final and run != "unknown":
+            memo["final"][f"{_ck(sl)}|{run}"] = 1
         return memo  # watermarks last: saved only after everything above succeeded
 
     base.locked_update(hub / "learn-state.json", cycle)
@@ -440,9 +459,12 @@ def sync(sl, plan=None, run=None, status: str = "unfinished", final: bool = Fals
 
 
 def spawn(sl, plan=None) -> None:  # O(1)
-    """Start `learn sync` detached; never raises."""
-    argv = [sys.executable, str(Path(__file__).resolve()), "sync"] + (["--plan", str(plan)] if plan else [])
+    """Start `learn sync` detached, bound to the run live now (`--run`); never raises. The worker gives up under
+    the learn-state lock once that run was sealed by finish's final sync or is no longer the live run."""
     try:
+        run = (run_archive.read_current_run(Path(sl)) or {}).get("id")
+        argv = [sys.executable, str(Path(__file__).resolve()), "sync", "--detached"] + \
+            (["--run", run] if run else []) + (["--plan", str(plan)] if plan else [])
         base.spawn_background(argv, log=state.path(Path(sl).parent, "learn.log"))
     except (*base.advisory_errors(), subprocess.SubprocessError):
         pass
@@ -461,6 +483,7 @@ def _parser() -> argparse.ArgumentParser:  # O(1)
     s.add_argument("--status", default="unfinished", choices=("finished", "unfinished"))
     s.add_argument("--sl", help="run dir (default: the current checkout's)")
     s.add_argument("--run", help="run id (default: the current run)")
+    s.add_argument("--detached", action="store_true", help="a checkpoint's background sync: no-op once its run ended")
     n = sub.add_parser("note", help="record a `Learned:` line for a task")
     n.add_argument("--task", required=True)
     n.add_argument("--tag", required=True, choices=("setup", "test", "pairing", "convention"))
@@ -475,7 +498,7 @@ def main(argv=None) -> int:  # O(input)
     sl = Path(a.sl) if a.sl else state.run_dir(Path.cwd())
     try:
         if a.cmd == "sync":
-            sync(sl, a.plan, a.run, a.status, a.final)
+            sync(sl, a.plan, a.run, a.status, a.final, a.detached)
         else:
             run = a.run or (run_archive.read_current_run(sl) or {}).get("id") or "unknown"
             note(sl, run, a.task, a.tag, a.text)

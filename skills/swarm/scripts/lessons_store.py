@@ -93,6 +93,19 @@ def _retire(les: dict) -> None:  # O(1)
     les["proven"] = False
 
 
+def _unadmissible(les: dict) -> bool:  # O(1)
+    """An unverified, unpinned practice that no longer meets admission (two runs): a revised task outcome
+    retracted the run that admitted it. Pitfalls and verified fixes keep evidence nothing retracts."""
+    return les["kind"] == "practice" and not les["verified"] and not les["pinned"] and len(les["runs"]) < 2
+
+
+def _demote(les: dict) -> None:  # O(1)
+    les["status"] = "candidate"
+    les["proven"] = False
+    les["admitted_run"] = None
+    les["baseline"] = None
+
+
 def _make_room(store: dict, events: list) -> bool:  # O(n)
     """True when a cache slot is free; at capacity, evict the lowest-rank unpinned lesson past grace, or False."""
     if len(_cached(store)) < CAP:
@@ -111,10 +124,15 @@ def step(store: dict) -> list:  # O(n log n) in lessons
     events: list = []
     ri = store["run_index"]
     lessons = store["lessons"]
-    # 1. score cached lessons, evict the useless, flag the proven
+    # 1. demote cached practices whose admission evidence was retracted, score the rest, evict the useless,
+    #    flag the proven
     for lid in sorted(lessons):
         les = lessons[lid]
         if les["status"] != "cached":
+            continue
+        if _unadmissible(les):
+            _demote(les)
+            events.append(f"demoted {lid}")
             continue
         les["u"] = sc.usefulness(les["deliveries"],
                                  les["baseline"] if les["baseline"] is not None else 0.5, ri)

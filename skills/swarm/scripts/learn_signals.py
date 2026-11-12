@@ -152,12 +152,15 @@ def model_mismatches(launches: list, tiers: dict) -> list:  # O(n)
 
 
 def outbox_row(signal: str, repo_id: str, date: str, version: str, **fields) -> dict:  # O(1)
-    """An anonymised outbox row: hashed repo id plus allow-listed fields only."""
+    """An anonymised outbox row: hashed repo id plus allow-listed fields only. A run id carries the user's topic
+    slug (`20261112-045224-my-topic`), so `run` is an opaque hash of repo and run: stable, groups rows by run."""
     row = {"v": 1, "date": date, "repo": hashlib.sha256(repo_id.encode("utf-8")).hexdigest()[:16],
            "superlite": version, "signal": signal}
     for k in OUTBOX_FIELDS:
         if k in fields:
             row[k] = fields[k]
+    if "run" in row:
+        row["run"] = hashlib.sha256(f"run|{repo_id}|{row['run']}".encode("utf-8")).hexdigest()[:16]
     return row
 
 

@@ -82,6 +82,22 @@ def test_admit_two_runs_or_verified():
     assert s["lessons"][a]["admitted_run"] == "r2" and s["lessons"][a]["baseline"] == 0.5
 
 
+def test_retracted_practice_demoted_at_next_step():
+    """An admitted practice whose second run was retracted (revised outcome) leaves the cache at once,
+    not after three deliveries; verified fixes and pinned practices keep their slot."""
+    s = lessons.empty(); lessons.note_run(s, "r2")
+    a = mk(s, "a", kind="practice"); v = mk(s, "v", kind="practice", runs=("r1",), verified=True)
+    p = mk(s, "p", kind="practice"); lessons.step(s); lessons.control(s, p, "pin")
+    for lid in (a, p):
+        s["lessons"][lid]["runs"] = ["r1"]
+    assert lessons.step(s) == [f"demoted {a}"]
+    les = s["lessons"][a]
+    assert les["status"] == "candidate" and les["admitted_run"] is None and les["proven"] is False
+    assert s["lessons"][v]["status"] == "cached" and s["lessons"][p]["status"] == "cached"
+    s["lessons"][a]["runs"] = ["r1", "r3"]
+    assert lessons.step(s) == [f"admitted {a}"]
+
+
 def test_step_twice_no_new_events():
     s = lessons.empty(); a = mk(s); lessons.step(s)
     deliver(s, a, 3, -0.05)

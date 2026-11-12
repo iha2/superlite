@@ -139,3 +139,47 @@ def test_readers_prefer_new_layout_when_latest_exists(tmp_path):
     new = tmp_path / "tests" / "summary.json"
     assert run_tests.summary_path(tmp_path) == new and review_packet._summary_in(tmp_path) == new
     assert review_packet.read_test_summary(review_packet._summary_in(tmp_path))[0].startswith("- tests: running")
+
+
+def _legacy_run(sl, run_id, point):
+    done = sl / f"test-summary-{run_id}.json"
+    done.write_text(json.dumps({"passed": 1, "failed": 0, "skipped": 0, "run_id": run_id}), encoding="utf-8")
+    if point:
+        (sl / "test-summary.latest").write_text(json.dumps({"id": run_id, "summary": str(done)}), encoding="utf-8")
+
+
+def test_wait_finds_legacy_runs(tmp_path):
+    sl = tmp_path / ".superlite"
+    sl.mkdir()
+    _legacy_run(sl, "old1", point=True)
+    assert run("run_tests", "--wait", "--timeout", "5", cwd=tmp_path).returncode == 0
+    _legacy_run(sl, "old2", point=False)
+    assert run("run_tests", "--wait", "--run", "old2", "--timeout", "5", cwd=tmp_path).returncode == 0
+
+
+def test_arbitrary_relative_summary_paths_never_crash(tmp_path):
+    proj = project(tmp_path, "pass")
+    assert run_tests.superlite_run_id("runs/result.json") == "" and run_tests.superlite_run_id("result.json") == ""
+    assert run_tests.superlite_run_id("tests/runs/x.json") == "" and run_tests.superlite_run_id("tests/summary.json") == ""
+    r = run("run_tests", "--fast", "test_pass.py", "--summary", "runs/result.json", cwd=proj)
+    assert r.returncode == 0 and "IndexError" not in r.stderr, r.stderr
+    s = json.loads((proj / "runs" / "result.json").read_text(encoding="utf-8"))
+    assert s["passed"] > 0 and s["failed"] == 0
+
+
+def test_background_child_keeps_the_superlite_run_of_its_start(tmp_path, monkeypatch):
+    proj = project(tmp_path, "pass")
+    sl = proj / ".superlite"
+    sl.mkdir()
+    (sl / "current-run.json").write_text(json.dumps({"id": "run-B"}), encoding="utf-8")  # a newer superlite run replaced run-A
+    out = sl / "tests" / "runs" / "x.json"
+    r = run("run_tests", "--fast", "test_pass.py", "--summary", out, "--run-id", "x", "--sl-run", "run-A", cwd=proj)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(out.read_text(encoding="utf-8"))["superlite_run"] == "run-A"
+    spawned = []
+    monkeypatch.chdir(proj)
+    monkeypatch.setattr(run_tests.base, "spawn_background", lambda cmd, log: spawned.append(cmd))
+    monkeypatch.setattr(run_tests, "SL_RUN", "run-A")
+    args = run_tests.argparse.Namespace(summary=str(sl / "tests" / "summary.json"))
+    run_tests.start_background(args, ["--fast", "test_pass.py", "--background"])
+    assert spawned[0][spawned[0].index("--sl-run") + 1] == "run-A"

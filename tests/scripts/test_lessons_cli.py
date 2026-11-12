@@ -121,7 +121,7 @@ def test_report_sections(tmp_path):
     assert "what works here:" in out
     assert "r1" in out and "r2" in out  # unfinished run included
     assert "50%" in out  # r1 first-time pass 1/2
-    assert "12%" in out  # r1 rework share 1/8
+    assert "11%" in out  # r1 rework share 1/(8+1)
     assert "U 0.30" in out and "deliveries 5" in out and "baseline 0.50" in out
     assert "hits 5" in out
 
@@ -278,3 +278,29 @@ def test_report_counts_revised_outcome_once(tmp_path):
             dict(base, first_time_pass=True, status="complete")]
     out = lessons_cli.report(tmp_path / "hub", hist)
     assert "- r1: first-time pass 100%, findings 1," in out
+
+
+def test_first_time_pass_counts_known_outcomes_only(tmp_path):
+    base = {"v": 1, "repository": "r", "run": "r1", "findings": 0, "rework_cost": 0, "cost_usd": 1.0}
+    hist = [dict(base, task="T1", first_time_pass=True), dict(base, task="T2", first_time_pass=None)]
+    assert "- r1: first-time pass 100%," in lessons_cli.report(tmp_path / "hub", hist)
+    hist = [dict(base, task="T1", first_time_pass=None)]
+    assert "- r1: first-time pass n/a," in lessons_cli.report(tmp_path / "hub", hist)
+
+
+def test_trend_orders_by_run_start_and_cost_share(tmp_path):
+    old, new = "20260101-100000-a", "20260102-100000-b"
+    base = {"v": 1, "repository": "r", "task": "T", "first_time_pass": True, "findings": 0, "cost_usd": 1.0}
+    hist = [dict(base, run=new, task="T1", rework_cost=0), dict(base, run=old, task="T2", rework_cost=2.0)]
+    out = lessons_cli.report(tmp_path / "hub", hist)
+    assert out.index(old) < out.index(new)
+    assert f"- {old}: first-time pass 100%, findings 0, rework+fixer cost 66%" in out  # 2 / (1 + 2)
+    assert old not in lessons_cli.report(tmp_path / "hub", hist, last_n=1)
+
+
+def test_brief_matches_directory_and_glob_ownership(tmp_path):
+    hub, sl = tmp_path / "hub", tmp_path / "sl"
+    seed(hub, module="src/pkg")
+    for owns in (["src/"], ["src"], ["src/**"], ["src/pkg/*.py"]):
+        assert "src/pkg" in lessons_cli.brief(hub, sl, "r3", "T2", owns), owns
+    assert lessons_cli.brief(hub, sl, "r3", "T2", ["docs/", "other/**"]) == ""

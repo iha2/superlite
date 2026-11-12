@@ -21,7 +21,7 @@ def test_trend_line():
     rows = [row("r1", False, 4, 7, 3), row("r1", True, 0, 7, 0), row("r2", True, 2, 8, 2),
             row("r2", False, 0, 8, 0), row("r2", True, 0, 0, 0), row("r3", True, 1, 9, 1)]
     assert report.trend_line(rows) == ("trend (last 3 runs): first-time pass 50% -> 67% -> 100%; "
-                                       "findings 4 -> 2 -> 1; rework+fixer cost 21% -> 12% -> 11%")
+                                       "findings 4 -> 2 -> 1; rework+fixer cost 18% -> 11% -> 10%")
 
 
 def test_trend_last_n_and_empty():
@@ -51,3 +51,16 @@ def test_report_reads_new_summary(tmp_path):
     old.mkdir()
     (old / "test-summary.json").write_text(json.dumps({"passed": 2, "failed": 1}), encoding="utf-8")
     assert report.read_tests(old)["failed"] == 1
+
+
+def test_trend_orders_by_run_start_not_append_order():
+    old, new = "20260101-100000-a", "20260102-100000-b"
+    rows = [row(new, True, 5), row(old, False, 1), row(old, False, 1)]  # older run updated after the newer one
+    assert "findings 2 -> 5" in report.trend_line(rows)
+    assert "findings 5" in report.trend_line(rows, last_n=1) and "2 ->" not in report.trend_line(rows, last_n=1)
+
+
+def test_trend_cost_share_includes_fixer_spend():
+    rows = [row("r1", True, 0, cost=1.0, rework=1.0), dict(row("r1", True, 0, cost=1.0), fixer_cost=0.0)]
+    assert "rework+fixer cost 33%" in report.trend_line(rows)  # 1 / (2 + 1), not 1 / 2
+    assert "rework+fixer cost 67%" in report.trend_line([dict(row("r1", True, 0, cost=1.0), fixer_cost=2.0)])

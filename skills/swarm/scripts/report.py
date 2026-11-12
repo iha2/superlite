@@ -18,6 +18,7 @@ Prints a short summary (default) or the full text (--full); always writes the fu
 import argparse
 import hashlib
 import json
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -206,7 +207,8 @@ def trend_line(rows: list, last_n: int = 10) -> str:  # O(R)
     runs: dict = {}
     for r in rows:
         runs.setdefault(r.get("run"), []).append(r)
-    runs = dict(list(runs.items())[-last_n:])
+    stamp = lambda run: (re.match(r"\d{8}-\d{6}", str(run or "")) or [""])[0]  # noqa: E731
+    runs = dict(sorted(runs.items(), key=lambda kv: stamp(kv[0]))[-last_n:])  # by run start; stable without a stamp
     if not runs:
         return ""
     ftp, fnd, rw = [], [], []
@@ -215,7 +217,7 @@ def trend_line(rows: list, last_n: int = 10) -> str:  # O(R)
         ftp.append(_pct(sum(1 for x in known if x), len(known)))
         fnd.append(sum(r["findings"] for r in rs if isinstance(r.get("findings"), (int, float))))
         extra = sum((r.get("rework_cost") or 0) + (r.get("fixer_cost") or 0) for r in rs)
-        rw.append(_pct(extra, sum((r.get("cost_usd") or 0) for r in rs)))
+        rw.append(_pct(extra, extra + sum((r.get("cost_usd") or 0) for r in rs)))
     chain = lambda xs, u="": " -> ".join("n/a" if x is None else f"{x}{u}" for x in xs)  # noqa: E731
     n = len(runs)
     return (f"trend (last {n} run{'s' if n != 1 else ''}): first-time pass {chain(ftp, '%')}; "

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -24,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import history  # noqa: E402
 import lessons_score  # noqa: E402
 import lessons_store  # noqa: E402
+import next_tasks  # noqa: E402
 import plan_tools  # noqa: E402
 import run_archive  # noqa: E402
 import state  # noqa: E402
@@ -36,7 +38,7 @@ AGENTS = tuple(BUDGETS)
 def brief(hub: Path, sl: Path, run: str, task: str | None, owns: list, agent: str = "implementer") -> str:  # O(n log n) in lessons
     mods = {lessons_score.module_key(p) for p in owns}
     cached = [x for x in lessons_store.load(hub)["lessons"].values()
-              if x["status"] == "cached" and x["module"] in mods]
+              if x["status"] == "cached" and (x["module"] in mods or _owned(x["module"], owns))]
     chosen = lessons_score.select(cached, BUDGETS.get(agent, BUDGETS["implementer"]))
     if not chosen:
         return ""
@@ -48,11 +50,20 @@ def brief(hub: Path, sl: Path, run: str, task: str | None, owns: list, agent: st
     return HEADER + "".join(lessons_score.line(x) + "\n" for x in chosen)
 
 
-def _runs(rows: list, last_n: int) -> list:  # O(h)
+def _owned(module: str, owns: list) -> bool:  # O(len(owns)) a directory or glob owns files under the lesson's module
+    base = "" if module in (".", "") else module.rstrip("/") + "/"
+    return any(next_tasks.owns_match(base + leaf, owns) for leaf in ("x", "x.py"))
+
+
+_STAMP = re.compile(r"^\d{8}-\d{6}")
+
+
+def _runs(rows: list, last_n: int) -> list:  # O(h log h) oldest first by run start (id timestamp), not append order
     order: list = []
     for r in rows:
         if r.get("run") not in order:
             order.append(r.get("run"))
+    order.sort(key=lambda run: (_STAMP.match(str(run or "")) or [""])[0])  # stable: ids without a stamp keep append order
     return order[-last_n:] if last_n > 0 else []
 
 
@@ -69,12 +80,12 @@ def _lesson_row(les: dict) -> str:  # O(d) in deliveries
 
 
 def _trend_row(run: str, rows: list) -> str:  # O(h)
-    ftp = sum(1 for r in rows if r.get("first_time_pass"))
-    cost = sum(r.get("cost_usd") or 0 for r in rows)
-    rework = sum(r.get("rework_cost") or 0 for r in rows)
-    return (f"- {run}: first-time pass {_pct(ftp, len(rows))}, "
+    known = [r["first_time_pass"] for r in rows if r.get("first_time_pass") is not None]
+    build = sum(r.get("cost_usd") or 0 for r in rows)
+    rework = sum((r.get("rework_cost") or 0) + (r.get("fixer_cost") or 0) for r in rows)
+    return (f"- {run}: first-time pass {_pct(sum(1 for x in known if x), len(known))}, "
             f"findings {sum(r.get('findings') or 0 for r in rows)}, "
-            f"rework+fixer cost {_pct(rework, cost)}")
+            f"rework+fixer cost {_pct(rework, build + rework)}")
 
 
 def report(hub: Path, rows: list, last_n: int = 10) -> str:  # O(n + h)

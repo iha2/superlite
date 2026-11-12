@@ -193,7 +193,8 @@ def test_outbox_only_for_hooks_and_mismatches(env):
     assert {(r["signal"], r.get("tool"), r.get("count")) for r in rows if r["signal"] != "model-mismatch"} == \
         {("hook-block", "Bash", 2), ("hook-rewrite", "Edit", 1)}
     assert any(r["signal"] == "model-mismatch" and r["requested"] == "sonnet" and r["ran"] == "opus" for r in rows)
-    assert all(r["run"] == "r1" for r in rows) and len({r["id"] for r in rows}) == len(rows)
+    assert len({r["run"] for r in rows}) == 1 and "r1" not in {r["run"] for r in rows}
+    assert len({r["id"] for r in rows}) == len(rows)
     blob = json.dumps(rows)
     assert "/secret" not in blob and "/home" not in blob and str(env.repo) not in blob
     assert store(env)["lessons"] == {}
@@ -312,7 +313,7 @@ def test_spawn_detached(env, monkeypatch):
     seen = {}
     monkeypatch.setattr(base, "spawn_background", lambda argv, log: seen.update(argv=argv, log=log) or 1)
     learn.spawn(env.sl, "plan.md")
-    assert seen["argv"][1:] == [str(Path(learn.__file__).resolve()), "sync", "--plan", "plan.md"]
+    assert seen["argv"][1:] == [str(Path(learn.__file__).resolve()), "sync", "--detached", "--plan", "plan.md"]
     assert seen["log"] == env.repo / ".superlite" / "learn.log"
 
     def boom(argv, log):
@@ -467,3 +468,81 @@ def test_concurrent_syncs_keep_each_others_offsets(tmp_path, monkeypatch):
     threads[0].join(10)
     offsets = json.loads((hub / "learn-state.json").read_text())["offsets"]
     assert len([k for k in offsets if k.endswith("incidents.jsonl")]) == 2  # A's offsets survive B's save
+
+
+RID = "20261112-045224-my-topic"
+
+
+def _live(e, rid=RID):
+    (e.sl / "current-run.json").write_text(json.dumps(
+        {"id": rid, "topic": "my topic", "slug": "my-topic", "started_at": "2026-11-12T04:52:24"}))
+
+
+def _worker(e, monkeypatch, plan="p.md"):
+    """The argv a checkpoint's spawn would run, captured now (while the run is live), to be run later."""
+    seen = {}
+    monkeypatch.setattr(base, "spawn_background", lambda argv, log: seen.update(argv=argv) or 1)
+    learn.spawn(e.sl, plan)
+    return seen["argv"][2:] + ["--sl", str(e.sl)]
+
+
+def test_late_checkpoint_sync_after_final_keeps_finished_rows(env, monkeypatch, capsys):
+    """A detached sync spawned before finish but locked after its final sync must not rewrite `finished`."""
+    _live(env)
+    env.tasks["T1"] = {"owns": ["skills/x/a.py"], "first_time_pass": True}
+    argv = _worker(env, monkeypatch)
+    assert argv[:4] == ["sync", "--detached", "--run", RID]
+    learn.sync(env.sl, "p.md", RID, status="finished", final=True)
+    inc(env)
+    assert learn.main(argv) == 0
+    assert [r["status"] for r in hist(env)] == ["finished"]
+    assert store(env)["lessons"] == {}  # the worker folded nothing
+    learn.sync(env.sl, "p.md", RID)  # nor does any other non-final sync of the sealed run
+    assert [r["status"] for r in hist(env)] == ["finished"]
+
+
+def test_late_checkpoint_sync_after_archive_is_a_no_op(env, monkeypatch):
+    """After finish renames or archives the run, the worker reads no emptied folder and writes no live state."""
+    _live(env)
+    env.tasks["T1"] = {"owns": ["skills/x/a.py"], "first_time_pass": True}
+    argv = _worker(env, monkeypatch)
+    learn.sync(env.sl, "p.md", RID, status="finished", final=True)
+    for p in list(env.sl.iterdir()):  # the archive empties the live folder but the stationary learning files
+        if p.name not in ("lessons.json", "learn-state.json") and not p.name.endswith(".lock"):
+            p.unlink()
+    env.tasks["T1"] = {"owns": ["skills/x/a.py"], "first_time_pass": None}
+    before = sorted(p.name for p in env.sl.iterdir())
+    learn.main(argv)
+    assert store(env)["modules"]["skills/x"][RID] == {"tasks": 1, "ftp": 1}
+    assert sorted(p.name for p in env.sl.iterdir()) == before and len(hist(env)) == 1
+    _live(env, RID + "-2")  # finish renamed the run's id: the old id's worker is stale too
+    learn.main(argv)
+    assert RID + "-2" not in store(env)["run_index"]
+
+
+def test_detached_sync_of_the_live_run_still_folds(env, monkeypatch):
+    _live(env)
+    inc(env)
+    learn.main(_worker(env, monkeypatch))
+    assert next(iter(store(env)["lessons"].values()))["runs"] == [RID]
+
+
+def test_retracted_practice_is_demoted(env):
+    """r1 and a provisional r2 admit a practice; r2's revised outcome retracts r2, so it leaves the cache."""
+    t = {"owns": ["skills/x/a.py"], "first_time_pass": True, "changed": ["skills/x/a.py"], "tests_run": ["t.py"]}
+    env.tasks["T1"] = dict(t)
+    sync(env, "r1", plan="p.md")
+    sync(env, "r2", plan="p.md")
+    assert {x["status"] for x in store(env)["lessons"].values()} == {"cached"}
+    env.tasks["T1"] = dict(t, first_time_pass=False)
+    ev = sync(env, "r2", plan="p.md")
+    assert {x["status"] for x in store(env)["lessons"].values()} == {"candidate"}
+    assert [e.split()[0] for e in ev] == ["demoted"]
+
+
+def test_outbox_run_hides_topic_slug(env):
+    _live(env)
+    jl(env.sl / "incidents.jsonl", {"kind": "rule-block", "tool": "Bash"})
+    learn.sync(env.sl)
+    text = (env.home / "learn" / "outbox.jsonl").read_text()
+    assert "my-topic" not in text and "045224" not in text and json.loads(text)["run"]

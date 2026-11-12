@@ -131,5 +131,16 @@ def test_outbox_row_hashes_repo_and_drops_unlisted():
 
 def test_outbox_run_field():
     row = sig.outbox_row("hook-block", "/r", "d", "4.1.0", run="r1", tool="Bash", count=1)
-    assert row["run"] == "r1" and row["tool"] == "Bash" and row["count"] == 1
+    assert row["run"] != "r1" and len(row["run"]) == 16 and row["tool"] == "Bash" and row["count"] == 1
     assert row["signal"] == "hook-block" and row["superlite"] == "4.1.0"
+
+
+def test_outbox_run_is_opaque_and_stable():
+    """A real run id embeds the user's topic slug: the outbox keeps only a stable hash of it."""
+    rid = "20261112-045224-my-topic"
+    row = sig.outbox_row("hook-block", "/my/repo", "2026-11-12", "4.1.0", run=rid, tool="Bash", count=1)
+    blob = json.dumps(row)
+    assert "my-topic" not in blob and "topic" not in blob and "20261112" not in blob and "045224" not in blob
+    again = sig.outbox_row("model-mismatch", "/my/repo", "2026-11-13", "4.1.0", run=rid, requested="a", ran="b")
+    assert again["run"] == row["run"] and len(row["run"]) == 16
+    assert sig.outbox_row("hook-block", "/my/repo", "d", "v", run=rid + "-2")["run"] != row["run"]

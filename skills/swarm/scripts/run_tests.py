@@ -11,8 +11,7 @@ parse its junit XML or output, print one summary line.
 --base, default the last `- start <sha>` in the ledger, else HEAD; --files replaces git). The summary has
 mode "affected", selected, reason, changed_count, untested and tree; a whole-suite trigger runs everything
 (reason `full: <trigger>`), nothing selected is green with zero counts. Full and affected summaries carry `tree`
-(tree_id.tree_hash). --reuse skips the run when --summary is a green full run with the same tree
-(prints `reused: <path>`, exit 0).
+(tree_id.tree_hash). --reuse skips the run when --summary is a green full run with the same tree (prints `reused: <path>`, exit 0).
 
 Prints `passed failed skipped seconds` (errors count as failed). Each failing test becomes a `test-failure`
 incident; on a --full run each all-green test file becomes a `verified` incident (once per distinct entry). Appends
@@ -25,18 +24,17 @@ failed or none ran, 2 when pytest could not run.
 
 Hung-test probe (testprobe.py, thresholds in config/testprobe.json): once a run passes 3x its expected time
 (--expect, else the last green run of the same mode, else 60 s) it samples output bytes, tree CPU and child
-processes. Output and children flat with flat CPU is BLOCKED, with busy CPU SPINNING. That prints one
-`SUSPECT HANG: ...` line, logs a `perf` incident and writes ADDITIVE summary fields (`verdict`, `suspect_hang`,
-`running`); the run is never killed unless config says so. A killed or crashed run says so in `failures`
-(`process killed or crashed (exit -1)`, `TIMEOUT: ...`), never a bare exit code.
+processes. Output and children flat with flat CPU is BLOCKED, with busy CPU SPINNING: one `SUSPECT HANG: ...` line,
+a `perf` incident and ADDITIVE summary fields (`verdict`, `suspect_hang`, `running`); the run is never killed unless
+config says so. A killed or crashed run says so in `failures` (`process killed or crashed (exit -1)`, `TIMEOUT: ...`).
 
 --background starts a detached run of the same command, prints `wait: run_tests --wait --run <id>` then `summary: <path>` (last), and exits 0
 at once. Each background run gets its own summary file (`tests/runs/<id>.json`, with its .log, .done, .suspect)
 and the pointer `tests/latest` (atomic) names the newest run; a finished run also publishes its summary to --summary,
 unless a newer run has started. Every summary carries `"run_id"` (a foreground run makes one) and `"superlite_run"`
-(from current-run.json); --wait --run ID exits 2 with `run_tests: run id mismatch` when the file's run_id is not ID.
---wait blocks until the pointed run's own summary exists (an older summary never counts; --wait --run ID waits for run ID's own summary instead of the pointed one),
-prints it, and exits 0 green, 1 red, 2 on timeout (`TIMEOUT`) or when no background run was started, and 3 as
+(current-run.json when the run started; the background child keeps it); --wait --run ID exits 2 with `run_tests: run id mismatch`
+when the file's run_id is not ID. --wait blocks until the pointed run's own summary exists (an older summary never counts; --wait --run ID
+waits for run ID's own summary; runs begun before the tests folder, `test-summary.latest` / `test-summary-<id>.json`, are found too), prints it, and exits 0 green, 1 red, 2 on timeout (`TIMEOUT`) or when no background run was started, and 3 as
 soon as the probe reports a SUSPECT HANG (prints that line; the run keeps going; --patient waits on regardless).
 Stdlib only.
 """
@@ -65,7 +63,7 @@ SUMMARY_NAME, TESTS_DIR, OLD_SUMMARY = "summary.json", "tests", "test-summary.js
 DEFAULT_SUMMARY = f"{state.DIR_NAME}/{TESTS_DIR}/{SUMMARY_NAME}"
 POLL_SECONDS = 0.5
 DEFAULT_WAIT = 600.0
-RUN_ID = ""  # the id every summary this process writes carries (set in main)
+RUN_ID = SL_RUN = ""  # ids every summary this process writes carries: its run_tests id, the superlite run when it started (set in main)
 
 
 def summary_path(sl_dir):  # O(1) the tests folder summary, else an old archive's root test-summary.json
@@ -87,9 +85,13 @@ def run_summary_path(summary, run_id):
     return p.parent / "runs" / f"{run_id}.json" if in_tests_folder(p) else p.with_name(f"{p.stem}-{run_id}{p.suffix}")
 
 
+def legacy_summary(summary):  # O(1) the old root `test-summary.json` of a tests folder summary, else None
+    return Path(summary).parent.parent / OLD_SUMMARY if in_tests_folder(summary) else None
+
+
 def superlite_run_id(summary):  # O(file) the id in current-run.json above the tests folder, "" when none
-    p = Path(summary)
-    sl = p.parents[2] if p.parent.name == "runs" else p.parents[1] if in_tests_folder(p) else p.parent
+    p = Path(summary)  # only `<dir>/tests/runs/` and `<dir>/tests/` are special; .parent never raises
+    sl = p.parent.parent.parent if (p.parent.name, p.parent.parent.name) == ("runs", TESTS_DIR) else p.parent.parent if in_tests_folder(p) else p.parent
     try:
         return str(json.loads((sl / "current-run.json").read_text(encoding="utf-8")).get("id") or "")
     except (OSError, ValueError, AttributeError):
@@ -108,12 +110,16 @@ def atomic_write(path, text):  # O(len text) + file write
     tmp.replace(p)
 
 
-def read_pointer(summary):
-    try:
-        d = json.loads(pointer_path(summary).read_text(encoding="utf-8"))
-        return d if isinstance(d, dict) and d.get("id") else None
-    except (OSError, ValueError):
-        return None
+def read_pointer(summary):  # the new pointer, else the one of a run begun before the tests folder
+    old = legacy_summary(summary)
+    for f in (pointer_path(summary), *([pointer_path(old)] if old else [])):
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+            if isinstance(d, dict) and d.get("id"):
+                return d
+        except (OSError, ValueError):
+            pass
+    return None
 
 
 def new_run_id():  # O(1)
@@ -124,7 +130,7 @@ def start_background(a, argv):  # O(len argv) + one detached spawn
     run_id = new_run_id()
     mine = run_summary_path(a.summary, run_id).resolve()
     child = [sys.executable, str(Path(__file__).resolve()), *[x for x in argv if x != "--background"],
-             "--summary", str(mine), "--publish", str(Path(a.summary).resolve()), "--run-id", run_id]
+             "--summary", str(mine), "--publish", str(Path(a.summary).resolve()), "--run-id", run_id, "--sl-run", SL_RUN]
     atomic_write(pointer_path(a.summary), json.dumps({"id": run_id, "summary": str(mine), "started": time.time()}) + "\n")
     base.spawn_background(child, mine.with_suffix(".log"))
     print(f"wait: run_tests --wait --run {run_id}")
@@ -141,7 +147,6 @@ def pending_runs(summary):  # O(runs) background runs next to `summary` without 
 
 
 def wait_all(summary, timeout=None):  # O(timeout / POLL_SECONDS) polls -> 0 drained, 2 timed out
-    """Block until every background run started next to `summary` has finished all its writes (its done marker)."""
     limit = timeout if timeout is not None else DEFAULT_WAIT
     deadline = time.monotonic() + limit
     while (left := pending_runs(summary)) and time.monotonic() < deadline:
@@ -154,8 +159,7 @@ def wait_all(summary, timeout=None):  # O(timeout / POLL_SECONDS) polls -> 0 dra
     return 0
 
 
-def finished_summary(path):
-    """-> the parsed summary at `path`, or None while it is missing or still unreadable."""
+def finished_summary(path):  # the parsed summary at `path`, None while missing or unreadable
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -163,17 +167,19 @@ def finished_summary(path):
 
 
 def wait_background(a):  # O(timeout / POLL_SECONDS) polls
-    if a.run:  # exactly that run's own summary, whatever the pointer names
-        mine = run_summary_path(a.summary, a.run).resolve()
+    if a.run:  # exactly that run's own summary, whatever the pointer names (or its legacy-layout twin)
+        old = legacy_summary(a.summary)
+        cands = [run_summary_path(a.summary, a.run).resolve(), *([run_summary_path(old, a.run).resolve()] if old else [])]
     else:
         ptr = read_pointer(a.summary)
         if not ptr:
             print("run_tests: no background run to wait for", file=sys.stderr)
             return 2
-        mine = Path(ptr["summary"])
+        cands = [Path(ptr["summary"])]
     limit = a.timeout if a.timeout is not None else DEFAULT_WAIT
     deadline = time.monotonic() + limit
     while True:
+        mine = next((c for c in cands if c.exists()), cands[0])
         data = finished_summary(mine)
         if data is not None:
             if a.run and data.get("run_id") != a.run:
@@ -206,7 +212,6 @@ def suspect_line_of(summary):
 
 
 def publish_summary(a):  # O(summary size)
-    """After a background run: copy its summary to the published path unless a newer run started."""
     if a.run_id and a.publish and (read_pointer(a.publish) or {"id": a.run_id})["id"] == a.run_id:
         atomic_write(a.publish, Path(a.summary).read_text(encoding="utf-8"))
 
@@ -233,8 +238,7 @@ def failure_line(case, text, fallback):  # O(len(text) + d)
 
 
 def parse_junit(xml_path):  # O(X + T*(d + len(failure text)))
-    """-> (counts dict, failures [(file, line, context)], files {file: [ok, bad]});
-    skipped test ids are in counts["skipped_tests"]"""
+    """-> (counts incl. skipped_tests, failures [(file, line, context)], files {file: [ok, bad]})"""
     root = ET.parse(xml_path).getroot()
     counts = empty()
     failures, files = [], {}
@@ -274,19 +278,17 @@ def existing_verified(log):  # O(B)
 
 
 def write_summary(path, mode, counts, failures, seconds, error=None, extra=None):  # O(k + sk) + file write
-    """Write the test summary `pt_review packet` reads (atomically)."""
     data = {"passed": counts["passed"], "failed": counts["failed"] + (1 if error else 0),
             "skipped": counts["skipped"], "seconds": round(seconds, 1), "mode": mode,
             "failures": [f"{f}::{ctx}"[:200] for f, _line, ctx in failures] + ([error[:200]] if error else []),
             "skipped_tests": counts["skipped_tests"]}
     data.update(extra or {})  # additive probe fields only (verdict, suspect_hang, running)
     data.update({"run_id": RUN_ID} if RUN_ID else {})
-    data.update({"superlite_run": sid} if (sid := superlite_run_id(path)) else {})
+    data.update({"superlite_run": SL_RUN} if SL_RUN else {})
     atomic_write(path, json.dumps(data, ensure_ascii=False, indent=1) + "\n")
 
 
 def add_incidents(log, items):  # O(total c) + one locked append (no spawn in process)
-    """items: (file, line, context, kind, resolution)."""
     nt.add_incidents(log, [(f, line, ctx, kind, "run_tests", res) for f, line, ctx, kind, res in items])
 
 
@@ -312,12 +314,14 @@ def main(argv=None):  # O(X + T*d + B + F log F) + pytest run + one incident app
     ap.add_argument("--patient", action="store_true", help="with --wait: keep waiting after a SUSPECT HANG")
     ap.add_argument("--run-id", default=None, help=argparse.SUPPRESS)
     ap.add_argument("--publish", default=None, help=argparse.SUPPRESS)
+    ap.add_argument("--sl-run", default=None, help=argparse.SUPPRESS)
     argv = list(sys.argv[1:] if argv is None else argv)
     a = ap.parse_args(argv)
     if a.wait:
         return wait_all(a.summary, a.timeout) if a.all else wait_background(a)
-    global RUN_ID
+    global RUN_ID, SL_RUN
     RUN_ID = a.run_id or new_run_id()
+    SL_RUN = superlite_run_id(a.summary) if a.sl_run is None else a.sl_run  # fixed at start: a newer run must not rename this one
     if a.reuse and (a.full or not (a.fast or a.affected)) and try_reuse(a):
         return 0
     if a.background:
@@ -427,8 +431,7 @@ def make_reporter(a, label, paths):
 
 
 def serial_addopts():  # O(size of pyproject) -> ["-o", "addopts=..."] when xdist flags would break pytest, else []
-    """The project's addopts ask for xdist (`-n auto --dist loadfile`) but xdist is not installed: pytest would
-    exit 4 on the unknown flags, so run serially with the other addopts kept."""
+    """addopts ask for xdist but it is not installed (pytest would exit 4): run serially, keeping the other addopts."""
     if importlib.util.find_spec("xdist"):
         return []
     try:
@@ -458,7 +461,6 @@ def watched(a, cmd, label, paths, **kw):  # the test command under the hang prob
 
 
 def run_other(a, spec, paths, label):  # one runner command (any language)
-    """Run the resolved non-Python command: JUnit when the runner wrote one, else exit code plus output parsing."""
     with tempfile.TemporaryDirectory() as tmp:
         xml_path = Path(tmp) / "junit.xml"
         sub = lambda s: s.replace("{junit}", str(xml_path))  # noqa: E731
@@ -497,9 +499,7 @@ def run_other(a, spec, paths, label):  # one runner command (any language)
 
 
 def expand_fast_paths(paths):  # O(p) source paths -> related tests; test paths kept
-    """--fast accepts source or test paths. An existing source file maps via testcmd.resolve_related.
-    A path that is not a file is left as given, so pytest can report a collection error and another
-    language's runner receives it in {files}."""
+    """--fast takes source or test paths: a source file maps via testcmd.resolve_related; a non-file is left for the runner."""
     out = []
     for p in paths:
         rel = p.replace("\\", "/")
