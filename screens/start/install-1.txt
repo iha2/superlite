@@ -1,5 +1,0 @@
-title: Claude Code · ~/shop
-ins: 1
----
-❯ Let's make a react todo list
-Sure, here is a plan for a todo list...

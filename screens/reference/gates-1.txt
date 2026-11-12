@@ -1,4 +1,0 @@
-title: Claude Code · ~/shop
-ins: 1
----
-Add CSV export to the reports page

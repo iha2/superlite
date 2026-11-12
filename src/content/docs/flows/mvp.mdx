@@ -75,13 +75,20 @@ Say you want a habit tracker and you have no code yet.
 
 1. You ask for an MVP.
 
-   ![Terminal, Claude Code · ~/habits: ❯ /superlite:mvp A habit tracker where I tick off my daily habits](../../../assets/screens/flows/mvp-1.png)
+   ```text frame="terminal" title="Claude Code · ~/habits" ins={1}
+   ❯ /superlite:mvp A habit tracker where I tick off my daily habits
+   ```
 
    superlite prints the stored screen above and opens a [session](/superlite/sessions/sessions/) on its own branch. The folder is empty, so nothing exists yet to read.
 
 2. You answer one menu.
 
-   ![Terminal, Claude Code · ~/habits: Who orchestrates? / › 1. Human   you approve before anything is built / 2. AI      hands off / Run the whole test suite at finish?  › No, affected tests only (Recommended)](../../../assets/screens/flows/mvp-2.png)
+   ```text frame="terminal" title="Claude Code · ~/habits" mark={2}
+   Who orchestrates?
+   › 1. Human   you approve before anything is built
+     2. AI      hands off
+   Run the whole test suite at finish?  › No, affected tests only (Recommended)
+   ```
 
    **You decide:** human, and no. The human [orchestrator](/superlite/run/orchestrators/) is what makes the prototype wait for you.
 
@@ -107,13 +114,20 @@ Say you want a habit tracker and you have no code yet.
 
 5. You click through it and cut.
 
-   ![Terminal, prototype.html · side panel: x F1 Add a habit      must / x F2 Tick today       must /   F3 Streak chart     could / estimate: time and cost, updated as you toggle](../../../assets/screens/flows/mvp-3.png)
+   ```text frame="terminal" title="prototype.html · side panel" mark={4}
+   [x] F1 Add a habit      must
+   [x] F2 Tick today       must
+   [ ] F3 Streak chart     could
+   estimate: time and cost, updated as you toggle
+   ```
 
    **You decide:** cut F3, move F2 above F1, press Save feedback. Cutting a feature removes it from the mock and updates the estimate. A browser page cannot reach into your project, so Save feedback only writes a file. superlite looks in the project first and in Downloads second.
 
 6. You approve in chat.
 
-   ![Terminal, Claude Code · ~/habits: ❯ approve](../../../assets/screens/flows/mvp-4.png)
+   ```text frame="terminal" title="Claude Code · ~/habits" ins={1}
+   ❯ approve
+   ```
 
    Your reply approves, not the button ([plan and approval](/superlite/run/plan-and-approval/)). superlite reads `mvp-feedback.json` and writes the task plan: F2 and F1 become tasks in your order, and F3 goes under "Out of scope". You are not asked again.
 

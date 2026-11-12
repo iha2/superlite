@@ -1,7 +1,0 @@
-title: Claude Code · ~/notes
-mark: 2
----
-Who orchestrates?
-› 1. Human   you approve the plan first
-  2. AI      answers its own questions
-Evidence tiers? A = peer-reviewed benchmarks, B = vendor docs, C = blog posts

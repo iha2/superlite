@@ -86,13 +86,20 @@ This is the run that built the page you are reading. You are in an ordinary chec
 
 1. You type the request.
 
-   ![Terminal, Claude Code · ~/superlite: ❯ /superlite:start regular Using https://docs.warp.dev/ as inspiration, create GitHub Pages that explain exactly how superlite works](../../../assets/screens/flows/regular-1.png)
+   ![The Regular flow screen superlite prints after the start command: ten stages from ASK to REPORT, with the BUILD stage fanning out to Haiku and Sonnet agents](../../../assets/screens/flow-regular.png)
 
-   Because you named `regular`, superlite skips the flow suggestion, shows the stored screen above and sizes the request. A whole site is large, so it asks everything it needs in one batch, not in many small questions.
+   *Real output: the screen printed the moment you start.*
+
+   Because you named `regular`, superlite skips the flow suggestion, shows the screen above and sizes the request. A whole site is large, so it asks everything it needs in one batch, not in many small questions.
 
 2. You answer one menu.
 
-   ![Terminal, Claude Code · ~/superlite: Who orchestrates? / › 1. Human   you approve a plain-language review plan first / 2. AI      hands off / Run the whole test suite at finish?  › No, affected tests only (Recommended)](../../../assets/screens/flows/regular-2.png)
+   ```text frame="terminal" title="Claude Code · ~/superlite" mark={2}
+   Who orchestrates?
+   › 1. Human   you approve a plain-language review plan first
+     2. AI      hands off
+   Run the whole test suite at finish?  › No, affected tests only (Recommended)
+   ```
 
    **You decide:** human, and no. The first answer sets whether anything waits for you ([orchestrators](/superlite/run/orchestrators/)). Another run was open in the main checkout, so superlite opened this one in its own [worktree](/superlite/sessions/worktrees/) on its own branch. Your branch stays as it was.
 
@@ -110,7 +117,10 @@ This is the run that built the page you are reading. You are in an ordinary chec
    About 45 to 75 minutes and $15 to $30, mostly research and writing (rough, until the plan is linted).
    ```
 
-   ![Terminal, Claude Code · ~/superlite: Reply approve to start, or tell me what to change / ❯](../../../assets/screens/flows/regular-3.png)
+   ```text frame="terminal" title="Claude Code · ~/superlite" mark={1}
+   Reply approve to start, or tell me what to change
+   ❯ 
+   ```
 
    **You decide:** reply "approve", or ask for changes and read the plan again. Until you reply, a hook blocks every agent, so nothing is built. The estimate is marked rough because no task list exists yet ([plan and approval](/superlite/run/plan-and-approval/)).
 
@@ -128,7 +138,13 @@ This is the run that built the page you are reading. You are in an ordinary chec
 
 7. You read the report.
 
-   ![Terminal, superlite build report: Projected   Actual / wall-clock (min)         6.8      6.3 / agent cost (USD)        1.83     2.66 / agents                    12       19 / tests                  36 passed, 0 failed](../../../assets/screens/flows/regular-4.png)
+   ```text frame="terminal" title="superlite build report" mark={2-4}
+                       Projected   Actual
+   wall-clock (min)         6.8      6.3
+   agent cost (USD)        1.83     2.66
+   agents                    12       19
+   tests                  36 passed, 0 failed
+   ```
 
    The forecast was fixed at lint, so the table compares it with what happened ([report](/superlite/run/report/)). The coordinator's own cost, $6.81, is listed apart from the agents.
 
@@ -136,7 +152,7 @@ This is the run that built the page you are reading. You are in an ordinary chec
 
 **What you end up with:** a `site/` folder on the session branch `superlite/sessions/docs-site`, tested and uncommitted. You commit it and open the pull request. Here that became PR #58.
 
-![PR #58 on GitHub: "Docs site: diagram-first guide to how superlite works", merged](../../../assets/screens/github/pr-58.png)
+On GitHub that pull request is titled "Docs site: diagram-first guide to how superlite works".
 
 ## Good to know
 

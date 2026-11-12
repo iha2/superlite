@@ -85,19 +85,31 @@ Say you installed the plugin, sent the test message, and got an ordinary reply, 
 
 1. **You send the test message and nothing starts.**
 
-   ![Terminal, Claude Code · ~/shop: ❯ Let's make a react todo list / Sure, here is a plan for a todo list...](../../../assets/screens/start/install-1.png)
+   ```text frame="terminal" title="Claude Code · ~/shop" ins={1}
+   ❯ Let's make a react todo list
+   Sure, here is a plan for a todo list...
+   ```
 
    Claude answered on its own. The plugin did not load into this session: a plugin is read when a session opens, so one opened before the install does not have it.
 
 2. **You run the first-run check.**
 
-   ![Terminal, Claude Code · ~/shop: ❯ /superlite:setup / pass  project language and test command / pass  Python for the command line tools / pass  model tiers / pass  superpowers is not suspended by a run / fix   .superlite/ is not gitignored](../../../assets/screens/start/install-2.png)
+   ```text frame="terminal" title="Claude Code · ~/shop" ins={1} mark={6}
+   ❯ /superlite:setup
+     pass  project language and test command
+     pass  Python for the command line tools
+     pass  model tiers
+     pass  superpowers is not suspended by a run
+     fix   .superlite/ is not gitignored
+   ```
 
    `/superlite:setup` checks the toolchain and gives one pass or fix line per item. It only reads. If the command is unknown, the plugin is not installed: go back to the install line.
 
 3. **You answer the fix.** **You decide:**
 
-   ![Terminal, Claude Code · ~/shop: ❯ yes, add it to .gitignore](../../../assets/screens/start/install-3.png)
+   ```text frame="terminal" title="Claude Code · ~/shop" ins={1}
+   ❯ yes, add it to .gitignore
+   ```
 
    superlite changes nothing without a yes, and it applies only the line you approved. The ignore line keeps run state out of your commits.
 

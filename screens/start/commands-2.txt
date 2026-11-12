@@ -1,5 +1,0 @@
-title: Claude Code · superlite
-ins: 1,2
----
-❯ /superlite:stop
-❯ /superlite:resume

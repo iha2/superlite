@@ -88,7 +88,8 @@ def test_examples_are_walkthroughs(name):
     _, body = page(name)
     example = body[re.search(r"^## Example", body, re.M).start():]
     assert "<Steps>" in example
-    assert re.search(r"!\[[^\]]*\]\([^)]*assets/screens/[^)]*\.png\)", example) or 'title="docs/plans' in example
+    assert (re.search(r"!\[[^\]]*\]\([^)]*assets/screens/[^)]*\.png\)", example)
+            or 'frame="terminal"' in example or 'title="' in example)
     assert "illustrative" not in body
     for img in re.findall(r"\]\((\.\./[^)]*\.png)\)", body):
         assert (START / img).resolve().exists(), img

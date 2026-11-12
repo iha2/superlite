@@ -20,15 +20,15 @@ Local setup, from a clone of the `site` branch:
 
 ## Screenshots
 
-Terminal screens are PNGs, not code blocks. Each one has a plain-text source in `screens/<section>/<page>-<n>.txt` (a header with `title:`, `ins:`, `mark:`, `words:`, then `---` and the lines as the terminal shows them; see the docstring in `scripts/screens.py`). The page shows the PNG in `src/assets/screens/`. GitHub pages are shot live into `src/assets/screens/github/` in a browser window; `screens/github/copilot-inline.raw.png` is a kept capture that can't be reshot.
+Ordinary terminal output stays as text frames in the pages. Only a few critical-moment screens, where superlite is running or drawing a diagram, are PNGs. Each has a plain-text source in `screens/<name>.txt` (a header with `title:`, `ins:`, `mark:`, `words:`, optional `graph:`, then `---` and the lines as the terminal shows them; see the docstring in `scripts/screens.py`). The page shows the PNG from `src/assets/screens/`. There are no PR or Copilot captures.
 
-To edit a screen, change its `.txt` and re-render it:
+To edit a screen, change its `.txt` and re-render it from `site/`:
 
-    python3 scripts/screens.py render <section>/<name>   # one screen; omit the name to render all
-    python3 scripts/screens.py extract                   # one-time: moved the old text blocks into screens/
-    python3 scripts/screens.py github                    # reshoot the GitHub pages (needs network)
+    python3 scripts/screens.py render [name]   # one screen; omit the name to render all
 
-Run them from `site/`. They need Google Chrome (`CHROME=<path>` to override) and Pillow. Commit the `.txt` and the PNG together.
+It needs Google Chrome (`CHROME=<path>` to override) and Pillow. Commit the `.txt` and the PNG together.
+
+A `graph:` screen inlines a pre-rendered mermaid SVG named in its header (`screens/lint-graph.svg`). Render the `.mmd` to SVG from the shell with headless Chrome `--dump-dom`, not from Python: Chrome hangs when Python launches that render.
 
 ## Facts
 

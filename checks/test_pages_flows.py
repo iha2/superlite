@@ -16,7 +16,7 @@ needs_main = pytest.mark.skipif(
 DOCS = HERE.parent / "src" / "content" / "docs"
 FLOWS = DOCS / "flows"
 PAGES = ["choose", "regular", "mvp", "feature", "debug", "small", "review", "research"]
-SCREEN = re.compile(r"!\[[^\]]*\]\([^)]*assets/screens/[^)]*\.png\)")
+SCREEN = re.compile(r'!\[[^\]]*\]\([^)]*assets/screens/[^)]*\.png\)|frame="terminal"')  # a terminal frame or a critical-moment image
 SCREENED = ["regular", "mvp", "feature", "debug", "research"]
 CONCEPT_LINKS = [
     "/superlite/sessions/sessions/",
@@ -128,12 +128,9 @@ def test_example_uses_framed_screens_and_no_plumbing():
             assert len(block.strip().split("\n")) <= 6, (name, block)
 
 
-def test_real_runs_have_a_screenshot():
-    for name, shot in (("regular", "pr-58.png"), ("feature", "pr-60.png")):
-        assert f"assets/screens/github/{shot}" in page(name), name
-        assert (HERE.parent / "src" / "assets" / "screens" / "github" / shot).exists(), shot
-        size = (HERE.parent / "src" / "assets" / "screens" / "github" / shot).stat().st_size
-        assert size < 250_000, shot
+def test_regular_shows_the_flow_screen_image():
+    assert "assets/screens/flow-regular.png" in page("regular")
+    assert (HERE.parent / "src" / "assets" / "screens" / "flow-regular.png").stat().st_size < 250_000
 
 
 def test_prose_budget():

@@ -1,6 +1,0 @@
-title: Terminal · ~/shop
-ins: 1
-mark: 2
----
-$ bash skills/swarm/scripts/superlite-cli suggest_flow --text "fix the login bug"
-suggest: debug - existing code, the request reports a fault ("bug") | also fits: feature, regular

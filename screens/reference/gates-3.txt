@@ -1,5 +1,0 @@
-title: Claude Code · ~/shop
-mark: 2
----
-docs/plans/2026-11-12-csv-export.review.md
-Reply approve to start, or tell me what to change

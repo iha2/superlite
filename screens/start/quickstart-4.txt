@@ -1,4 +1,0 @@
-title: Claude Code
-ins: 1
----
-❯ looks good, go ahead

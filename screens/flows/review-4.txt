@@ -1,5 +1,0 @@
-title: Claude Code · ~/shop
-mark: 1-2
----
-tier 2  the export has no limit on row count
-tier 3  the filename ignores the locale

@@ -58,7 +58,10 @@ Say your shop app lives in `~/shop`. You work on a feature in one chat and a bug
 
 1. **Chat 1: you ask for a feature.**
 
-   ![Terminal, Chat 1 · ~/shop: ❯ /superlite:feature Add CSV export / ● Reading the code and writing a plan...](../../../assets/screens/sessions/sessions-1.png)
+   ```text frame="terminal" title="Chat 1 · ~/shop" ins={1}
+   ❯ /superlite:feature Add CSV export
+   ● Reading the code and writing a plan...
+   ```
 
    Underneath, the flow opens a session before it plans anything. It cuts the branch `superlite/sessions/export` from `main` and keeps the plan, ledger and checkpoints in the `.superlite/` folder of `~/shop`. The session is how a later chat finds this work and leaves it alone.
 
@@ -72,13 +75,21 @@ Say your shop app lives in `~/shop`. You work on a feature in one chat and a bug
 
 2. **Chat 2: you report a bug.** Chat 1 is still open and `~/shop` is its folder.
 
-   ![Terminal, Chat 2 · ~/shop: ❯ /superlite:debug Login redirect loops](../../../assets/screens/sessions/sessions-2.png)
+   ```text frame="terminal" title="Chat 2 · ~/shop" ins={1}
+   ❯ /superlite:debug Login redirect loops
+   ```
 
    Underneath, two chats in `~/shop` would overwrite each other's `.superlite/` and switch each other's branch. superlite does not guess. It stops and asks, and changes nothing until you answer.
 
 3. **You decide: move chat 1 out?** The question names the folder `export` would move to and says its chat must be idle.
 
-   ![Terminal, Chat 2 · ~/shop: Move session export out of the main checkout into / ~/shop/.claude/worktrees/sessions-export? Its chat must be idle. / ❯ 1. Yes / 2. No](../../../assets/screens/sessions/sessions-3.png)
+   ```text frame="terminal" title="Chat 2 · ~/shop" mark={4} "Yes"
+   Move session export out of the main checkout into
+   ~/shop/.claude/worktrees/sessions-export? Its chat must be idle.
+
+   ❯ 1. Yes
+     2. No
+   ```
 
    Answer yes when chat 1 is waiting on you, not working. Answer no and chat 2 does not start. [Worktrees](/superlite/sessions/worktrees/) covers this question in full.
 
@@ -96,15 +107,26 @@ Say your shop app lives in `~/shop`. You work on a feature in one chat and a bug
 
 5. **Each chat sees only its own folder.** Every turn in each chat starts with a status line about its own session:
 
-   ![Terminal, Chat 1 · ~/shop/.claude/worktrees/sessions-export: superlite session: export | branch superlite/sessions/export | worktree ~/shop/.claude/worktrees/sessions-export | active | stash:no | run:open / ❯](../../../assets/screens/sessions/sessions-4.png)
+   ```text frame="terminal" title="Chat 1 · ~/shop/.claude/worktrees/sessions-export"
+   superlite session: export | branch superlite/sessions/export | worktree ~/shop/.claude/worktrees/sessions-export | active | stash:no | run:open
+   ❯
+   ```
 
-   ![Terminal, Chat 2 · ~/shop/.claude/worktrees/sessions-login-fix: superlite session: login-fix | branch superlite/sessions/login-fix | worktree ~/shop/.claude/worktrees/sessions-login-fix | active | stash:no | run:open / ❯](../../../assets/screens/sessions/sessions-5.png)
+   ```text frame="terminal" title="Chat 2 · ~/shop/.claude/worktrees/sessions-login-fix"
+   superlite session: login-fix | branch superlite/sessions/login-fix | worktree ~/shop/.claude/worktrees/sessions-login-fix | active | stash:no | run:open
+   ❯
+   ```
 
    A fix in one never shows up in the other, because the files are different copies. They share one git history and one `sessions.json`, so each session still sees the other's row.
 
 6. **You check on both.** Run `superlite-cli session status` in either chat to list every session:
 
-   ![Terminal, Chat 2 · ~/shop/.claude/worktrees/sessions-login-fix: ❯ superlite-cli session status / session: active=- host=~/shop / session: parallel export | branch superlite/sessions/export | worktree ~/shop/.claude/worktrees/sessions-export | stash:no | run:open / session: paralle...](../../../assets/screens/sessions/sessions-6.png)
+   ```text frame="terminal" title="Chat 2 · ~/shop/.claude/worktrees/sessions-login-fix" ins={1}
+   ❯ superlite-cli session status
+   session: active=- host=~/shop
+   session: parallel export | branch superlite/sessions/export | worktree ~/shop/.claude/worktrees/sessions-export | stash:no | run:open
+   session: parallel login-fix | branch superlite/sessions/login-fix | worktree ~/shop/.claude/worktrees/sessions-login-fix | stash:no | run:open
+   ```
 
 </Steps>
 

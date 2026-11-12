@@ -58,7 +58,11 @@ Say you approved a plan for CSV export and the build is running. A test in `test
 
 1. The coordinator, the main Claude Code session, tries to patch `src/reports/export.py` itself. You see the edit refused:
 
-   ![Terminal, Claude Code · ~/shop: Blocked: the superlite coordinator must not write project code. Dispatch it instead: / - Fix: give a fixer a finding id F-<Tn>-<n> and the note path .superlite/fixes/<id>.md ... / - New code belongs to an implementer...](../../../assets/screens/reference/hooks-1.png)
+   ```text frame="terminal" title="Claude Code · ~/shop" mark={1}
+   Blocked: the superlite coordinator must not write project code. Dispatch it instead:
+   - Fix: give a fixer a finding id F-<Tn>-<n> and the note path .superlite/fixes/<id>.md ...
+   - New code belongs to an implementer task. You may write only docs/plans/**, SPEC*.md, ...
+   ```
 
    The `pre-tool` hook runs before every `Edit`, `Write` and `Bash` call. Its edit guard denies the call with exit code 2, so the file never changes. It exists because a coordinator that edits code skips the tiers, the checkpoints and the reviews. A script enforces this, since an instruction in a prompt can drift.
 
@@ -68,7 +72,10 @@ Say you approved a plan for CSV export and the build is running. A test in `test
 
 3. The coordinator runs `pytest tests/test_export.py` to check the fix. You see a note that the raw test run was rewritten:
 
-   ![Terminal, Claude Code · ~/shop: $ pytest tests/test_export.py / raw test run rewritten to a superlite-cli run_tests --fast; its summary is in .superlite/test-summary.json](../../../assets/screens/reference/hooks-2.png)
+   ```text frame="terminal" title="Claude Code · ~/shop" ins={1} mark={2}
+   $ pytest tests/test_export.py
+   raw test run rewritten to a superlite-cli run_tests --fast; its summary is in .superlite/test-summary.json
+   ```
 
    This is the test guard. A test run in the foreground can hang the whole session, so the hook swaps it for a background run that the coordinator then waits on. If the run goes silent, the wait returns early with a `SUSPECT HANG` report instead of a frozen terminal.
 

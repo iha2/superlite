@@ -41,31 +41,47 @@ Say a branch adds CSV export and you want it checked before you merge.
 
 1. You name the branch.
 
-   ![Terminal, Claude Code · ~/shop: ❯ /superlite:review superlite/sessions/csv-export](../../../assets/screens/flows/review-1.png)
+   ```text frame="terminal" title="Claude Code · ~/shop" ins={1}
+   ❯ /superlite:review superlite/sessions/csv-export
+   ```
 
    superlite resolves the branch and its base, then opens a [session](/superlite/sessions/sessions/) on that branch. It works in place if you are already on it, and in a [worktree](/superlite/sessions/worktrees/) otherwise, so your checkout is not switched under you.
 
 2. You answer one batch, once superlite has read the diff.
 
-   ![Terminal, Claude Code · ~/shop: What is the intent of this change? / Which risk matters most? / What is out of bounds? / Run the whole test suite at finish?  › No, affected tests only (Recommended) / ❯ The main risk is wrong totals in the export. Le...](../../../assets/screens/flows/review-2.png)
+   ```text frame="terminal" title="Claude Code · ~/shop" ins={5}
+   What is the intent of this change?
+   Which risk matters most?
+   What is out of bounds?
+   Run the whole test suite at finish?  › No, affected tests only (Recommended)
+   ❯ The main risk is wrong totals in the export. Leave the invoice model alone.
+   ```
 
    **You decide:** the risk and the fence. They tell the reviewers where to look hardest and what not to touch. The batch is asked only when the diff leaves something material open.
 
 3. Package reviewers work through the diff. Each takes its part, fixes what it finds and adds a regression test for each fix.
 
-   ![Terminal, Claude Code · ~/shop: package reviewer: export totals ignored the active filter. Fixed, test added.](../../../assets/screens/flows/review-3.png)
+   ```text frame="terminal" title="Claude Code · ~/shop" mark={1}
+   package reviewer: export totals ignored the active filter. Fixed, test added.
+   ```
 
    A reviewer that fixes its own finding leaves less for you to triage. The fixes land uncommitted in the session's working tree, so you see them as an ordinary diff.
 
 4. A fresh reviewer ranks what is left. The final reviewer did not see the earlier work and edits nothing.
 
-   ![Terminal, Claude Code · ~/shop: tier 2  the export has no limit on row count / tier 3  the filename ignores the locale](../../../assets/screens/flows/review-4.png)
+   ```text frame="terminal" title="Claude Code · ~/shop" mark={1-2}
+   tier 2  the export has no limit on row count
+   tier 3  the filename ignores the locale
+   ```
 
    It reads the review packet and sorts the remaining findings into tiers 1 to 3 ([reviews and fixes](/superlite/run/reviews-and-fixes/)). A reviewer that cannot change the code has no reason to defend it.
 
 5. You read the report.
 
-   ![Terminal, superlite report: fixes made: 1, tests added: 1 / open findings: tier 2 x1, tier 3 x1](../../../assets/screens/flows/review-5.png)
+   ```text frame="terminal" title="superlite report" mark={1}
+   fixes made: 1, tests added: 1
+   open findings: tier 2 x1, tier 3 x1
+   ```
 
    It lists the fixes made and the findings by tier, so the open list is short and ranked.
 

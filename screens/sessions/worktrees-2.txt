@@ -1,9 +1,0 @@
-title: Chat 2 · ~/superlite
-mark: 4
-words: Yes
----
-Move session docs-site out of the main checkout into
-~/superlite/.claude/worktrees/sessions-docs-site? Its chat must be idle.
-
-❯ 1. Yes
-  2. No

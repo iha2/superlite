@@ -53,7 +53,9 @@ A real run in this repo: teach superlite to learn from each run in the repo it r
 
 1. **You ask for a change to existing code.**
 
-   ![Terminal, Claude Code · superlite: ❯ /superlite:feature Let superlite learn from each run in the repo it runs in](../../../assets/screens/start/concepts-1.png)
+   ```text frame="terminal" title="Claude Code · superlite" ins={1}
+   ❯ /superlite:feature Let superlite learn from each run in the repo it runs in
+   ```
 
    The command picks the [flow](/superlite/flows/choose/) and opens a [session](/superlite/sessions/sessions/), a branch `superlite/sessions/<topic>`, before anything is touched.
 
@@ -100,11 +102,15 @@ A real run in this repo: teach superlite to learn from each run in the repo it r
 
 6. **You read the report.**
 
-   ![Terminal, Claude Code · build report: Projected    Actual / wall-clock (min)               8.0      28.2 / agent cost (USD, +rework)      1.42      3.02](../../../assets/screens/start/concepts-2.png)
+   ```text frame="terminal" title="Claude Code · build report" mark={2}
+                            Projected    Actual
+   wall-clock (min)               8.0      28.2
+   agent cost (USD, +rework)      1.42      3.02
+   ```
 
    The run took 28.2 minutes against 8.0 forecast, and the report says so. See [Report](/superlite/run/report/).
 
-   ![Pull request 60 on GitHub, merged: the learning loop, from the session branch per-repo-learning-int](../../../assets/screens/github/pr-60.png)
+   On GitHub the pull request shows the learning loop as one change from the session branch.
 
 </Steps>
 

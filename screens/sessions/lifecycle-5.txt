@@ -1,7 +1,0 @@
-title: Claude Code · ~/superlite
-ins: 1
----
-❯ /superlite:merged 56
-PR #56 merged: https://github.com/iha2/superlite/pull/56
-merge commit c43cad7; local main fast-forwarded
-session proto-sandbox closed; branch superlite/sessions/proto-sandbox deleted

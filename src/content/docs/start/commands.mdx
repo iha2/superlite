@@ -88,29 +88,41 @@ Say a build is running and you want to follow it, step away, ship it and clean u
 
 1. **You look in.**
 
-   ![Terminal, Claude Code · superlite: ❯ /superlite:status](../../../assets/screens/start/commands-1.png)
+   ```text frame="terminal" title="Claude Code · superlite" ins={1}
+   ❯ /superlite:status
+   ```
 
    You get under 15 lines: the orchestrator, whether the plan is approved, tasks done, running and waiting, cost and time so far, and the next step. The command only reads. Nothing changes.
 
 2. **You step away and come back.** **You decide:** stop, then resume when ready.
 
-   ![Terminal, Claude Code · superlite: ❯ /superlite:stop / ❯ /superlite:resume](../../../assets/screens/start/commands-2.png)
+   ```text frame="terminal" title="Claude Code · superlite" ins={1,2}
+   ❯ /superlite:stop
+   ❯ /superlite:resume
+   ```
 
    `/superlite:stop` dispatches nothing new, lets running agents finish and writes `.superlite/stopped.md`. `/superlite:resume` skips every task that is checkpointed and passing, and runs only the rest.
 
 3. **You ship the work.** **You decide:** how.
 
-   ![Terminal, Claude Code · superlite: ❯ /superlite:finish / 1. Merge locally into the base branch / › 2. Push and open a pull request / 3. Keep the branch as is](../../../assets/screens/start/commands-3.png)
+   ```text frame="terminal" title="Claude Code · superlite" ins={1} mark={3}
+   ❯ /superlite:finish
+     1. Merge locally into the base branch
+   › 2. Push and open a pull request
+     3. Keep the branch as is
+   ```
 
    It runs the full tests first, and a red result blocks the options. It never pushes without your yes.
 
 4. **After the PR merges, you clean up.**
 
-   ![Terminal, Claude Code · superlite: ❯ /superlite:merged 57](../../../assets/screens/start/commands-4.png)
+   ```text frame="terminal" title="Claude Code · superlite" ins={1}
+   ❯ /superlite:merged 57
+   ```
 
    superlite confirms the merge with `gh`, checks that the local branch holds nothing the PR lacks, closes the session, fast-forwards local `main` and deletes the local branch. It never pushes and never touches the remote branch.
 
-   ![Pull request 57 on GitHub, merged from superlite/sessions/pr-merged into main, listing what the command does](../../../assets/screens/github/pr-57.png)
+   On GitHub the pull request shows as merged from the session branch into `main`.
 
 </Steps>
 

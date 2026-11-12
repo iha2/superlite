@@ -1,4 +1,0 @@
-title: Claude Code · ~/superlite
-ins: 1
----
-❯ <what you want different>

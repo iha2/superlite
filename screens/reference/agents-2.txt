@@ -1,4 +1,0 @@
-title: Claude Code · ~/shop
-mark: 1
----
-Blocked: BLOCKED task needs fixer tier opus. Launch the fixer one tier up, not tier T4 need=opus got=sonnet.

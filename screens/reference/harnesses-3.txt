@@ -1,4 +1,0 @@
-title: Gemini CLI · ~/shop
-ins: 1
----
-Let's make a react todo list

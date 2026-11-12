@@ -56,19 +56,29 @@ Take the session behind PR #56, the prototype sandbox change. Its slug is `proto
 
 1. **You ask for the change.**
 
-   ![Terminal, Claude Code · ~/superlite: ❯ /superlite:start Feature prototypes run in a sandbox, not a worktree](../../../assets/screens/sessions/lifecycle-1.png)
+   ```text frame="terminal" title="Claude Code · ~/superlite" ins={1}
+   ❯ /superlite:start Feature prototypes run in a sandbox, not a worktree
+   ```
 
    Underneath, the flow opens the session (state **Open**): the branch `superlite/sessions/proto-sandbox`, cut from `main`. Plan, build and review all happen on that branch. The build leaves its work uncommitted, by design.
 
 2. **The run ends.** You read the report and see one line about the session.
 
-   ![Terminal, Claude Code · ~/superlite: session: proto-sandbox finished / run: archived to .superlite/runs/<run>](../../../assets/screens/sessions/lifecycle-2.png)
+   ```text frame="terminal" title="Claude Code · ~/superlite" mark={1}
+   session: proto-sandbox finished
+   run: archived to .superlite/runs/<run>
+   ```
 
    Underneath, `superlite-cli finish` marks the session **Finished** and moves the run's files into `.superlite/runs/`. Your branch is untouched.
 
 3. **You decide: commit or leave?** Shipping asks once.
 
-   ![Terminal, Claude Code · ~/superlite: Commit the work to superlite/sessions/proto-sandbox? / ❯ 1. Commit to superlite/sessions/proto-sandbox / 2. Leave uncommitted](../../../assets/screens/sessions/lifecycle-3.png)
+   ```text frame="terminal" title="Claude Code · ~/superlite" "Commit to superlite/sessions/proto-sandbox"
+   Commit the work to superlite/sessions/proto-sandbox?
+
+   ❯ 1. Commit to superlite/sessions/proto-sandbox
+     2. Leave uncommitted
+   ```
 
    Underneath, a commit lands on the session branch only, never on `main`. Without one, the next question offers only "Keep the branch".
 
@@ -81,7 +91,11 @@ Take the session behind PR #56, the prototype sandbox change. Its slug is `proto
 
 4. **You decide: merge, pull request or keep?** The question carries the test count and the diff summary. PR #56 reported 2,342 tests passed.
 
-   ![Terminal, Claude Code · ~/superlite: ❯ 1. Merge locally into the base branch / 2. Push and open a pull request / 3. Keep the branch as is](../../../assets/screens/sessions/lifecycle-4.png)
+   ```text frame="terminal" title="Claude Code · ~/superlite" "Push and open a pull request"
+   ❯ 1. Merge locally into the base branch
+     2. Push and open a pull request
+     3. Keep the branch as is
+   ```
 
    Underneath, option 2 pushes the branch and runs `gh pr create` against `main`. Then shipping runs `superlite-cli session close --keep-branch`: the session is **Closed**, `~/superlite` is back on `main`, and the branch stays for the PR.
 
@@ -97,11 +111,16 @@ Take the session behind PR #56, the prototype sandbox change. Its slug is `proto
 
 5. **The pull request merges on GitHub.** Nothing happens in superlite. The archive and the branch wait.
 
-   ![PR #56 on GitHub, marked Merged into main from superlite/sessions/proto-sandbox](../../../assets/screens/github/pr-56.png)
+   On GitHub the pull request now shows as Merged into `main`.
 
 6. **You tell superlite.**
 
-   ![Terminal, Claude Code · ~/superlite: ❯ /superlite:merged 56 / PR #56 merged: https://github.com/iha2/superlite/pull/56 / merge commit c43cad7; local main fast-forwarded / session proto-sandbox closed; branch superlite/sessions/proto-sandbox deleted](../../../assets/screens/sessions/lifecycle-5.png)
+   ```text frame="terminal" title="Claude Code · ~/superlite" ins={1}
+   ❯ /superlite:merged 56
+   PR #56 merged: https://github.com/iha2/superlite/pull/56
+   merge commit c43cad7; local main fast-forwarded
+   session proto-sandbox closed; branch superlite/sessions/proto-sandbox deleted
+   ```
 
    Underneath, `/superlite:merged` asks `gh` whether the pull request really merged and checks that the local branch holds nothing the pull request did not. Only then does it fast-forward `main`, drop the archive and delete the local branch (state **Deleted**). It never pushes and never touches the remote branch.
 

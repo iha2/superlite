@@ -1,4 +1,0 @@
-title: Claude Code · ~/shop
-mark: 1
----
-tests/test_pages.py  tests/test_site.py  passed

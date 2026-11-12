@@ -52,25 +52,36 @@ Say you work in human mode and ask for CSV export on the reports page.
 
 1. You type the request in Claude Code:
 
-   ![Terminal, Claude Code · ~/shop: Add CSV export to the reports page](../../../assets/screens/reference/gates-1.png)
+   ```text frame="terminal" title="Claude Code · ~/shop" ins={1}
+   Add CSV export to the reports page
+   ```
 
    superlite explores the code, then the coordinator writes a review plan, the short document you read before anything is built.
 
 2. Say the coordinator moves too fast and calls `superlite-cli dispatch` before you have answered. You see the call refused:
 
-   ![Terminal, Claude Code · ~/shop: $ superlite-cli dispatch ... / Human orchestrator: no build is orchestrated until the human approves the plan. / Write the review plan docs/plans/<date>-<topic>.review.md ...](../../../assets/screens/reference/gates-2.png)
+   ```text frame="terminal" title="Claude Code · ~/shop" mark={2}
+   $ superlite-cli dispatch ...
+   Human orchestrator: no build is orchestrated until the human approves the plan.
+   Write the review plan docs/plans/<date>-<topic>.review.md ...
+   ```
 
    The `pre-tool` hook blocks it. In human mode nothing is linted, dispatched or sent to an agent until your approval is on record. This gate exists so that you, not the model, decide when spending starts.
 
 3. The coordinator ends its turn and shows the path to the plan, a five-line summary and a closing line.
 
-   ![Terminal, Claude Code · ~/shop: docs/plans/2026-11-12-csv-export.review.md / Reply approve to start, or tell me what to change](../../../assets/screens/reference/gates-3.png)
+   ```text frame="terminal" title="Claude Code · ~/shop" mark={2}
+   docs/plans/2026-11-12-csv-export.review.md
+   Reply approve to start, or tell me what to change
+   ```
 
    **You decide:** read the plan. Reply "looks good" to approve, or say what to change and the plan is revised. A refusal, a question or a bare mention of the word does not count as approval.
 
 4. You reply:
 
-   ![Terminal, Claude Code · ~/shop: looks good](../../../assets/screens/reference/gates-4.png)
+   ```text frame="terminal" title="Claude Code · ~/shop" ins={1}
+   looks good
+   ```
 
    The `prompt` hook records your reply in `.superlite/human-replies.jsonl`, and the coordinator runs `superlite-cli orchestrator approve --review docs/plans/2026-11-12-csv-export.review.md`.
 

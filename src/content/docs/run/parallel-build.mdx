@@ -59,9 +59,19 @@ The critical path is the longest chain of waiting tasks, so a slow task on it de
 
 1. **You watch.** Nothing to answer. Open the agent map to see tasks and agents.
 
-   ![Terminal, Claude Code · ~/superlite: ❯ /superlite:agents](../../../assets/screens/run/parallel-build-1.png)
+   ```text frame="terminal" title="Claude Code · ~/superlite" ins={1}
+   ❯ /superlite:agents
+   ```
 
    Wave 1 is six tasks at once: T1 skeleton, T2, T3 and T4 (three fact sheets), T5 style guide and T6 check_pages. `superlite-cli dispatch` packs every ready task into one message. They share no edge and own different files, so they cannot collide. The report later shows `peak 6 at once`, which is this wave.
+
+   ![The dispatch command output: wave 0 for the Haiku task, then T6 and T5 and four more tasks fresh on Sonnet, followed by the ledger line "dispatched T1 T2 T3 T4 T5 T6"](../../../assets/screens/dispatch.png)
+
+   *Real output: the dispatch lines that start the wave.*
+
+   ![The agent tail: five implementers and one researcher START within seconds of each other, then DONE lines follow](../../../assets/screens/agents-parallel.png)
+
+   *Real output: six agents start together, and finish a few seconds apart.*
 
 2. **Wave 2 starts task by task.** T7 to T11 are the page tasks. Each waits for T1, T5 and the facts file it writes from. This is the edge list the plan holds for T9, the run pages.
 
@@ -75,7 +85,9 @@ The critical path is the longest chain of waiting tasks, so a slow task on it de
 
 3. **Each agent builds one task.** It first reads a shared prime: rules, the plan header, global constraints and each stable task's title, files and interfaces. Then it fetches its own task.
 
-   ![Terminal, agent for T9: $ superlite-cli task T9 --plan docs/plans/2026-11-12-docs-site.md](../../../assets/screens/run/parallel-build-2.png)
+   ```text frame="terminal" title="agent for T9" ins={1}
+   $ superlite-cli task T9 --plan docs/plans/2026-11-12-docs-site.md
+   ```
 
    The prime is the same for every agent, so the shared part is cached and each task brief stays short. The agent writes a failing test, runs it, implements, runs again, and replies DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT or BLOCKED in at most 200 words.
 
@@ -94,7 +106,9 @@ The critical path is the longest chain of waiting tasks, so a slow task on it de
 
 6. **Wave 3: T12 publish** waits for all five page tasks and for T6, the check script, because it adds the deploy workflow that runs that check. Then you read how it went.
 
-   ![Terminal, docs/plans/2026-11-12-docs-site.report.md: concurrency: peak 6 at once (projected 6); critical path actual T4 T11; projected T1 > T8 > T12 (6.8 min)](../../../assets/screens/run/parallel-build-3.png)
+   ```text frame="terminal" title="docs/plans/2026-11-12-docs-site.report.md" mark={1}
+   concurrency: peak 6 at once (projected 6); critical path actual T4 T11; projected T1 > T8 > T12 (6.8 min)
+   ```
 
    The actual critical path was T4 then T11: the reference facts took 3.3 minutes and the reference pages waited for them. The twelve tasks added up to 23.4 task-minutes inside 6.3 minutes of wall-clock, about 3.7 tasks running at any moment.
 

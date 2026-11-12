@@ -46,41 +46,53 @@ Three things feed the report. Lint saves a forecast before the first dispatch, s
 
 1. **You see the summary.** When the tests are green, `finish` prints your rulings and the top of the report, before any shipping question.
 
-   ```md title="docs/plans/2026-11-12-docs-site.report.md" mark={3}
-   # superlite build report
+   ![The top of the build report: the fixed projection line, then the Projected, Actual and Delta table for wall-clock, cost, task-minutes and agents](../../../assets/screens/report.png)
 
-   projection: fixed forecast saved at lint 2026-11-12T04:04:54
-   ```
+   *Real output: the report summary `finish` prints.*
 
    The forecast was saved at lint, before the first dispatch, so it cannot drift toward the result. Run `/superlite:report` to list reports, newest first. `/superlite:report <plan>` shows the summary, and `/superlite:report <plan> full` shows everything.
 
 2. **You read time and agents.**
 
-   ![Terminal, docs/plans/2026-11-12-docs-site.report.md: Projected    Actual  Delta / wall-clock (min)               6.8       6.3  -0.5 (-7%) / task-minutes                  23.6      23.4  -0.2 (-1%) / agents                          12        19  +7 (+58%)](../../../assets/screens/run/report-1.png)
+   ```text frame="terminal" title="docs/plans/2026-11-12-docs-site.report.md" mark={2,4}
+                            Projected    Actual  Delta
+   wall-clock (min)               6.8       6.3  -0.5 (-7%)
+   task-minutes                  23.6      23.4  -0.2 (-1%)
+   agents                          12        19  +7 (+58%)
+   ```
 
    Wall-clock is the minutes on the clock. Task-minutes add up each task's own time, so it is far above wall-clock when agents work side by side. The report counts every agent that ran, not only the twelve planned, so 7 more ran than forecast.
 
 3. **You read the cost.** This is where the surprise is.
 
-   ![Terminal, docs/plans/2026-11-12-docs-site.report.md: agent cost (USD, +rework)      1.83      2.66  +0.83 (+45%) / cost split: agents $2.60, rework $0.06, coordinator $6.81, total $9.47](../../../assets/screens/run/report-2.png)
+   ```text frame="terminal" title="docs/plans/2026-11-12-docs-site.report.md" mark={2}
+   agent cost (USD, +rework)      1.83      2.66  +0.83 (+45%)
+   cost split: agents $2.60, rework $0.06, coordinator $6.81, total $9.47
+   ```
 
    The forecast covers agents only, and they ran 45% over. The coordinator, Opus planning and dispatching, cost $6.81 of the $9.47 total. That is why the cost split is shown: the part you can predict is not the biggest part.
 
 4. **You read how parallel it was.**
 
-   ![Terminal, docs/plans/2026-11-12-docs-site.report.md: concurrency: peak 6 at once (projected 6); critical path actual T4 T11; projected T1 > T8 > T12 (6.8 min)](../../../assets/screens/run/report-3.png)
+   ```text frame="terminal" title="docs/plans/2026-11-12-docs-site.report.md" mark={1}
+   concurrency: peak 6 at once (projected 6); critical path actual T4 T11; projected T1 > T8 > T12 (6.8 min)
+   ```
 
    The critical path is the longest chain of waiting tasks, and it sets the minimum time. It moved from the forecast's T1 > T8 > T12 to T4 > T11 because the reference facts (T4) ran 82% over their estimate. See [parallel build](/superlite/run/parallel-build/).
 
 5. **You read quality.**
 
-   ![Terminal, docs/plans/2026-11-12-docs-site.report.md: quality: tests 36 passed, 0 failed; first-time pass n/a; rework dispatches 1; open incidents 18](../../../assets/screens/run/report-4.png)
+   ```text frame="terminal" title="docs/plans/2026-11-12-docs-site.report.md" mark={1}
+   quality: tests 36 passed, 0 failed; first-time pass n/a; rework dispatches 1; open incidents 18
+   ```
 
    First-time pass counts tasks that passed with no rework. It says n/a here because the run measured none. A rework dispatch is a fix round. Open incidents are logged problems, such as the failing test runs the [reviews](/superlite/run/reviews-and-fixes/) page shows.
 
 6. **You read the takeaway, then decide.**
 
-   ![Terminal, docs/plans/2026-11-12-docs-site.report.md: takeaway: ran 7% faster than projected; cost 45% over; biggest miss T12](../../../assets/screens/run/report-5.png)
+   ```text frame="terminal" title="docs/plans/2026-11-12-docs-site.report.md" mark={1}
+   takeaway: ran 7% faster than projected; cost 45% over; biggest miss T12
+   ```
 
    The takeaway is the report in one sentence. T12's miss is a gap in measurement: it shows 0.0 actual minutes and model `?`, so it looks untimed. `history write` has by now appended this run's rows to `~/.superlite/history.jsonl`, which sharpens the next forecast. Now `superlite:shipping` asks how to ship. **You decide:** commit, merge, push and open a PR, or keep the branch.
 

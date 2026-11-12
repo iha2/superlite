@@ -1,7 +1,0 @@
-title: superlite report
-mark: 1
----
-cause   token expiry stored in local time, checked as UTC
-fix     the expiry check in auth compares in UTC
-test    test_expiry_is_compared_in_utc fails before, passes after
-suite   green

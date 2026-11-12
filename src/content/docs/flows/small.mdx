@@ -40,7 +40,9 @@ Say a function name no longer fits and you want it changed everywhere.
 
 1. You say it in one line.
 
-   ![Terminal, Claude Code · ~/shop: ❯ /superlite:small Rename `build` to `render` everywhere](../../../assets/screens/flows/small-1.png)
+   ```text frame="terminal" title="Claude Code · ~/shop" ins={1}
+   ❯ /superlite:small Rename `build` to `render` everywhere
+   ```
 
    You named `small`, so there is no menu to answer and no plan to read. superlite opens a [session](/superlite/sessions/sessions/) first, so the rename sits on its own branch and is easy to inspect or throw away.
 
@@ -57,7 +59,9 @@ Say a function name no longer fits and you want it changed everywhere.
 
 3. Focused tests run.
 
-   ![Terminal, Claude Code · ~/shop: tests/test_pages.py  tests/test_site.py  passed](../../../assets/screens/flows/small-2.png)
+   ```text frame="terminal" title="Claude Code · ~/shop" mark={1}
+   tests/test_pages.py  tests/test_site.py  passed
+   ```
 
    Only the tests for the files it changed run. The full suite defaults to no and superlite does not ask.
 
@@ -65,7 +69,9 @@ Say a function name no longer fits and you want it changed everywhere.
 
 5. superlite says it is done.
 
-   ![Terminal, Claude Code · ~/shop: done: 6 files changed, tests pass, reviewer found nothing to fix](../../../assets/screens/flows/small-3.png)
+   ```text frame="terminal" title="Claude Code · ~/shop" mark={1}
+   done: 6 files changed, tests pass, reviewer found nothing to fix
+   ```
 
    **You decide:** keep it, adjust it or throw the branch away. `superlite-cli finish` marks the session finished and leaves your work where it is.
 

@@ -1,4 +1,0 @@
-title: Claude Code · ~/shop
-mark: 1
----
-FAILED tests/test_login.py::test_login_after_timeout - assert 401 == 200

@@ -15,7 +15,7 @@ needs_main = pytest.mark.skipif(
 )
 DOCS = HERE.parent / "src" / "content" / "docs"
 PAGES = ["sessions", "lifecycle", "worktrees", "sandbox"]
-SCREEN = re.compile(r"!\[[^\]]*\]\([^)]*assets/screens/[^)]*\.png\)")
+SCREEN = re.compile(r'!\[[^\]]*\]\([^)]*assets/screens/[^)]*\.png\)|frame="terminal"')  # a terminal frame or a critical-moment image
 
 
 def _text(name):
@@ -69,8 +69,6 @@ def test_examples_are_framed_walkthroughs():
 def test_lifecycle_walks_one_real_session():
     t = _text("lifecycle")
     assert "proto-sandbox" in t and "PR #56" in t and "/superlite:merged 56" in t
-    assert "pr-56.png" in t
-    assert (HERE.parent / "src" / "assets" / "screens" / "github" / "pr-56.png").stat().st_size < 250_000
 
 
 def test_worktrees_example_is_this_docs_session():

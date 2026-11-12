@@ -1,4 +1,0 @@
-title: Claude Code · ~/shop
-mark: 1
----
-Root cause: the token is stored with a local-time expiry and checked as UTC.

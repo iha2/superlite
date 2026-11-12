@@ -1,8 +1,0 @@
-title: Claude Code · ~/shop
-ins: 5
----
-What is the intent of this change?
-Which risk matters most?
-What is out of bounds?
-Run the whole test suite at finish?  › No, affected tests only (Recommended)
-❯ The main risk is wrong totals in the export. Leave the invoice model alone.

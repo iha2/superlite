@@ -1,9 +1,0 @@
-title: Claude Code · ~/shop
-ins: 5
-mark: 2
----
-Which flow?
-› 1. Feature (Recommended)  existing code, the request changes the app
-  2. Small                  a few files, inline
-  3. Regular                size it, plan it, build it
-❯ Feature, and I will approve the plan

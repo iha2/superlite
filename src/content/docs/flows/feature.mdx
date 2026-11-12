@@ -96,7 +96,9 @@ This is the run that built superlite's per-repo learning (PR #60). The idea: eac
 
 1. You describe the change.
 
-   ![Terminal, Claude Code · ~/superlite: ❯ /superlite:feature Each run should teach superlite how work goes in this repo, and brief the agents that write code here](../../../assets/screens/flows/feature-1.png)
+   ```text frame="terminal" title="Claude Code · ~/superlite" ins={1}
+   ❯ /superlite:feature Each run should teach superlite how work goes in this repo, and brief the agents that write code here
+   ```
 
    superlite prints the stored screen above and opens a session on its own branch. It asks the same menu as [Regular](/superlite/flows/regular/): human or AI, and whether to run the whole suite at finish.
 
@@ -114,7 +116,10 @@ This is the run that built superlite's per-repo learning (PR #60). The idea: eac
 
 3. You approve.
 
-   ![Terminal, Claude Code · ~/superlite: Reply approve to start, or tell me what to change / ❯ approve](../../../assets/screens/flows/feature-2.png)
+   ```text frame="terminal" title="Claude Code · ~/superlite" mark={1} ins={2}
+   Reply approve to start, or tell me what to change
+   ❯ approve
+   ```
 
    A hook blocks the prototype until your typed reply is newer than the plan ([plan and approval](/superlite/run/plan-and-approval/)). Edit the plan later and you approve again.
 
@@ -132,7 +137,12 @@ This is the run that built superlite's per-repo learning (PR #60). The idea: eac
 
 5. You try it. `proto tryout` prints how to run it and what to check.
 
-   ![Terminal, Claude Code · ~/superlite: run: cd ".superlite/sandboxes/per-repo-learning/per-repo-learning" && python3 tryout.py / try: / - Run `learn sync` twice in a row: the second run adds no history rows, incidents or findings. / - ...](../../../assets/screens/flows/feature-3.png)
+   ```text frame="terminal" title="Claude Code · ~/superlite" mark={1}
+   run: cd ".superlite/sandboxes/per-repo-learning/per-repo-learning" && python3 tryout.py
+   try:
+     - Run `learn sync` twice in a row: the second run adds no history rows, incidents or findings.
+     - ...
+   ```
 
    **You decide:** reply "it works", or list changes. Changes go back to the prototype as a fix round, and the port stays blocked until you say it works. In this run you had told superlite to decide, so it ran `tryout.py` itself. Three fixture runs went by, the first stopped early, and all 80 tests passed. The ruling went to `.superlite/progress.md`.
 
@@ -140,7 +150,11 @@ This is the run that built superlite's per-repo learning (PR #60). The idea: eac
 
 7. You read the report.
 
-   ![Terminal, superlite build report: Projected   Actual / wall-clock (min)         8.0     28.2 / agents                    11        8](../../../assets/screens/flows/feature-4.png)
+   ```text frame="terminal" title="superlite build report" mark={2}
+                       Projected   Actual
+   wall-clock (min)         8.0     28.2
+   agents                    11        8
+   ```
 
    The integration ran well over its forecast, and the [report](/superlite/run/report/) shows it. The prototype and the port each get their own report.
 
@@ -148,7 +162,7 @@ This is the run that built superlite's per-repo learning (PR #60). The idea: eac
 
 **What you end up with:** a pull request from `superlite/sessions/per-repo-learning-int` into `main`, with the full suite green at 2459 tests. The sandbox is discarded at finish. You review and merge.
 
-![PR #60 on GitHub: "Per-repo learning loop: lessons cache, progressive sync, tests folder", merged](../../../assets/screens/github/pr-60.png)
+On GitHub that pull request is titled "Per-repo learning loop: lessons cache, progressive sync, tests folder" and stays open until you merge it.
 
 ## Good to know
 

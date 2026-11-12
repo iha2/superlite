@@ -1,4 +1,0 @@
-title: Claude Code · ~/shop
-mark: 1
----
-tier 1 (cause known, one module): Sonnet fixer changes the expiry check

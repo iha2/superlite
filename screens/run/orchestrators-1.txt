@@ -1,8 +1,0 @@
-title: Claude Code · ~/superlite
-ins: 1
-mark: 3-4
----
-❯ /superlite:start A documentation site for superlite on GitHub Pages
-
-❯ 1. Human orchestrator: I approve the plan before it runs
-  2. AI orchestrator: hands off, it does everything

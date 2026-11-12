@@ -54,19 +54,21 @@ Haiku never fixes, because a fix keeps a decision. Haiku stays on mechanical imp
 
 1. **You open the PR and see a review.** Copilot, a reviewer outside superlite, has read the docs site PR and posted six findings, each with a severity.
 
-   ![Copilot's review of PR #58: Changes recommended, 6 open issues, two High, three Medium, one Low](../../../assets/screens/github/copilot-review.png)
+   The review comes back as "Changes recommended" with six open issues: two High, three Medium, one Low.
 
    superlite's own final reviewer reports in the same shape, one line per finding: `file:line - problem - fix - tier N`. It only reports, so that the reviewer that judges is never the agent that edits.
 
 2. **You decide:** you hand the review to superlite and let it fix.
 
-   ![Terminal, Claude Code · ~/superlite: ❯ apply the Copilot review on PR 58](../../../assets/screens/run/reviews-and-fixes-1.png)
+   ```text frame="terminal" title="Claude Code · ~/superlite" ins={1}
+   ❯ apply the Copilot review on PR 58
+   ```
 
    The coordinator reads the findings and routes each one. It cannot edit code, so every fix goes to a fix-only agent.
 
 3. **Each finding gets a tier.** Open the first one: a unit test resolves the wrong folder.
 
-   ![Copilot's inline comment: REPO resolves outside the site checkout, so test_real_names fails; use the MAIN fixture](../../../assets/screens/github/copilot-inline.png)
+   Copilot's inline comment says `REPO` resolves outside the site checkout, so `test_real_names` fails; use the `MAIN` fixture.
 
    The cause is known and sits in one test file, so tier 1, `fixer-sonnet`. The `--main ..` finding spans `package.json`, the checker and two page tests, a seam, so the rules put it at tier 2, `fixer-sonnet-high`.
 
@@ -81,15 +83,19 @@ Haiku never fixes, because a fix keeps a decision. Haiku stays on mechanical imp
 
    If a round fails, it writes `NOT_FIXED`, and a fresh agent starts from the note alone. After two failed rounds the finding moves up a tier. The note stays under 1,500 characters, so a new agent starts with 10 to 20k tokens instead of an old 60 to 100k session.
 
-5. **Only the touched tests run, in the background.** The fix round's ledger holds two runs.
+5. **Only the touched tests run, in the background.** The ledger records each run.
 
-   ![Terminal, .superlite/progress.md: tests fast passed=45 failed=2 skipped=0 seconds=1.4 / tests fast passed=47 failed=0 skipped=0 seconds=1.4](../../../assets/screens/run/reviews-and-fixes-2.png)
+   ![The progress ledger: a tests fast line with failed=1, then after the fix a tests fast line with failed=0](../../../assets/screens/ledger.png)
 
-   The first run logged two incidents, `test_reference_agent_names_validated` and `test_reference_agent_table_rejects_skill_name`, both new regression tests for the bare-name finding. The fix landed and the second run, 14 seconds later, was green. Each fix adds one regression test that fails without it.
+   *Real output: the ledger goes from failed=1 to failed=0.*
+
+   The first run logged a failing test. The fix landed and the next run was green. Each fix adds one regression test that fails without it.
 
 6. **You decide: commit.** Superlite asks at shipping. The six findings became one commit.
 
-   ![Terminal, git log · site branch: 318308a Docs site: apply Copilot review (light mode, checks, session close)](../../../assets/screens/run/reviews-and-fixes-3.png)
+   ```text frame="terminal" title="git log · site branch" mark={1}
+   318308a Docs site: apply Copilot review (light mode, checks, session close)
+   ```
 
    Light mode, the `--main` lookup, bare names, index links and session close are the five bullets in the message. The commit came under four minutes after Copilot's review at 04:29.
 

@@ -1,4 +1,0 @@
-title: Chat 2 · ~/superlite
-ins: 1
----
-❯ /superlite:feature <your next request>

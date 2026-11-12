@@ -74,13 +74,25 @@ This site was built with superlite, in the Regular flow with the human orchestra
 
 1. **You ask, then answer one menu.**
 
-   ![Terminal, Claude Code · superlite: ❯ Build a documentation site for superlite, laid out like Warp's docs. / Mode / › 1. Regular   size it, plan, build, review / 2. Feature   change existing code, prove it on a prototype / 3. MVP       smallest working...](../../../assets/screens/start/quickstart-1.png)
+   ```text frame="terminal" title="Claude Code · superlite" ins={1}
+   ❯ Build a documentation site for superlite, laid out like Warp's docs.
+
+     Mode
+     › 1. Regular   size it, plan, build, review
+       2. Feature   change existing code, prove it on a prototype
+       3. MVP       smallest working version first
+     Orchestrator
+     › 1. Human     you approve a plan before anything is built
+       2. AI        hands off
+   ```
 
    `/superlite:start` runs `superlite-cli suggest_flow` on your words and the project, then asks both open questions in one menu, so you are interrupted once. **You decide:** the mode and who orchestrates. This run took Regular and Human.
 
 2. **superlite shows the path and opens your workspace.**
 
-   ![Terminal, Claude Code · the Regular flow screen: REGULAR / 1  ASK      You say what you want. / 2  SIZE     Trivial, bounded or large. Large gets one batch of questions. / 3  PLAN     The design and the task plan. Human mode adds a review plan. / 4  APPROVE  Human m...](../../../assets/screens/start/quickstart-2.png)
+   ![The Regular flow screen printed at start: ten stages from ASK to REPORT, with BUILD fanning out to Haiku and Sonnet agents](../../../assets/screens/flow-regular.png)
+
+   *Real output: the flow screen superlite prints when the run starts.*
 
    <FileTree>
    - .claude/worktrees/
@@ -99,19 +111,28 @@ This site was built with superlite, in the Regular flow with the human orchestra
    - Page length: about 300 words of prose per guide page (default) | stricter, 200.
    ```
 
-   ![Terminal, Claude Code: docs/plans/2026-11-12-docs-site.review.md / Reply approve to start, or tell me what to change.](../../../assets/screens/start/quickstart-3.png)
+   ```text frame="terminal" title="Claude Code"
+   docs/plans/2026-11-12-docs-site.review.md
+   Reply approve to start, or tell me what to change.
+   ```
 
    The plan is plain language for you. A second file, `docs/plans/2026-11-12-docs-site.md`, is the task list for the agents. superlite stops here: nothing is linted or sent to an agent until you answer. See [Plan and approval](/superlite/run/plan-and-approval/).
 
 4. **You approve.** **You decide:** a clear yes is enough.
 
-   ![Terminal, Claude Code: ❯ looks good, go ahead](../../../assets/screens/start/quickstart-4.png)
+   ```text frame="terminal" title="Claude Code" ins={1}
+   ❯ looks good, go ahead
+   ```
 
    Now lint reads the machine plan, 12 tasks, and saves a forecast: 6.8 minutes and $1.83 of agent cost. The forecast is fixed at this moment, so the report can later show where the run missed it.
 
 5. **Agents build side by side.** Run `/superlite:status`, or watch the ledger.
 
-   ![Terminal, .superlite/progress.md: - tests fast passed=45 failed=2 skipped=0 seconds=1.4 / - tests fast passed=47 failed=0 skipped=0 seconds=1.4 / - tests fast passed=103 failed=0 skipped=0 seconds=0.8](../../../assets/screens/start/quickstart-5.png)
+   ```text frame="terminal" title=".superlite/progress.md"
+   - tests fast passed=45 failed=2 skipped=0 seconds=1.4
+   - tests fast passed=47 failed=0 skipped=0 seconds=1.4
+   - tests fast passed=103 failed=0 skipped=0 seconds=0.8
+   ```
 
    ```mermaid
    flowchart LR
@@ -123,17 +144,28 @@ This site was built with superlite, in the Regular flow with the human orchestra
 
 6. **You read the report.**
 
-   ![Terminal, Claude Code · build report: Projected    Actual / wall-clock (min)               6.8       6.3 / agent cost (USD, +rework)      1.83      2.66 / agents                          12        19 / quality: tests 36 passed, 0 failed](../../../assets/screens/start/quickstart-6.png)
+   ```text frame="terminal" title="Claude Code · build report" mark={2-3}
+                            Projected    Actual
+   wall-clock (min)               6.8       6.3
+   agent cost (USD, +rework)      1.83      2.66
+   agents                          12        19
+   quality: tests 36 passed, 0 failed
+   ```
 
    It ran 7% faster than forecast, cost 45% more, and used 19 agents against 12 forecast, because the count includes reviewers and one rework dispatch. The coordinator, your own chat, cost $6.81 on top. Nothing is committed yet. See [Report](/superlite/run/report/).
 
 7. **You ship it.** **You decide:** `/superlite:finish` runs the tests, then asks what to do with the work.
 
-   ![Terminal, Claude Code: ❯ /superlite:finish / 1. Merge locally into the base branch / › 2. Push and open a pull request / 3. Keep the branch as is](../../../assets/screens/start/quickstart-7.png)
+   ```text frame="terminal" title="Claude Code" ins={1} mark={3}
+   ❯ /superlite:finish
+     1. Merge locally into the base branch
+   › 2. Push and open a pull request
+     3. Keep the branch as is
+   ```
 
    Nothing is pushed without your yes. This run opened a pull request.
 
-   ![Pull request 58 on GitHub, merged into the site branch, with the summary written from the plan](../../../assets/screens/github/pr-58.png)
+   On GitHub the pull request carries a summary written from the plan.
 
 </Steps>
 

@@ -1,4 +1,0 @@
-title: Chat 2 · ~/shop/.claude/worktrees/sessions-login-fix
----
-superlite session: login-fix | branch superlite/sessions/login-fix | worktree ~/shop/.claude/worktrees/sessions-login-fix | active | stash:no | run:open
-❯

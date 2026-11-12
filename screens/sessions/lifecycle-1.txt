@@ -1,4 +1,0 @@
-title: Claude Code · ~/superlite
-ins: 1
----
-❯ /superlite:start Feature prototypes run in a sandbox, not a worktree

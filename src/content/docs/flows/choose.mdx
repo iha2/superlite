@@ -57,19 +57,29 @@ Say you are in your shop project and you type the request without a mode.
 
 1. You type the request.
 
-   ![Terminal, Claude Code · ~/shop: ❯ /superlite:start Add CSV export for the invoices page](../../../assets/screens/flows/choose-1.png)
+   ```text frame="terminal" title="Claude Code · ~/shop" ins={1}
+   ❯ /superlite:start Add CSV export for the invoices page
+   ```
 
    Because you named no flow, superlite asks the script for a suggestion before it asks you anything.
 
 2. The script prints one line. It read your words and the folder.
 
-   ![Terminal, superlite-cli suggest_flow: suggest: feature - existing code, the request changes the app ("add") | also fits: small, regular](../../../assets/screens/flows/choose-2.png)
+   ```text frame="terminal" title="superlite-cli suggest_flow" mark={1}
+   suggest: feature - existing code, the request changes the app ("add") | also fits: small, regular
+   ```
 
    The folder has code, and "add" is a change word, so the answer is Feature. The same words in an empty folder would give MVP. The script is plain rules, so the same input always gives the same line.
 
 3. You pick from a menu, with the suggestion first.
 
-   ![Terminal, Claude Code · ~/shop: Which flow? / › 1. Feature (Recommended)  existing code, the request changes the app / 2. Small                  a few files, inline / 3. Regular                size it, plan it, build it / ❯ Feature, and I will appro...](../../../assets/screens/flows/choose-3.png)
+   ```text frame="terminal" title="Claude Code · ~/shop" mark={2} ins={5}
+   Which flow?
+   › 1. Feature (Recommended)  existing code, the request changes the app
+     2. Small                  a few files, inline
+     3. Regular                size it, plan it, build it
+   ❯ Feature, and I will approve the plan
+   ```
 
    **You decide:** the flow and the orchestrator, in one batch (a second question asks who orchestrates). Take the suggestion or pick another. superlite may override the script when your words clearly say otherwise, and gives a one-line reason ([orchestrators](/superlite/run/orchestrators/)).
 

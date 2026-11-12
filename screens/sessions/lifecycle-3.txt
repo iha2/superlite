@@ -1,7 +1,0 @@
-title: Claude Code · ~/superlite
-words: Commit to superlite/sessions/proto-sandbox
----
-Commit the work to superlite/sessions/proto-sandbox?
-
-❯ 1. Commit to superlite/sessions/proto-sandbox
-  2. Leave uncommitted

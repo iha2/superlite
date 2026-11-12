@@ -89,13 +89,21 @@ This docs site was built in a session called `docs-site`, in the main checkout `
 
 1. **A second run starts in the same folder.** The two would share one `.superlite/` and one checked-out branch.
 
-   ![Terminal, Chat 2 · ~/superlite: ❯ /superlite:feature <your next request>](../../../assets/screens/sessions/worktrees-1.png)
+   ```text frame="terminal" title="Chat 2 · ~/superlite" ins={1}
+   ❯ /superlite:feature <your next request>
+   ```
 
    Underneath, `session ensure` finds the open session and does not touch it unasked. It asks you.
 
 2. **You decide: move the docs session out?** You check that the docs chat is idle, then answer.
 
-   ![Terminal, Chat 2 · ~/superlite: Move session docs-site out of the main checkout into / ~/superlite/.claude/worktrees/sessions-docs-site? Its chat must be idle. / ❯ 1. Yes / 2. No](../../../assets/screens/sessions/worktrees-2.png)
+   ```text frame="terminal" title="Chat 2 · ~/superlite" mark={4} "Yes"
+   Move session docs-site out of the main checkout into
+   ~/superlite/.claude/worktrees/sessions-docs-site? Its chat must be idle.
+
+   ❯ 1. Yes
+     2. No
+   ```
 
    Underneath, the question is the `ASK move` line from [the move question](#the-move-question). No leaves everything as it is and the new run does not start.
 
@@ -112,7 +120,10 @@ This docs site was built in a session called `docs-site`, in the main checkout `
 
 4. **The docs chat steps over.** Its old folder no longer holds the session, so its status line says so.
 
-   ![Terminal, Chat 1 · ~/superlite: superlite session: docs-site moved to ~/superlite/.claude/worktrees/sessions-docs-site — move the agent root there / ❯](../../../assets/screens/sessions/worktrees-3.png)
+   ```text frame="terminal" title="Chat 1 · ~/superlite" mark={1}
+   superlite session: docs-site moved to ~/superlite/.claude/worktrees/sessions-docs-site — move the agent root there
+   ❯
+   ```
 
    Underneath, git allows a branch in only one folder. Under Claude Code the chat calls `EnterWorktree path=<abs>`; elsewhere you `cd` there. It carries on with the same plan and files.
 

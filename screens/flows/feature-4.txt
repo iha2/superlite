@@ -1,6 +1,0 @@
-title: superlite build report
-mark: 2
----
-                    Projected   Actual
-wall-clock (min)         8.0     28.2
-agents                    11        8

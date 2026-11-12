@@ -1,5 +1,0 @@
-title: Chat 1 · ~/shop
-ins: 1
----
-❯ /superlite:feature Add CSV export
-● Reading the code and writing a plan...

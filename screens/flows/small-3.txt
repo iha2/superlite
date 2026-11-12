@@ -1,4 +1,0 @@
-title: Claude Code · ~/shop
-mark: 1
----
-done: 6 files changed, tests pass, reviewer found nothing to fix

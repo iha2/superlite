@@ -1,8 +1,0 @@
-title: Claude Code · build report
-mark: 2-3
----
-                         Projected    Actual
-wall-clock (min)               6.8       6.3
-agent cost (USD, +rework)      1.83      2.66
-agents                          12        19
-quality: tests 36 passed, 0 failed

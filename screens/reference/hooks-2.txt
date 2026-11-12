@@ -1,6 +1,0 @@
-title: Claude Code · ~/shop
-ins: 1
-mark: 2
----
-$ pytest tests/test_export.py
-raw test run rewritten to a superlite-cli run_tests --fast; its summary is in .superlite/test-summary.json

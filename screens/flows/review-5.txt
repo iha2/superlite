@@ -1,5 +1,0 @@
-title: superlite report
-mark: 1
----
-fixes made: 1, tests added: 1
-open findings: tier 2 x1, tier 3 x1

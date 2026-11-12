@@ -56,19 +56,26 @@ Say you use Claude Code and Gemini CLI.
 
 1. In Claude Code you add the marketplace, then install:
 
-   ![Terminal, Claude Code · ~/shop: /plugin marketplace add iha2/superlite / /plugin install superlite@superlite-dev](../../../assets/screens/reference/harnesses-1.png)
+   ```text frame="terminal" title="Claude Code · ~/shop" ins={1-2}
+   /plugin marketplace add iha2/superlite
+   /plugin install superlite@superlite-dev
+   ```
 
    Claude Code needs no mapping file, because the skills are written in its own tool names.
 
 2. In a terminal you install the extension for Gemini CLI:
 
-   ![Terminal, Terminal · ~/shop: $ gemini extensions install https://github.com/iha2/superlite](../../../assets/screens/reference/harnesses-2.png)
+   ```text frame="terminal" title="Terminal · ~/shop" ins={1}
+   $ gemini extensions install https://github.com/iha2/superlite
+   ```
 
    Gemini CLI gets a mapping file from `skills/using-superlite/references/`, which says that "dispatch an agent" means `invoke_agent` there. Install is per harness, so this step does not cover Claude Code.
 
 3. **You decide:** open a fresh session in either tool and send the check request.
 
-   ![Terminal, Gemini CLI · ~/shop: Let's make a react todo list](../../../assets/screens/reference/harnesses-3.png)
+   ```text frame="terminal" title="Gemini CLI · ~/shop" ins={1}
+   Let's make a react todo list
+   ```
 
 4. A working install starts `inventing` before any code is written, and asks you about the design.
 

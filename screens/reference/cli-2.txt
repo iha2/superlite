@@ -1,7 +1,0 @@
-title: Terminal · ~/shop
-ins: 1
-mark: 2
----
-$ bash skills/swarm/scripts/superlite-cli run_tests --fast tests/test_login.py --background
-wait: run_tests --wait --run <id>
-summary: .superlite/test-summary.json

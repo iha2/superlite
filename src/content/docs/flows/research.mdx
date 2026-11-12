@@ -68,13 +68,20 @@ Say you need a briefing on vector search and you want to know where every number
 
 1. You give the topic and the level.
 
-   ![Terminal, Claude Code · ~/notes: ❯ /superlite:research State of the art in vector search, for a VP](../../../assets/screens/flows/research-1.png)
+   ```text frame="terminal" title="Claude Code · ~/notes" ins={1}
+   ❯ /superlite:research State of the art in vector search, for a VP
+   ```
 
    superlite prints the stored screen above and opens a [session](/superlite/sessions/sessions/). Research needs no code, but the session keeps its files on their own branch.
 
 2. You answer a short menu.
 
-   ![Terminal, Claude Code · ~/notes: Who orchestrates? / › 1. Human   you approve the plan first / 2. AI      answers its own questions / Evidence tiers? A = peer-reviewed benchmarks, B = vendor docs, C = blog posts](../../../assets/screens/flows/research-2.png)
+   ```text frame="terminal" title="Claude Code · ~/notes" mark={2}
+   Who orchestrates?
+   › 1. Human   you approve the plan first
+     2. AI      answers its own questions
+   Evidence tiers? A = peer-reviewed benchmarks, B = vendor docs, C = blog posts
+   ```
 
    **You decide:** the orchestrator and what counts as strong evidence. The tiers are yours, and they grade every source later. See [orchestrators](/superlite/run/orchestrators/).
 
@@ -100,13 +107,18 @@ Say you need a briefing on vector search and you want to know where every number
 
 5. superlite finds a conflict.
 
-   ![Terminal, Claude Code · ~/notes: two claims about recall disagree: cause "method"](../../../assets/screens/flows/research-3.png)
+   ```text frame="terminal" title="Claude Code · ~/notes" mark={1}
+   two claims about recall disagree: cause "method"
+   ```
 
    It records why they disagree: definition, date, population, method, source quality or error. It resolves the conflict or leaves it open and visible. A gap sends researchers back with a new sub-question.
 
 6. Lint, then the report. Lint checks that every claim has a source and every conflict has a cause. The report is written at VP level, and downloads are listed with name, source and size but fetched only after your yes.
 
-   ![Terminal, Claude Code · ~/notes: Download any of these files?  (none fetched yet) / ❯ no downloads](../../../assets/screens/flows/research-4.png)
+   ```text frame="terminal" title="Claude Code · ~/notes" ins={2}
+   Download any of these files?  (none fetched yet)
+   ❯ no downloads
+   ```
 
    <FileTree>
    - docs/plans/
@@ -116,7 +128,9 @@ Say you need a briefing on vector search and you want to know where every number
 
 7. Later you want it in plain language. No new research is needed.
 
-   ![Terminal, Claude Code · ~/notes: ❯ /superlite:research --level simple](../../../assets/screens/flows/research-5.png)
+   ```text frame="terminal" title="Claude Code · ~/notes" ins={1}
+   ❯ /superlite:research --level simple
+   ```
 
    superlite re-renders the report from the ledger and lints that the levels match.
 

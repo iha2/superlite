@@ -1,7 +1,0 @@
-title: Claude Code · ~/habits
-mark: 2
----
-Who orchestrates?
-› 1. Human   you approve before anything is built
-  2. AI      hands off
-Run the whole test suite at finish?  › No, affected tests only (Recommended)

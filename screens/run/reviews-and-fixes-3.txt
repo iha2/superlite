@@ -1,4 +1,0 @@
-title: git log · site branch
-mark: 1
----
-318308a Docs site: apply Copilot review (light mode, checks, session close)

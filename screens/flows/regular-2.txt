@@ -1,7 +1,0 @@
-title: Claude Code · ~/superlite
-mark: 2
----
-Who orchestrates?
-› 1. Human   you approve a plain-language review plan first
-  2. AI      hands off
-Run the whole test suite at finish?  › No, affected tests only (Recommended)

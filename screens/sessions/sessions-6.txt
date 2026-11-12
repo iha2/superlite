@@ -1,7 +1,0 @@
-title: Chat 2 · ~/shop/.claude/worktrees/sessions-login-fix
-ins: 1
----
-❯ superlite-cli session status
-session: active=- host=~/shop
-session: parallel export | branch superlite/sessions/export | worktree ~/shop/.claude/worktrees/sessions-export | stash:no | run:open
-session: parallel login-fix | branch superlite/sessions/login-fix | worktree ~/shop/.claude/worktrees/sessions-login-fix | stash:no | run:open

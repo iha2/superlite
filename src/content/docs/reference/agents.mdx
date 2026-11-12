@@ -44,7 +44,10 @@ Say task T4 of a build fails its tests and a first fixer cannot clear it.
 
 1. You see an agent named `fixer-sonnet` start on the failure.
 
-   ![Terminal, Claude Code · ~/shop: T4 tests failed / dispatch fixer-sonnet  finding F-T4-1  note .superlite/fixes/F-T4-1.md](../../../assets/screens/reference/agents-1.png)
+   ```text frame="terminal" title="Claude Code · ~/shop" mark={2}
+   T4 tests failed
+   dispatch fixer-sonnet  finding F-T4-1  note .superlite/fixes/F-T4-1.md
+   ```
 
    It is tier 1, for a known cause confined to one module.
 
@@ -60,7 +63,9 @@ Say task T4 of a build fails its tests and a first fixer cannot clear it.
 
 4. Say the coordinator tried to skip a tier on a task marked blocked. The `pre-tool` hook refuses:
 
-   ![Terminal, Claude Code · ~/shop: Blocked: BLOCKED task needs fixer tier opus. Launch the fixer one tier up, not tier T4 need=opus got=sonnet.](../../../assets/screens/reference/agents-2.png)
+   ```text frame="terminal" title="Claude Code · ~/shop" mark={1}
+   Blocked: BLOCKED task needs fixer tier opus. Launch the fixer one tier up, not tier T4 need=opus got=sonnet.
+   ```
 
    The tier rule is enforced by the hook, not left to the coordinator's judgement.
 

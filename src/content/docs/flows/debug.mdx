@@ -61,25 +61,36 @@ Say a test fails after a recent change and you do not know why.
 
 1. You paste the failure.
 
-   ![Terminal, Claude Code · ~/shop: ❯ /superlite:debug test_login_after_timeout fails: expects 200, gets 401](../../../assets/screens/flows/debug-1.png)
+   ```text frame="terminal" title="Claude Code · ~/shop" ins={1}
+   ❯ /superlite:debug test_login_after_timeout fails: expects 200, gets 401
+   ```
 
    superlite prints the stored screen above and opens a [session](/superlite/sessions/sessions/), so the fix lands on its own branch.
 
 2. superlite runs the test and watches it fail.
 
-   ![Terminal, Claude Code · ~/shop: FAILED tests/test_login.py::test_login_after_timeout - assert 401 == 200](../../../assets/screens/flows/debug-2.png)
+   ```text frame="terminal" title="Claude Code · ~/shop" mark={1}
+   FAILED tests/test_login.py::test_login_after_timeout - assert 401 == 200
+   ```
 
    It reads the whole error, not the first line, and checks what changed recently. A bug it cannot reproduce is a bug it cannot prove fixed, so this comes first.
 
 3. You answer one batch of questions. They are asked only because something material is open.
 
-   ![Terminal, Claude Code · ~/shop: What is the correct behavior after a timeout? / What must not change? / How far may the fix reach? / ❯ A session that expires should log in again. Keep the token format. Touch auth only.](../../../assets/screens/flows/debug-3.png)
+   ```text frame="terminal" title="Claude Code · ~/shop" ins={4}
+   What is the correct behavior after a timeout?
+   What must not change?
+   How far may the fix reach?
+   ❯ A session that expires should log in again. Keep the token format. Touch auth only.
+   ```
 
    **You decide:** the scope. These answers fence the fix in, so it cannot widen into a refactor. The batch also carries the question "Run the whole test suite at finish?", which defaults to no.
 
 4. superlite states the cause.
 
-   ![Terminal, Claude Code · ~/shop: Root cause: the token is stored with a local-time expiry and checked as UTC.](../../../assets/screens/flows/debug-4.png)
+   ```text frame="terminal" title="Claude Code · ~/shop" mark={1}
+   Root cause: the token is stored with a local-time expiry and checked as UTC.
+   ```
 
    It follows the bad value back to where it starts and tests the sentence with the smallest probe it can think of. This line is the part to read first. It tells you whether the fix addresses the bug or only hides it.
 
@@ -95,13 +106,20 @@ Say a test fails after a recent change and you do not know why.
 
 6. A fixer changes the code.
 
-   ![Terminal, Claude Code · ~/shop: tier 1 (cause known, one module): Sonnet fixer changes the expiry check](../../../assets/screens/flows/debug-5.png)
+   ```text frame="terminal" title="Claude Code · ~/shop" mark={1}
+   tier 1 (cause known, one module): Sonnet fixer changes the expiry check
+   ```
 
    The cause is known and sits in one module, so it is tier 1. After two failed rounds at a tier, the work moves up one ([reviews and fixes](/superlite/run/reviews-and-fixes/)).
 
 7. You read the report.
 
-   ![Terminal, superlite report: cause   token expiry stored in local time, checked as UTC / fix     the expiry check in auth compares in UTC / test    test_expiry_is_compared_in_utc fails before, passes after / suite   green](../../../assets/screens/flows/debug-6.png)
+   ```text frame="terminal" title="superlite report" mark={1}
+   cause   token expiry stored in local time, checked as UTC
+   fix     the expiry check in auth compares in UTC
+   test    test_expiry_is_compared_in_utc fails before, passes after
+   suite   green
+   ```
 
    The new test passes and the whole suite is green. The report carries the evidence, so you can judge the fix without rerunning anything.
 

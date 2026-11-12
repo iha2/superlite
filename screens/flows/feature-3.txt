@@ -1,7 +1,0 @@
-title: Claude Code · ~/superlite
-mark: 1
----
-run: cd ".superlite/sandboxes/per-repo-learning/per-repo-learning" && python3 tryout.py
-try:
-  - Run `learn sync` twice in a row: the second run adds no history rows, incidents or findings.
-  - ...

@@ -1,4 +1,0 @@
-title: Claude Code · ~/superlite
-ins: 1
----
-❯ apply the Copilot review on PR 58
