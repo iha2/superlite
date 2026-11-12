@@ -460,6 +460,16 @@ Analysis scripts:
 
 While a superlite run is in progress, superpowers is suspended (`superlite-cli orchestrator set` writes `.superlite/peers.json` and, on Claude Code, turns `superpowers@claude-plugins-official` off in `.claude/settings.local.json`). The lifecycle skills are named `inventing`, `drafting`, `swarm`, `testing`, `diagnosis`, `proof`, and `shipping`, so a short-name lookup does not open the superpowers file. Both plugins still inject a session bootstrap. `superlite-cli finish` removes the marker and restores the previous setting, so superpowers or anything like it can be used again.
 
+## Star history
+
+<a href="https://www.star-history.com/#iha2/superlite&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=iha2/superlite&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=iha2/superlite&type=Date" />
+    <img alt="Star history chart for iha2/superlite" src="https://api.star-history.com/svg?repos=iha2/superlite&type=Date" />
+  </picture>
+</a>
+
 ## License
 
 MIT
