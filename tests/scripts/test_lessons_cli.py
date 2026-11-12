@@ -108,11 +108,11 @@ def test_report_sections(tmp_path):
     seed(hub, key="a")
     seed(hub, key="p", kind="practice", text="do: run t.py", u=0.3, n=5)
     hist = [
-        {"v": 1, "run": "r1", "task": "T1", "first_time_pass": False, "findings": 2,
+        {"v": 1, "repository": "x", "date": "d1", "run": "r1", "task": "T1", "first_time_pass": False, "findings": 2,
          "rework_cost": 1.0, "cost_usd": 4.0, "status": "unfinished"},
-        {"v": 1, "run": "r1", "task": "T2", "first_time_pass": True, "findings": 0,
+        {"v": 1, "repository": "x", "date": "d1", "run": "r1", "task": "T2", "first_time_pass": True, "findings": 0,
          "rework_cost": 0.0, "cost_usd": 4.0, "status": "unfinished"},
-        {"v": 1, "run": "r2", "task": "T1", "first_time_pass": True, "findings": 1,
+        {"v": 1, "repository": "x", "date": "d2", "run": "r2", "task": "T1", "first_time_pass": True, "findings": 1,
          "rework_cost": 0.0, "cost_usd": 2.0, "status": "complete"},
     ]
     out = lessons_cli.report(hub, hist)
@@ -127,7 +127,7 @@ def test_report_sections(tmp_path):
 
 
 def test_report_last_n_and_empty(tmp_path):
-    hist = [{"run": f"r{i}", "task": "T", "first_time_pass": True, "findings": 0,
+    hist = [{"repository": "x", "date": f"d{i}", "run": f"r{i}", "task": "T", "first_time_pass": True, "findings": 0,
              "rework_cost": 0, "cost_usd": 1} for i in range(5)]
     out = lessons_cli.report(tmp_path / "hub", hist, last_n=2)
     assert "r4" in out and "r3" in out and "r0" not in out
@@ -239,3 +239,42 @@ def test_show(tmp_path, capsys):
     assert lessons_cli.main(["show", lid, "--hub", str(hub)]) == 0
     assert json.loads(capsys.readouterr().out)["id"] == lid
     assert lessons_cli.main(["show", "L-x", "--hub", str(hub)]) == 1
+
+
+def test_brief_drafter_files_without_task(tmp_path, capsys):
+    hub, sl = tmp_path / "hub", tmp_path / "sl"
+    seed(hub)
+    sl.mkdir()
+    argv = ["brief", "--hub", str(hub), "--sl", str(sl), "--run", "r3", "--agent", "drafter", "--files", "skills/x/y.py"]
+    assert lessons_cli.main(argv) == 0
+    assert "In this repo" in capsys.readouterr().out
+    row = lines(sl / "deliveries.jsonl")[0]
+    assert row["task"] is None and row["agent"] == "drafter"
+
+
+def test_brief_reviewer_batched_files_with_task(tmp_path, capsys):
+    hub, sl = tmp_path / "hub", tmp_path / "sl"
+    seed(hub)
+    sl.mkdir()
+    argv = ["brief", "--hub", str(hub), "--sl", str(sl), "--run", "r3", "--agent", "reviewer", "--task", "T4",
+            "--files", "skills/x/y.py", "skills/x/z.py"]
+    assert lessons_cli.main(argv) == 0
+    assert "In this repo" in capsys.readouterr().out
+    assert lines(sl / "deliveries.jsonl")[0]["task"] == "T4"
+
+
+def test_brief_plan_without_task_is_empty(tmp_path, capsys):
+    hub, sl = tmp_path / "hub", tmp_path / "sl"
+    seed(hub)
+    sl.mkdir()
+    argv = ["brief", "--hub", str(hub), "--sl", str(sl), "--run", "r3", "--plan", str(tmp_path / "none.md")]
+    assert lessons_cli.main(argv) == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_report_counts_revised_outcome_once(tmp_path):
+    base = {"v": 1, "repository": "r", "run": "r1", "task": "T1", "findings": 1, "rework_cost": 0, "cost_usd": 4.0}
+    hist = [dict(base, first_time_pass=False, status="unfinished"),
+            dict(base, first_time_pass=True, status="complete")]
+    out = lessons_cli.report(tmp_path / "hub", hist)
+    assert "- r1: first-time pass 100%, findings 1," in out

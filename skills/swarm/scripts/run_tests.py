@@ -70,7 +70,7 @@ RUN_ID = ""  # the id every summary this process writes carries (set in main)
 
 def summary_path(sl_dir):  # O(1) the tests folder summary, else an old archive's root test-summary.json
     new, old = Path(sl_dir) / TESTS_DIR / SUMMARY_NAME, Path(sl_dir) / OLD_SUMMARY
-    return old if old.exists() and not new.exists() else new
+    return old if old.exists() and not new.exists() and not (new.parent / "latest").exists() else new
 
 
 def in_tests_folder(summary):  # O(1) `<dir>/tests/summary.json` (the new layout)
@@ -135,7 +135,8 @@ def start_background(a, argv):  # O(len argv) + one detached spawn
 def pending_runs(summary):  # O(runs) background runs next to `summary` without a `.done` (written after all its state)
     p = Path(summary)
     logs = ([*(p.parent / "runs").glob("*.log"), *p.parents[1].glob("test-summary-*.log")]  # + runs begun before the move
-            if in_tests_folder(p) else p.parent.glob(f"{p.stem}-*.log"))
+            if in_tests_folder(p) else [*p.parent.glob(f"{p.stem}-*.log"), *(p.parent / TESTS_DIR / "runs").glob("*.log")]
+            if p.name == OLD_SUMMARY else p.parent.glob(f"{p.stem}-*.log"))  # the legacy default scans both layouts
     return sorted(log.with_suffix(p.suffix) for log in logs if not log.with_suffix(".done").exists())
 
 
@@ -490,8 +491,8 @@ def run_other(a, spec, paths, label):  # one runner command (any language)
                 failures.insert(0, ("-", 0, hang[:300]))
             elif r.returncode and not failures:
                 failures = [("-", 0, f"{tp.exit_message(r.returncode)}: {last}"[:160])]
-            files = {}
-            atomic_write(Path(a.summary).with_name("output.log" if in_tests_folder(a.summary) else "test-output.log"), "\n".join(p["tail"]) + "\n")  # the last 40 lines
+            files, out = {}, Path(a.publish or a.summary)  # the last 40 lines go beside the published summary, never in tests/runs/
+            atomic_write(out.with_name("output.log" if in_tests_folder(out) else "test-output.log"), "\n".join(p["tail"]) + "\n")
     return finish_run(a, label, counts, failures, files, seconds, r.returncode, extra=tp.summary_fields(r))
 
 

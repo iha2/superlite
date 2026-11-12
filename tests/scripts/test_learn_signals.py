@@ -63,12 +63,33 @@ def test_parse_findings_partial_line_ignored():
 
 
 def test_parse_fix_note():
+    """The frozen fixer-note format of skills/swarm/fixing.md."""
     note = ("# F-T3-2 · tier 1 · round 1 · NOT_FIXED\n"
-            "File: a/b.py\nCause: wrong key\nFix: use the id\n")
-    assert sig.parse_fix_note(note) == {"id": "F-T3-2", "task": "T3", "tier": 1, "status": "NOT_FIXED",
-                                        "file": "a/b.py", "cause": "wrong key", "fix": "use the id"}
+            "Goal: keys match the plan ids\n"
+            "Where: a/b.py:10-14, a/c.py:3\n"
+            "Changed: a/b.py:12 - use the id - the name collided - twice\n"
+            "Tried and failed: nothing\n"
+            "Evidence: test_b::test_key - KeyError\n"
+            "Next: read a/c.py:3\n")
+    assert sig.parse_fix_note(note) == {
+        "id": "F-T3-2", "task": "T3", "tier": 1, "status": "NOT_FIXED", "goal": "keys match the plan ids",
+        "where": "a/b.py:10-14, a/c.py:3", "changed": "a/b.py:12 - use the id - the name collided - twice",
+        "evidence": "test_b::test_key - KeyError", "file": "a/b.py", "what": "use the id",
+        "why": "the name collided - twice"}
     assert sig.parse_fix_note("# F-T3-2 · tier 1 · round 1 · MAYBE\n") is None
     assert sig.parse_fix_note("") is None
+
+
+def test_parse_fix_note_nothing_kept_and_crlf():
+    note = "# F-T3-2 · tier 2 · round 2 · FIXED\r\nWhere: x\\y.py:1-2\r\nChanged: nothing kept\r\n"
+    got = sig.parse_fix_note(note)
+    assert got["file"] == "x/y.py" and got["what"] == "" and got["changed"] == "nothing kept" and got["tier"] == 2
+
+
+def test_decode_note_utf8_and_cp1252():
+    head = "# F-T1-1 · tier 1 · round 1 · FIXED\n"
+    assert sig.decode_note(("\ufeff" + head).encode("utf-8")) == head
+    assert sig.parse_fix_note(sig.decode_note(head.encode("cp1252")))["status"] == "FIXED"
 
 
 def test_parse_learned():
@@ -79,12 +100,24 @@ def test_parse_learned():
 
 
 def test_model_mismatches():
-    launches = [{"ev": "launch", "agent_id": "a1", "model": "claude-opus-4"},
-                {"ev": "launch", "agent_id": "a2", "model": "claude-sonnet-5"},
-                {"ev": "stop", "agent_id": "a1", "model": "x"},
-                {"ev": "launch", "agent_id": "zz", "model": "claude-haiku"}]
-    out = sig.model_mismatches(launches, {"a1": "sonnet", "a2": {"model": "sonnet"}})
-    assert out == [{"requested": "sonnet", "ran": "opus"}]
+    """The requested tier comes from the launch's agent type (dispatch.json holds only batches)."""
+    tiers = {"implementer": "sonnet", "fixer-opus": "opus"}
+    launches = [{"ev": "launch", "agent_id": "a1", "type": "superlite:implementer", "model": "claude-opus-4"},
+                {"ev": "launch", "agent_id": "a2", "type": "superlite:fixer-opus", "model": "claude-opus-5"},
+                {"ev": "stop", "agent_id": "a1", "type": "superlite:implementer", "model": "x"},
+                {"ev": "launch", "agent_id": "a3", "type": "superlite:implementer-haiku", "model": "claude-sonnet-5"},
+                {"ev": "launch", "agent_id": "zz", "type": "general-purpose", "model": "claude-haiku"}]
+    assert sig.model_mismatches(launches, tiers) == [{"requested": "sonnet", "ran": "opus"},
+                                                     {"requested": "haiku", "ran": "sonnet"}]
+
+
+def test_agent_tiers_from_agent_files(tmp_path):
+    (tmp_path / "final-reviewer.md").write_text("---\nname: final-reviewer\nmodel: opus\n---\nbody\n")
+    (tmp_path / "notes.md").write_text("no frontmatter\n")
+    assert sig.agent_tiers(tmp_path) == {"final-reviewer": "opus"}
+    assert sig.requested_family("superlite:final-reviewer", sig.agent_tiers(tmp_path)) == "opus"
+    real = sig.agent_tiers(Path(sig.__file__).resolve().parents[3] / "agents")
+    assert real["implementer-haiku"] == "haiku" and real["fixer-opus"] == "opus" and real["implementer"] == "sonnet"
 
 
 def test_outbox_row_hashes_repo_and_drops_unlisted():

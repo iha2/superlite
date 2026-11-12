@@ -4,19 +4,22 @@
 Library module, no CLI of its own (`main` prints this help). Stdlib only."""
 import hashlib
 import json
+import locale
 import re
 import sys
 from pathlib import Path
 
 CATEGORIES = ("deep", "numeric", "encoding", "protocol", "file", "state")
 TAGS = ("setup", "test", "pairing", "convention")
-OUTBOX_FIELDS = ("tool", "count", "requested", "ran", "run")  # allow-list: never command, target, file, path, text
+OUTBOX_FIELDS = ("id", "tool", "count", "requested", "ran", "run")  # allow-list: never command, target, file, path, text
 FAMILIES = ("haiku", "sonnet", "opus")
 
 _FINDING = re.compile(
     r"^(?:[-*]\s+)?(?P<file>[^\s:]+):(?P<line>\d+) - (?P<problem>.+?) - (?P<fix>.+) - tier (?P<tier>\d+)\s*$")
-_FIX_HEAD = re.compile(r"^# (?P<id>F-(?P<task>[A-Za-z0-9]+)-\d+) · tier (?P<tier>\d+) · round \d+ · "
-                       r"(?P<status>NOT_FIXED|FIXED)\s*$")
+# Separator-tolerant: a note saved in a legacy code page (the `·` read back as another char) still parses.
+_FIX_HEAD = re.compile(r"^# (?P<id>F-(?P<task>[A-Za-z0-9]+)-\d+)\s+\S{1,3}\s+tier (?P<tier>\d+)\s+\S{1,3}\s+"
+                       r"round \d+\s+\S{1,3}\s+(?P<status>NOT_FIXED|FIXED)\s*$")
+_SPAN_FILE = re.compile(r"(?P<file>[^\s,;:()`]+):\d")
 _LEARNED = re.compile(r"^Learned:\s*(\w+):\s*(.+?)\s*$", re.M)
 
 
@@ -66,13 +69,32 @@ def _field(text: str, name: str) -> str:  # O(n)
     return m.group(1) if m else ""
 
 
+def decode_note(data: bytes) -> str:  # O(n)
+    """Fix-note bytes as text: UTF-8 (BOM stripped), else the locale code page (a Windows editor's cp1252), else latin-1."""
+    for enc in ("utf-8-sig", locale.getpreferredencoding(False) or "latin-1", "latin-1"):
+        try:
+            return data.decode(enc)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return data.decode("latin-1")
+
+
 def parse_fix_note(text: str) -> dict | None:  # O(n)
+    """The frozen fix note (skills/swarm/fixing.md): heading, then Goal, Where, Changed, Tried and failed, Evidence, Next.
+    `file` is the first `path:line` span of Where (else of Changed); `what`/`why` come from Changed's `file:lines - what - why`."""
+    text = text.lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n")
     lines = text.splitlines()
     m = _FIX_HEAD.match(lines[0].strip()) if lines else None
     if not m:
         return None
+    where, changed = _field(text, "Where"), _field(text, "Changed")
+    span = _SPAN_FILE.search(where) or _SPAN_FILE.search(changed)
+    parts = [p.strip() for p in changed.split(" - ")]
+    head_is_span = len(parts) > 1 and _SPAN_FILE.match(parts[0]) is not None
     return {"id": m["id"], "task": m["task"], "tier": int(m["tier"]), "status": m["status"],
-            "file": _field(text, "File"), "cause": _field(text, "Cause"), "fix": _field(text, "Fix")}
+            "goal": _field(text, "Goal"), "where": where, "changed": changed, "evidence": _field(text, "Evidence"),
+            "file": span["file"].replace("\\", "/") if span else "",
+            "what": parts[1] if head_is_span else "", "why": " - ".join(parts[2:]) if head_is_span else ""}
 
 
 def parse_learned(report: str) -> dict | None:  # O(n)
@@ -87,18 +109,44 @@ def _family(model: str) -> str:  # O(1)
     return next((f for f in FAMILIES if f in low), low)
 
 
-def model_mismatches(launches: list, dispatch: dict) -> list:  # O(n)
+def agent_tiers(agents_dir) -> dict:  # O(files)
+    """Agent type name -> requested model family, from each agent file's `model:` frontmatter line."""
+    out: dict = {}
+    try:
+        files = sorted(Path(agents_dir).glob("*.md"))
+    except OSError:
+        return out
+    for f in files:
+        try:
+            m = re.search(r"^model:\s*(\S+)\s*$", f.read_text(encoding="utf-8", errors="replace"), re.M)
+        except OSError:
+            continue
+        if m:
+            out[f.stem] = _family(m.group(1))
+    return out
+
+
+def requested_family(agent_type: str, tiers: dict) -> str:  # O(families)
+    """The model an agent type asks for: its agent file's model (`superlite:fixer-opus` -> opus), else a family named
+    in the type (`implementer-haiku` -> haiku), else "" (unknown, so never a mismatch)."""
+    name = str(agent_type or "").rsplit(":", 1)[-1]
+    if name in tiers:
+        return tiers[name]
+    return next((f for f in FAMILIES if f in name.lower()), "")
+
+
+def model_mismatches(launches: list, tiers: dict) -> list:  # O(n)
+    """{requested, ran} for each launch whose resolved model family differs from what its agent type asks for.
+    dispatch.json holds only batches, so the requested tier comes from the launch's own agent type."""
     out = []
     for row in launches:
         if not isinstance(row, dict) or row.get("ev") != "launch":
             continue
-        want = dispatch.get(row.get("agent_id"))
-        if isinstance(want, dict):
-            want = want.get("model")
+        want = requested_family(row.get("type", ""), tiers)
         if not want or not row.get("model"):
             continue
         ran = _family(row["model"])
-        if ran != str(want).lower():
+        if ran != want:
             out.append({"requested": want, "ran": ran})
     return out
 

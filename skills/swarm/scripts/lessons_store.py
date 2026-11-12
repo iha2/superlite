@@ -93,6 +93,19 @@ def _retire(les: dict) -> None:  # O(1)
     les["proven"] = False
 
 
+def _make_room(store: dict, events: list) -> bool:  # O(n)
+    """True when a cache slot is free; at capacity, evict the lowest-rank unpinned lesson past grace, or False."""
+    if len(_cached(store)) < CAP:
+        return True
+    victims = [x for x in _cached(store) if not x["pinned"] and _past_grace(x)]
+    if not victims:
+        return False
+    v = min(victims, key=lambda x: (lessons_score.rank(x), x["id"]))
+    _retire(v)
+    events.append(f"evicted {v['id']} (U {v['u']:.2f})")
+    return True
+
+
 def step(store: dict) -> list:  # O(n log n) in lessons
     sc = lessons_score
     events: list = []
@@ -117,6 +130,8 @@ def step(store: dict) -> list:  # O(n log n) in lessons
     for lid in sorted(lessons):
         les = lessons[lid]
         if les["status"] == "retired" and len(les["runs"]) > les.get("retired_runs", len(les["runs"])):
+            if not _make_room(store, events):
+                continue
             les["status"] = "cached"
             les["grace_from"] = len(les["deliveries"])
             les.pop("retired_runs", None)
@@ -126,13 +141,8 @@ def step(store: dict) -> list:  # O(n log n) in lessons
         les = lessons[lid]
         if les["status"] != "candidate" or not (len(les["runs"]) >= 2 or les["verified"]):
             continue
-        if len(_cached(store)) >= CAP:
-            victims = [x for x in _cached(store) if not x["pinned"] and _past_grace(x)]
-            if not victims:
-                continue
-            v = min(victims, key=lambda x: (sc.rank(x), x["id"]))
-            _retire(v)
-            events.append(f"evicted {v['id']} (U {v['u']:.2f})")
+        if not _make_room(store, events):
+            continue
         les["status"] = "cached"
         les["admitted_run"] = ri[-1] if ri else None
         les["baseline"] = sc.baseline(store["modules"], les["module"], les["admitted_run"], ri)

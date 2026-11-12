@@ -106,3 +106,36 @@ def test_proto_discard_reads_new_and_old(tmp_path, monkeypatch):
 def test_rewrite_message_path():
     text = (ROOT / "hooks" / "_rewrite").read_text(encoding="utf-8")
     assert ".superlite/tests/summary.json" in text and ".superlite/test-summary.json" not in text
+
+
+def test_legacy_default_pending_scans_both_layouts(tmp_path):
+    (tmp_path / "test-summary.json").write_text("{}", encoding="utf-8")
+    runs = tmp_path / "tests" / "runs"
+    runs.mkdir(parents=True)
+    (runs / "n.log").write_text("")
+    (tmp_path / "test-summary-o.log").write_text("")
+    assert sorted(p.name for p in run_tests.pending_runs(tmp_path / "test-summary.json")) == ["n.json", "test-summary-o.json"]
+
+
+def test_non_junit_tail_beside_published_summary(tmp_path):
+    sl = tmp_path / ".superlite"
+    sl.mkdir()
+    cmd = f'{sys.executable} -c "print(1)"'
+    (sl / "test-cmd.json").write_text(json.dumps({"language": "go", "test": cmd, "test_file": "", "junit": "", "setup": ""}), encoding="utf-8")
+    r = run("run_tests", "--background", cwd=tmp_path)
+    assert r.returncode == 0, r.stderr
+    run_id = re.search(r"--run (\S+)", r.stdout).group(1)
+    assert run("run_tests", "--wait", "--run", run_id, "--timeout", "120", cwd=tmp_path).returncode == 0
+    assert run("run_tests", "--wait", "--all", "--timeout", "60", cwd=tmp_path).returncode == 0
+    assert (sl / "tests" / "output.log").is_file()
+    assert not [p.name for p in (sl / "tests" / "runs").iterdir() if "output" in p.name]
+
+
+def test_readers_prefer_new_layout_when_latest_exists(tmp_path):
+    (tmp_path / "test-summary.json").write_text(json.dumps({"passed": 9, "failed": 0}), encoding="utf-8")
+    (tmp_path / "tests").mkdir()
+    ptr = {"id": "x", "summary": str(tmp_path / "tests" / "runs" / "x.json")}
+    (tmp_path / "tests" / "latest").write_text(json.dumps(ptr), encoding="utf-8")
+    new = tmp_path / "tests" / "summary.json"
+    assert run_tests.summary_path(tmp_path) == new and review_packet._summary_in(tmp_path) == new
+    assert review_packet.read_test_summary(review_packet._summary_in(tmp_path))[0].startswith("- tests: running")

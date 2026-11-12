@@ -309,7 +309,7 @@ def source_excerpts(root: Path, ref: str | None, files: list[str],  # O(X) + one
 
 def _summary_in(sl: Path) -> Path:  # O(1) tests/summary.json, else an old archive's root test-summary.json
     new, old = sl / "tests" / "summary.json", sl / "test-summary.json"
-    return old if not new.exists() and old.exists() else new
+    return old if not new.exists() and not (new.parent / "latest").exists() and old.exists() else new
 
 
 def read_test_summary(path: Path) -> tuple[str, int]:  # O(file size) total

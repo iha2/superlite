@@ -77,3 +77,45 @@ def test_sync_error_is_advisory(broken, tmp_path):
 
 def test_keep_has_lessons():
     assert {"lessons.json", "learn-state.json", "runs"} <= run_archive.KEEP
+
+
+def test_finish_syncs_before_report():
+    src = inspect.getsource(finish._finish_locked)
+    assert src.index("learn_sync(") < src.index("summary(")
+
+
+def test_history_section_keeps_enriched_rows(monkeypatch, tmp_path):
+    import history
+    monkeypatch.setattr(history, "home", lambda: tmp_path / "home")
+    sl = tmp_path / ".superlite"
+    sl.mkdir()
+    plain = {"v": 1, "repository": history.repository_id(sl), "run": "r1", "task": "T1", "first_time_pass": True,
+             "date": "2026-01-01"}
+    monkeypatch.setattr(history, "run_rows", lambda plan, sl_dir, rid=None: [dict(plain)])
+    history.record_rows([dict(plain, status="finished", findings=3)], sl)
+    assert finish.record_run_keeping_outcomes(history, "plan.md", sl, "r1") == []
+    rows = history.read_rows()
+    assert len(rows) == 1 and rows[0]["status"] == "finished" and rows[0]["findings"] == 3
+
+
+def test_history_section_reports_rows_when_sync_recorded(monkeypatch, tmp_path):
+    import history
+    monkeypatch.setattr(history, "home", lambda: tmp_path / "home")
+    sl = tmp_path / ".superlite"
+    sl.mkdir()
+    (sl / "metrics.jsonl").write_text("", encoding="utf-8")
+    plain = {"v": 1, "repository": history.repository_id(sl), "run": "r1", "task": "T1", "first_time_pass": True,
+             "date": "2026-01-01"}
+    monkeypatch.setattr(history, "run_rows", lambda plan, sl_dir, rid=None: [dict(plain)])
+    history.record_rows([dict(plain, status="finished", findings=0)], sl)
+    assert finish.history_section("plan.md", sl, "r1").startswith("history: 1 rows appended")
+    assert len(history.read_rows()) == 1
+
+
+def test_learning_files_are_stationary(tmp_path):
+    import session_registry
+    names = ("lessons.json", "lessons.json.lock", "learn-state.json", "learn-state.json.lock")
+    assert set(names) <= session_registry.STATIONARY
+    for n in (*names, "progress.md"):
+        (tmp_path / n).write_text("x", encoding="utf-8")
+    assert [p.name for p in session_registry.run_entries(tmp_path)] == ["progress.md"]

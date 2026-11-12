@@ -9,6 +9,8 @@ written, it also writes the after card `run-widget-after.html` (see run_widget.p
 Deterministic: the same files give the same text. Stdlib only.
 """
 import argparse
+import contextlib
+import io
 import json
 from datetime import datetime, timedelta
 import re
@@ -112,6 +114,24 @@ def unblocked_report(ledger, lint_log):  # O(R*w + L*n)
 REPORTED: set[Path] = set()  # run folders whose build report this finish wrote (only they get an after card)
 
 
+def synced_rows(history, plan, sl_dir, rid):  # O(R + n*w)
+    """True when the final learn sync already recorded every task of this run as finished, with its findings."""
+    repo = history.repository_id(sl_dir)
+    done = {history._id_key(r) for r in history.read_rows() if r.get("status") == "finished" and "findings" in r}
+    rows = history.run_rows(plan, sl_dir, rid)
+    return bool(rows) and all(history._id_key(dict(r, repository=repo)) in done for r in rows)
+
+
+def record_run_keeping_outcomes(history, plan, sl_dir, rid, expected=(OSError, ValueError, KeyError)):  # O(R + n*w)
+    """history.record_run, except it never replaces rows the learn sync wrote (they carry status and findings)."""
+    try:
+        if synced_rows(history, plan, sl_dir, rid):
+            return []
+    except expected:  # an unreadable plan or history: let record_run report it
+        pass
+    return history.record_run(plan, sl_dir, run_id=rid)
+
+
 def history_section(plan, sl_dir, rid=None):  # O(M + B + n*(n + e))
     """Append the run's rows to history (global and project), refresh stats, and report predicted against actual."""
     sl = Path(sl_dir)
@@ -123,7 +143,9 @@ def history_section(plan, sl_dir, rid=None):  # O(M + B + n*(n + e))
     import predict
     expected = (OSError, ValueError, KeyError, TypeError, ArithmeticError, planfile.PlanError, predict.PredictError)
     try:
-        rows = history.record_run(plan, sl_dir, run_id=rid)
+        rows = record_run_keeping_outcomes(history, plan, sl_dir, rid, expected)
+        if not rows:  # the sync already recorded this run: report its rows
+            rows = history.run_rows(plan, sl_dir, rid)
     except expected as e:
         return f"history: not recorded ({e})"
     out = [f"history: {len(rows)} rows appended"]  # predicted vs actual is the build report's job
@@ -295,8 +317,11 @@ def archive_run(root, sl_dir, slug, plan, rid, reserved=None):  # O(files); fail
 def _finish_locked(a, root, sl_dir):  # O(R*w + I*w)
     slug, rid, reserved = run_ids(sl_dir)
     try:
+        with contextlib.redirect_stdout(io.StringIO()) as learned:  # before the summary: its history rows are synced
+            learn_sync(sl_dir, a.plan, rid)
         sys.stdout.write(summary(a.ledger, a.log, a.lint_log or str(Path(a.ledger).with_name("lint-log.jsonl")),
                                  a.plan, None, rid))
+        sys.stdout.write(learned.getvalue())  # the sync's own line, after the summary it feeds
         import exclusive  # the run is done: peer plugins may load again
         widget = card_line(a.plan, root, a.ledger)  # before cleanup, which removes checkpoint state the card counts
         clean_checkpoints(a.ledger)  # after the summary, which reads the checkpoint state
@@ -308,7 +333,6 @@ def _finish_locked(a, root, sl_dir):  # O(R*w + I*w)
         except (ImportError, OSError, ValueError, KeyError, TypeError):
             pass
         print(exclusive.release(sl_dir, lock_held=True))
-        learn_sync(sl_dir, a.plan, rid)
         dest = archive_run(root, sl_dir, slug, a.plan, rid, reserved)  # after release: the archive empties the folder
         if dest:
             print(f"run: archived to {_shown(dest)}")

@@ -5,11 +5,12 @@
     lessons.py show ID                                one lesson as JSON
     lessons.py drop|pin|restore ID                    steer one lesson
     lessons.py report [--last N]                      failures, trend, what works here, cached lessons
-    lessons.py brief --task Tn [--plan P] [--agent implementer|fixer|reviewer|drafter]
+    lessons.py brief [--task Tn] [--plan P] [--agent implementer|fixer|reviewer|drafter]
                      [--file F] [--files P...]        lesson lines for a task message (empty when none apply)
 
 Lessons live in the hub run dir (`lessons.json`); a brief appends one line to this checkout's `deliveries.jsonl`:
-{"v": 1, "run": R, "task": T, "agent": A, "lessons": [ids]}. Add `--hub DIR` or `--sl DIR` to override the folders.
+{"v": 1, "run": R, "task": T or null, "agent": A, "lessons": [ids]}. `--task` is optional with `--file` or
+`--files` (a drafter has no task ids yet; a batched reviewer passes its files). Add `--hub DIR` or `--sl DIR` to override the folders.
 Stdlib only.
 """
 from __future__ import annotations
@@ -32,7 +33,7 @@ HEADER = "In this repo (learned from past runs):\n"
 AGENTS = tuple(BUDGETS)
 
 
-def brief(hub: Path, sl: Path, run: str, task: str, owns: list, agent: str = "implementer") -> str:  # O(n log n) in lessons
+def brief(hub: Path, sl: Path, run: str, task: str | None, owns: list, agent: str = "implementer") -> str:  # O(n log n) in lessons
     mods = {lessons_score.module_key(p) for p in owns}
     cached = [x for x in lessons_store.load(hub)["lessons"].values()
               if x["status"] == "cached" and x["module"] in mods]
@@ -77,6 +78,7 @@ def _trend_row(run: str, rows: list) -> str:  # O(h)
 
 
 def report(hub: Path, rows: list, last_n: int = 10) -> str:  # O(n + h)
+    rows = history.unique_rows(rows)
     store = lessons_store.load(hub)
     cached = sorted((x for x in store["lessons"].values() if x["status"] == "cached"),
                     key=lambda x: (-x["u"], x["id"]))
@@ -108,7 +110,7 @@ def _parser() -> argparse.ArgumentParser:  # O(1)
     for name in ("show", "drop", "pin", "restore"):
         sub.add_parser(name, parents=[common], help=f"{name} one lesson").add_argument("id")
     p = sub.add_parser("brief", parents=[common], help="lesson lines for a task message")
-    p.add_argument("--task", required=True)
+    p.add_argument("--task", help="task id (optional with --file or --files)")
     p.add_argument("--plan")
     p.add_argument("--run", help="run id (default: the current run)")
     p.add_argument("--agent", default="implementer", choices=AGENTS)
@@ -123,7 +125,7 @@ def _parser() -> argparse.ArgumentParser:  # O(1)
 def _owns(a) -> list:  # O(files)
     if a.file or a.files:
         return ([a.file] if a.file else []) + list(a.files)
-    if a.plan:
+    if a.plan and a.task:
         task = plan_tools.Plan.load(a.plan).by_id.get(a.task)
         return list(task.owns) if task else []
     return []

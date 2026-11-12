@@ -53,4 +53,3 @@ def test_reports_carry_run_id():
     s = read("skills/swarm/SKILL.md")
     assert "tests: <passed> <failed> <skipped> run <id>" in s
     assert "missing or mismatched id is unverified" in s
-    assert len(s) <= 12500

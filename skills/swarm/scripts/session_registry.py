@@ -34,7 +34,9 @@ STORE = "session-store"
 EXIT_REDIRECT = 3
 STASH_PREFIX = "superlite-session:"
 # Hub-level entries and real git checkouts: never parked, moved or wiped with run state.
-STATIONARY = {"worktrees", "sandboxes", "runs", STORE, FILE, FILE + ".lock", LOCK}
+LEARN_FILES = ("lessons.json", "learn-state.json")  # repo-wide learning cache: shared by every session of the hub
+STATIONARY = {"worktrees", "sandboxes", "runs", STORE, FILE, FILE + ".lock", LOCK,
+              *LEARN_FILES, *(f + ".lock" for f in LEARN_FILES)}
 
 
 def git(*args, cwd, check=True):

@@ -168,3 +168,22 @@ def test_hub_dir_worktree_shares_hub(tmp_path):
 
 def test_hub_dir_outside_repo_falls_back(tmp_path):
     assert lessons.hub_dir(tmp_path) == tmp_path / ".superlite"
+
+
+def test_readmit_obeys_capacity_and_victim_rule():
+    s = lessons.empty()
+    a = mk(s, "a"); lessons.step(s)
+    deliver(s, a, 3, -0.1); lessons.step(s)
+    assert s["lessons"][a]["status"] == "retired"
+    for i in range(lessons.CAP):
+        lid = mk(s, f"k{i}")
+        s["lessons"][lid].update(status="cached", pinned=True)
+    lessons.add_signal(s, "pitfall", "skills/x", "a", "t", "new", "r3")
+    assert lessons.step(s) == []
+    assert s["lessons"][a]["status"] == "retired"
+    assert len(lessons._cached(s)) == lessons.CAP
+    s["lessons"][lid]["pinned"] = False
+    s["lessons"][lid]["deliveries"] = [{"run": "r1", "hit": True, "u": 0.5}] * 3
+    ev = lessons.step(s)
+    assert f"readmitted {a}" in ev and s["lessons"][a]["status"] == "cached"
+    assert len(lessons._cached(s)) == lessons.CAP

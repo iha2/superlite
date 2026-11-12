@@ -91,26 +91,92 @@ def test_no_practice_when_module_has_finding(env):
     assert [x["kind"] for x in store(env)["lessons"].values()] == ["pitfall"]
 
 
+FIX_NOTE = ("# F-T2-1 · tier 1 · round 1 · FIXED\n"
+            "Goal: resolve run paths through state\n"
+            "Where: skills/x/y.py:10-20, tests/scripts/test_y.py:5-9\n"
+            "Changed: skills/x/y.py:12 - use state.path - the hard-coded dir broke worktrees\n"
+            "Tried and failed: nothing\n"
+            "Evidence: test_y::test_path - FileNotFoundError\n"
+            "Next: none\n")
+
+
 def test_fix_note_verified(env):
+    """The frozen fix-note format (skills/swarm/fixing.md) becomes a verified practice keyed `fix:`."""
     (env.sl / "fixes").mkdir()
-    (env.sl / "fixes" / "F-T2-1.md").write_text(
-        "# F-T2-1 · tier 1 · round 1 · FIXED\nFile: skills/x/y.py\nCause: bad path\nFix: use state.path\n")
-    (env.sl / "fixes" / "F-T2-2.md").write_text(
-        "# F-T2-2 · tier 1 · round 1 · NOT_FIXED\nFile: skills/x/y.py\nCause: c\nFix: f\n")
+    (env.sl / "fixes" / "F-T2-1.md").write_text(FIX_NOTE, encoding="utf-8")
+    (env.sl / "fixes" / "F-T2-2.md").write_text(FIX_NOTE.replace("F-T2-1", "F-T2-2").replace("FIXED", "NOT_FIXED"),
+                                               encoding="utf-8")
     ev = sync(env)
     les = list(store(env)["lessons"].values())
-    assert len(les) == 1 and les[0]["kind"] == "fix" and les[0]["text"] == "do: use state.path (was: bad path)"
+    assert len(les) == 1 and les[0]["kind"] == "practice" and les[0]["module"] == "skills/x"
+    assert les[0]["text"] == "do: use state.path (the hard-coded dir broke worktrees)"
+    assert les[0]["key"].startswith("fix:") and les[0]["sources"] == ["r1:fixes:F-T2-1.md"]
     assert les[0]["status"] == "cached" and ev[0].startswith("admitted")
+
+
+def test_fix_note_windows_code_page_and_crlf(env):
+    """A note saved by a Windows editor (cp1252 `·`, CRLF, backslash paths) still parses."""
+    (env.sl / "fixes").mkdir()
+    note = FIX_NOTE.replace("skills/x/y.py", "skills\\x\\y.py").replace("\n", "\r\n")
+    (env.sl / "fixes" / "F-T2-1.md").write_bytes(note.encode("cp1252"))
+    sync(env)
+    les = list(store(env)["lessons"].values())
+    assert len(les) == 1 and les[0]["module"] == "skills/x" and les[0]["kind"] == "practice"
+
+
+def test_fix_note_left_live_is_not_a_second_run(env):
+    (env.sl / "fixes").mkdir()
+    (env.sl / "fixes" / "F-T2-1.md").write_text(FIX_NOTE, encoding="utf-8")
+    sync(env, "r1")
+    sync(env, "r2")
+    les = next(iter(store(env)["lessons"].values()))
+    assert les["runs"] == ["r1"] and les["sources"] == ["r1:fixes:F-T2-1.md"]
+
+
+def test_fixed_practice_can_be_proven(env):
+    (env.sl / "fixes").mkdir()
+    (env.sl / "fixes" / "F-T2-1.md").write_text(FIX_NOTE, encoding="utf-8")
+    sync(env, "r1")
+    lid = next(iter(store(env)["lessons"]))
+    env.tasks["T1"] = {"owns": ["skills/x/y.py"], "first_time_pass": True}
+    for n in range(2, 8):
+        jl(env.sl / "deliveries.jsonl", {"run": f"r{n}", "task": "T1", "lessons": [lid]})
+        ev = sync(env, f"r{n}", plan="p.md")
+        if any(e.startswith("proven") for e in ev):
+            break
+    assert store(env)["lessons"][lid]["proven"] is True
 
 
 def test_learned_row_key_is_tag(env):
     learn.note(env.sl, "r1", "T1", "pairing", "a.py goes with test_a.py")
     assert json.loads((env.sl / "learned.jsonl").read_text()) == {
         "v": 1, "run": "r1", "task": "T1", "tag": "pairing", "text": "a.py goes with test_a.py"}
-    sync(env)
+    env.tasks["T1"] = {"owns": ["skills/x/a.py"]}
+    sync(env, plan="p.md")
     les = next(iter(store(env)["lessons"].values()))
     assert les["key"] == "pairing" and les["text"] == "a.py goes with test_a.py"
-    assert lessons.lesson_id("practice", ".", "pairing") in store(env)["lessons"]
+    assert lessons.lesson_id("practice", "skills/x", "pairing") in store(env)["lessons"]
+
+
+def test_learned_waits_for_task_ownership(env):
+    """A plan-less sync (review recording, session close, registration) never files a learned line under `.`."""
+    learn.note(env.sl, "r1", "T1", "test", "run pytest -x")
+    sync(env)
+    assert store(env)["lessons"] == {}
+    env.tasks["T1"] = {"owns": ["skills/x/a.py"]}
+    sync(env, plan="p.md")
+    assert [x["module"] for x in store(env)["lessons"].values()] == ["skills/x"]
+
+
+def test_planless_sync_recovers_the_runs_plan(env, tmp_path):
+    plan = tmp_path / "plan.md"
+    plan.write_text("# plan\n")
+    env.tasks["T1"] = {"owns": ["skills/x/y.py"], "first_time_pass": False}
+    sync(env, plan=str(plan))
+    env.tasks["T1"] = {"owns": ["skills/x/y.py"], "first_time_pass": True}
+    sync(env, status="finished")  # session close: no --plan
+    rows = hist(env)
+    assert len(rows) == 2 and rows[-1]["first_time_pass"] is True and rows[-1]["status"] == "finished"
 
 
 def test_outbox_only_for_hooks_and_mismatches(env):
@@ -118,15 +184,16 @@ def test_outbox_only_for_hooks_and_mismatches(env):
        {"kind": "rule-block", "agent": "a", "tool": "Bash", "command": "rm /secret/x"},
        {"kind": "rule-block", "agent": "a", "tool": "Bash", "command": "rm y"},
        {"kind": "rule-rewrite", "agent": "a", "tool": "Edit", "target": "/home/u/f"})
-    jl(env.sl / "metrics.jsonl", {"ev": "launch", "agent_id": "a1", "model": "claude-opus-5-5"})
-    (env.sl / "dispatch.json").write_text(json.dumps({"a1": "sonnet"}))
+    jl(env.sl / "metrics.jsonl", {"ev": "launch", "agent_id": "a1", "type": "superlite:implementer",
+                                  "model": "claude-opus-5-5"})
+    (env.sl / "dispatch.json").write_text(json.dumps({"batches": [["T1"]], "lines": ["T1 implementer"]}))
     sync(env)
     out = env.home / "learn" / "outbox.jsonl"
     rows = [json.loads(x) for x in out.read_text().splitlines()]
     assert {(r["signal"], r.get("tool"), r.get("count")) for r in rows if r["signal"] != "model-mismatch"} == \
         {("hook-block", "Bash", 2), ("hook-rewrite", "Edit", 1)}
     assert any(r["signal"] == "model-mismatch" and r["requested"] == "sonnet" and r["ran"] == "opus" for r in rows)
-    assert all(r["run"] == "r1" for r in rows)
+    assert all(r["run"] == "r1" for r in rows) and len({r["id"] for r in rows}) == len(rows)
     blob = json.dumps(rows)
     assert "/secret" not in blob and "/home" not in blob and str(env.repo) not in blob
     assert store(env)["lessons"] == {}
@@ -278,3 +345,125 @@ def test_no_network_imports():
 
 def test_version_from_manifest():
     assert learn._version() == json.loads((SCRIPTS.parents[2] / ".claude-plugin" / "plugin.json").read_text())["version"]
+
+
+def test_run_change_keeps_file_boundary(env):
+    """Live signal files kept across a run change (ensure_run copies them) are not re-read for the new run."""
+    inc(env)
+    jl(env.sl / "incidents.jsonl", {"kind": "rule-block", "tool": "Bash"})
+    sync(env, "r1")
+    assert sync(env, "r2") == []
+    les = next(iter(store(env)["lessons"].values()))
+    assert les["runs"] == ["r1"] and les["status"] == "candidate"
+    assert len((env.home / "learn" / "outbox.jsonl").read_text().splitlines()) == 1
+
+
+def test_row_run_id_is_honoured(env):
+    """An unsynced row of the earlier run, read after the run changed, still counts for the run that wrote it."""
+    jl(env.sl / "incidents.jsonl", {"file": "skills/x/y.py", "kind": "test-failure", "context": "c", "run": "r1"})
+    sync(env, "r2")
+    les = next(iter(store(env)["lessons"].values()))
+    assert les["runs"] == ["r1"] and les["status"] == "candidate"
+    assert store(env)["run_index"] == ["r1", "r2"]
+
+
+def test_replaced_file_restarts_offset(env):
+    for _ in range(3):
+        inc(env, "old")
+    sync(env, "r1")
+    (env.sl / "incidents.jsonl").unlink()  # archived away; the new run's file grows past the old offset
+    for _ in range(4):
+        inc(env, "new " + "x" * 10)
+    sync(env, "r2")
+    assert any(x["text"].startswith("avoid: new") for x in store(env)["lessons"].values())
+
+
+def test_verified_rows_are_not_pitfalls(env):
+    jl(env.sl / "incidents.jsonl", {"file": "skills/x/y.py", "kind": "verified", "context": "run_tests full: 8 pass"})
+    sync(env, "r1")
+    jl(env.sl / "incidents.jsonl", {"file": "skills/x/y.py", "kind": "verified", "context": "run_tests full: 8 pass"})
+    sync(env, "r2")
+    assert store(env)["lessons"] == {}
+
+
+def test_later_outcome_retracts_task_practice(env):
+    """Two runs whose tasks first look like first-time passes but end with a finding never admit the practice."""
+    for run in ("r1", "r2"):
+        env.tasks["T1"] = {"owns": ["skills/x/a.py"], "first_time_pass": True,
+                           "changed": ["skills/x/a.py", "skills/x/test_a.py"], "tests_run": ["skills/x/test_a.py"]}
+        sync(env, run, plan="p.md")
+        env.tasks["T1"] = dict(env.tasks["T1"], first_time_pass=False)
+        sync(env, run, plan="p.md")
+    assert not [x for x in store(env)["lessons"].values() if x["kind"] == "practice"]
+
+
+def test_retract_keeps_other_tasks_evidence(env):
+    for tid in ("T1", "T2"):
+        env.tasks[tid] = {"owns": [f"skills/x/{tid}.py"], "first_time_pass": True,
+                          "changed": ["skills/x/a.py"], "tests_run": ["skills/x/test_a.py"]}
+    sync(env, "r1", plan="p.md")
+    env.tasks["T1"] = dict(env.tasks["T1"], first_time_pass=False)
+    sync(env, "r1", plan="p.md")
+    (les,) = store(env)["lessons"].values()
+    assert les["sources"] == ["r1:tasks.jsonl:T2"] and les["runs"] == ["r1"]
+
+
+def test_findings_counted_once_by_file_owner(env):
+    env.tasks["T1"] = {"owns": ["pkg/a.py"], "first_time_pass": False}
+    env.tasks["T2"] = {"owns": ["pkg/b.py"], "first_time_pass": True}
+    jl(env.sl / "review-findings.jsonl", {"run": "r1", "file": "pkg/a.py", "problem": "p", "category": "state"})
+    sync(env, plan="p.md")
+    assert {r["task"]: r["findings"] for r in hist(env)} == {"T1": 1, "T2": 0}
+
+
+def test_outbox_failure_does_not_lose_hook_rows(env, monkeypatch):
+    jl(env.sl / "incidents.jsonl", {"kind": "rule-block", "tool": "Bash"})
+    real = learn._append
+
+    def boom(path, rows):
+        if path.name == "outbox.jsonl":
+            raise OSError("disk full")
+        real(path, rows)
+    monkeypatch.setattr(learn, "_append", boom)
+    with pytest.raises(OSError):
+        sync(env)
+    monkeypatch.setattr(learn, "_append", real)
+    sync(env)
+    sync(env)
+    rows = [json.loads(x) for x in (env.home / "learn" / "outbox.jsonl").read_text().splitlines()]
+    assert [(r["signal"], r["count"]) for r in rows] == [("hook-block", 1)]
+    assert store(env)["outbox_pending"] == []
+
+
+def test_publish_dedupes_by_id(env):
+    jl(env.sl / "incidents.jsonl", {"kind": "rule-block", "tool": "Bash"})
+    sync(env)
+    out = env.home / "learn" / "outbox.jsonl"
+    rows = [json.loads(x) for x in out.read_text().splitlines()]
+    learn._publish(env.hub, out, {"outbox_pending": rows})  # a crash before unstaging repeats the publish
+    assert len(out.read_text().splitlines()) == 1
+
+
+def test_concurrent_syncs_keep_each_others_offsets(tmp_path, monkeypatch):
+    """Two worktrees syncing at once into one hub: the slower one must not save a stale offsets snapshot."""
+    import threading
+    import time
+    monkeypatch.setenv("SUPERLITE_HOME", str(tmp_path / "home"))
+    hub = tmp_path / "hub"
+    monkeypatch.setattr(lessons, "hub_dir", lambda _cwd: hub)
+    sl_a, sl_b = tmp_path / "a" / ".superlite", tmp_path / "b" / ".superlite"
+    for sl in (sl_a, sl_b):
+        jl(sl / "incidents.jsonl", {"file": "skills/x/y.py", "kind": "test-failure", "context": "c"})
+    real, threads = learn._fold_incidents, []
+
+    def slow(store, rows, start, run, ctx):
+        if run == "rA" and not threads:
+            threads.append(threading.Thread(target=learn.sync, args=(sl_b, None, "rB")))
+            threads[0].start()
+            time.sleep(0.4)
+        return real(store, rows, start, run, ctx)
+    monkeypatch.setattr(learn, "_fold_incidents", slow)
+    learn.sync(sl_a, None, "rA")
+    threads[0].join(10)
+    offsets = json.loads((hub / "learn-state.json").read_text())["offsets"]
+    assert len([k for k in offsets if k.endswith("incidents.jsonl")]) == 2  # A's offsets survive B's save
