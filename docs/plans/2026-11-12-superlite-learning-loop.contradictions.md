@@ -1,0 +1,10 @@
+Contradictions:
+- [open:C4-8,C4-10] method (open)
+- [resolved:C1-14,C2-7] error (resolved)
+- [resolved:C1-4,C3-9] error (resolved)
+- [open:C6-9,C4-8] method (open)
+- [open:C6-3,C6-9] definition (open)
+- [resolved:C7-1,C7-7] population (resolved)
+- [open:C7-9,C7-10] date (open)
+- [open:C5-07,C4-8] method (open)
+- [open:C5-04,C4-11] method (open)
