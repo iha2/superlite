@@ -5,6 +5,8 @@ sidebar:
   order: 5
 ---
 
+import { Steps } from "@astrojs/starlight/components";
+
 :::tip[TL;DR]
 Use Debug for a bug or a failing test. superlite finds the cause before it touches code, writes a test that fails for that cause, fixes it, and proves the suite is green. You get the cause, the fix and the test, and nothing wider.
 :::
@@ -43,7 +45,7 @@ Use Debug for a bug or a failing test. superlite finds the cause before it touch
 
 A fix without a known cause is a guess, and guesses create new bugs. So the flow has two rules. The cause comes first, and the test comes before the fix.
 
-**Reproduce, then trace.** superlite runs the failure and reads the full error, not the first line. It then checks what changed recently, follows a bad value back to where it starts, and states one cause in one sentence: "X is wrong because Y". It tests that sentence with the smallest probe it can think of, one change at a time.
+**Reproduce, then trace.** superlite runs the failure and reads the full error, not the first line. It then checks what changed recently, follows a bad value back to where it starts, and states one cause in one sentence: "X is wrong because Y". For example: "the token expiry is wrong because it is stored in local time". It tests that sentence with the smallest probe it can think of, one change at a time.
 
 **A test that fails for that cause.** The regression test is written before the fix, so you can see it fail for the right reason. It then passes after the fix.
 
@@ -53,20 +55,77 @@ A fix without a known cause is a guess, and guesses create new bugs. So the flow
 
 ## Example: a login test that fails
 
-```text
-you        /superlite:debug test_login_after_timeout fails: expects 200, gets 401
-superlite  prints the debug screen and opens a session
-superlite  runs tests/test_login.py::test_login_after_timeout and watches it fail with the 401
-superlite  one batch: what is the correct behavior? what must not change? how far may the fix reach?
-you        a session that expires should log in again; keep the token format; touch auth only
-superlite  root cause: the token is stored with a local-time expiry and checked as UTC
-superlite  writes a regression test that fails for that cause
-superlite  tier 1 (known, one module): a Sonnet fixer changes the expiry check
-superlite  the new test passes and the whole suite is green
-superlite  report: the cause, the fix and the test
-```
+Say a test fails after a recent change and you do not know why.
 
-The cause is the part you read first. It tells you whether the fix addresses the bug or only hides it. The scenario is illustrative; the order of steps is what the flow does.
+<Steps>
+
+1. You paste the failure.
+
+   ```text frame="terminal" title="Claude Code · ~/shop" ins={1}
+   ❯ /superlite:debug test_login_after_timeout fails: expects 200, gets 401
+   ```
+
+   superlite prints the stored screen above and opens a [session](/superlite/sessions/sessions/), so the fix lands on its own branch.
+
+2. superlite runs the test and watches it fail.
+
+   ```text frame="terminal" title="Claude Code · ~/shop" mark={1}
+   FAILED tests/test_login.py::test_login_after_timeout - assert 401 == 200
+   ```
+
+   It reads the whole error, not the first line, and checks what changed recently. A bug it cannot reproduce is a bug it cannot prove fixed, so this comes first.
+
+3. You answer one batch of questions. They are asked only because something material is open.
+
+   ```text frame="terminal" title="Claude Code · ~/shop" ins={4}
+   What is the correct behavior after a timeout?
+   What must not change?
+   How far may the fix reach?
+   ❯ A session that expires should log in again. Keep the token format. Touch auth only.
+   ```
+
+   **You decide:** the scope. These answers fence the fix in, so it cannot widen into a refactor. The batch also carries the question "Run the whole test suite at finish?", which defaults to no.
+
+4. superlite states the cause.
+
+   ```text frame="terminal" title="Claude Code · ~/shop" mark={1}
+   Root cause: the token is stored with a local-time expiry and checked as UTC.
+   ```
+
+   It follows the bad value back to where it starts and tests the sentence with the smallest probe it can think of. This line is the part to read first. It tells you whether the fix addresses the bug or only hides it.
+
+5. A test is written that fails for that cause.
+
+   ```py title="tests/test_login.py"
+   def test_expiry_is_compared_in_utc():
+       token = make_token(expires_local="2026-11-12 09:00")
+       assert not is_expired(token, now_utc="2026-11-12 08:30")
+   ```
+
+   The test comes before the fix, so you see it fail for the right reason, and it stays as a guard against the bug returning.
+
+6. A fixer changes the code.
+
+   ```text frame="terminal" title="Claude Code · ~/shop" mark={1}
+   tier 1 (cause known, one module): Sonnet fixer changes the expiry check
+   ```
+
+   The cause is known and sits in one module, so it is tier 1. After two failed rounds at a tier, the work moves up one ([reviews and fixes](/superlite/run/reviews-and-fixes/)).
+
+7. You read the report.
+
+   ```text frame="terminal" title="superlite report" mark={1}
+   cause   token expiry stored in local time, checked as UTC
+   fix     the expiry check in auth compares in UTC
+   test    test_expiry_is_compared_in_utc fails before, passes after
+   suite   green
+   ```
+
+   The new test passes and the whole suite is green. The report carries the evidence, so you can judge the fix without rerunning anything.
+
+</Steps>
+
+**What you end up with:** a small diff in `auth`, a regression test and a stated cause, uncommitted on the session branch. If the cause is never found, the report says so instead of shipping a guess.
 
 ## Good to know
 

@@ -5,6 +5,8 @@ sidebar:
   order: 6
 ---
 
+import { Steps, FileTree } from "@astrojs/starlight/components";
+
 :::tip[TL;DR]
 The shipped defaults live in `skills/swarm/config/`. To change them for one project, commit a small `superlite.json` at its root. A missing file changes nothing.
 :::
@@ -67,16 +69,55 @@ Unknown keys exit 2 and name the file. The file does not replace `routing.json`,
 | `SUPERLITE_NO_AUTOCOMPACT=1` | Silences the compact nudge. |
 | `SUPERLITE_NO_COST_REPORT=1` | Silences the cost line. |
 
-## Example
+## Example: lowering the cap for one project
 
-A project that wants a lower dispatch cap and an extra ignore line commits this file.
+Say your laptop struggles when many agents run at once, and your project writes `.sqlite` files you never want committed.
 
-```json
-{
-  "version": 1,
-  "cap": 6,
-  "gitignore": ["*.sqlite"]
-}
-```
+<Steps>
 
-Now `dispatch` runs at most 6 at a time unless you pass `--cap`, and Wave 0 adds `*.sqlite` to `.gitignore` after the shipped list. A typo such as `"cappp": 6` exits 2 and names `superlite.json`, so a bad key never passes silently.
+1. You create `superlite.json` at the root of the project:
+
+   ```json title="superlite.json" ins={3-4}
+   {
+     "version": 1,
+     "cap": 6,
+     "gitignore": ["*.sqlite"]
+   }
+   ```
+
+   `version` must be `1`. Commit the file, and everyone who builds in this project gets the same settings.
+
+2. You start a build as usual. Before the first task goes out, superlite merges three layers: the shipped files in `skills/swarm/config/`, then your `superlite.json`, then environment variables and command flags.
+
+   The overlay is small on purpose. You write only what differs, and a missing file changes nothing.
+
+3. The build's first step, Wave 0, appends `*.sqlite` to `.gitignore` after the shipped list for your language. Then `dispatch` runs with a cap of 6 instead of 10. It sends a ready task out only while fewer than 6 are running.
+
+   <FileTree>
+
+   - your-project/
+     - superlite.json  the overlay you committed
+     - .gitignore  now ends with `*.sqlite`
+
+   </FileTree>
+
+4. **You decide:** on a day you want more speed, pass `--cap 10` to one dispatch call. A flag beats the overlay for that call and leaves the file alone.
+
+   ```text frame="terminal" title="Terminal · ~/shop" ins={1}
+   $ bash skills/swarm/scripts/superlite-cli dispatch --cap 10
+   ```
+
+5. Say you mistype the key as `cappp`:
+
+   ```json title="superlite.json" mark={3}
+   {
+     "version": 1,
+     "cappp": 6
+   }
+   ```
+
+   The next command exits with code 2 and names `superlite.json`, even when you pass `--cap`. superlite does not ignore the line and run with the wrong setting.
+
+</Steps>
+
+**What you end up with:** one committed file that changes the concurrency and the ignore list for this project only. The shipped defaults, `routing.json` and the rule that a critical-path task never gets haiku stay as they were.

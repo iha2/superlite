@@ -5,7 +5,7 @@ sidebar:
   order: 4
 ---
 
-import { FileTree } from "@astrojs/starlight/components";
+import { FileTree, Steps } from "@astrojs/starlight/components";
 
 :::tip[TL;DR]
 Use Feature to add or change something in code that already exists. superlite reads your code, builds a small prototype in a sandbox folder and lets you try it. Only after you say "it works" does it port the change into the real code.
@@ -78,53 +78,91 @@ flowchart LR
 
 ## How it works
 
-A feature on existing code can go wrong in two ways. The plan can misread the code, or the change can pass its tests and still feel wrong to use. The flow answers both before your real code is touched.
+A feature on existing code can go wrong in two ways. The plan can misread the code (a plan for "learn from earlier runs" can pick the wrong module to record runs), or the change can pass its tests and still feel wrong. The flow answers both before your real code is touched.
 
 **Research before design.** Read-only agents map the code: entry points, the files and tests the feature touches, and the seams where new and old code meet. The interfaces that must not change are marked FROZEN. If something material is still open, superlite asks one batch of up to four questions that name real files, not guesses.
 
-**A prototype you can try.** The prototype is built in a [sandbox](/superlite/sessions/sandbox/): a plain folder inside your checkout, with no worktree and no branch. Your tracked files are never edited. The sandbox keeps the app's entry point and what the feature touches, and stubs the rest. Its plan has at most 8 tasks, so the prototype stays small next to the real build.
+**A prototype you can try.** The prototype is built in a [sandbox](/superlite/sessions/sandbox/): a plain folder inside your checkout, with no worktree and no branch. Your tracked files are never edited. The sandbox keeps the app's entry point and what the feature touches, and stubs the rest. Its plan has at most 8 tasks.
 
-<FileTree>
-- .superlite/sandboxes/
-  - csv-export/ the session
-    - csv-export/ the prototype: entry point, the touched screens, stubs
-      - docs/plans/ its own small plan, inside the sandbox
-- docs/plans/
-  - 2026-11-12-csv-export.feature.md the plan you validate
-</FileTree>
+**Your try-out is a gate.** `superlite-cli proto tryout` prints how to run the prototype, how to reach it, and the acceptance checks from the plan. In human mode the port stays blocked until you reply that it works. Changes go back to the prototype as a fix round, not to a new plan. In AI mode superlite runs the checks itself and logs a ruling.
 
-**Your try-out is a gate.** `superlite-cli proto tryout` prints how to run the prototype, how to reach it, and the acceptance checks from the plan. In human mode the port stays blocked until you reply that it works. Changes go back to the prototype as a fix round. They do not go back to a new plan, unless they change the scope. In AI mode superlite runs the checks itself and logs a ruling.
+**Port, not merge.** The port runs on a dedicated integration [worktree](/superlite/sessions/worktrees/) with its own branch. Agents rewrite the prototype's work task by task into your real code. The stubs and fakes stay behind, FROZEN interfaces do not change, and every existing test must still pass. Seam checks, a final review and [fixes by tier](/superlite/run/reviews-and-fixes/) follow, then the [report](/superlite/run/report/).
 
-**Port, not merge.** The port runs on a dedicated integration [worktree](/superlite/sessions/worktrees/) with its own branch. Agents rewrite the prototype's work task by task into your real code. The stubs and fakes stay behind, FROZEN interfaces do not change, and every existing test must still pass. Seam checks, a final review and [fixes by tier](/superlite/run/reviews-and-fixes/) follow. The [report](/superlite/run/report/) shows the prototype and the integration as two parts.
+## Example: per-repo learning, tried in the sandbox
 
-## Example: CSV export you try in the sandbox
+This is the run that built superlite's per-repo learning (PR #60). The idea: each run should teach superlite how work goes in this repo, and brief the next agents with it.
 
-```text
-you        /superlite:feature Add CSV export with column widths to the invoices page
-superlite  prints the feature screen, asks who orchestrates
-you        human
-superlite  writes docs/plans/<date>-csv-export.feature.md: goal, what you will see, ## Acceptance checks
-superlite  reads the code and adds a ## Code map: entry points, seams, interfaces to keep
-superlite  one batch: should the export follow the active filters? is the delimiter fixed?
-you        yes to filters, comma only
-superlite  Reply approve to start, or tell me what to change
-you        approve
-superlite  proto: csv-export building, sandbox .superlite/sandboxes/csv-export/csv-export
-superlite  proto: csv-export tryout, sandbox .superlite/sandboxes/csv-export/csv-export; waiting for the human's try-out reply
-           run: cd "<project>/.superlite/sandboxes/csv-export/csv-export" && npm run dev
-           reach: http://localhost:3000/invoices
-           try:
-             - the Export button downloads invoices.csv
-             - column widths follow the visible columns
-you        the Amount column is cut off
-superlite  fix round 2 on the same sandbox, then the try-out again
-you        it works
-superlite  creates the integration worktree csv-export-int and ports the work, interfaces frozen
-superlite  seam checks, final review, fixes by tier, tests
-superlite  report: prototype and integration, each with time and cost
-```
+<Steps>
 
-The `run:` and `reach:` values come from your project. The shape of the lines is what superlite prints.
+1. You describe the change.
+
+   ```text frame="terminal" title="Claude Code · ~/superlite" ins={1}
+   ❯ /superlite:feature Each run should teach superlite how work goes in this repo, and brief the agents that write code here
+   ```
+
+   superlite prints the stored screen above and opens a session on its own branch. It asks the same menu as [Regular](/superlite/flows/regular/): human or AI, and whether to run the whole suite at finish.
+
+2. You read the plan, and push back on it.
+
+   ```md title="docs/plans/2026-11-12-per-repo-learning.feature.md"
+   ## Goal
+   **Get the code right the first time in this repo, so fewer fixes are needed at the end, and the run costs less.**
+   ...
+   ## Acceptance checks
+   - Run `learn sync` twice in a row: the second run adds no history rows, incidents or findings.
+   ```
+
+   **You decide:** approve, or change it. Here the goal was reframed, a routing idea was dropped and "learn from successes" was added before approval. Behind the plan, read-only agents mapped the code: entry points, the files and tests the idea touches and the interfaces that must not change. That is the `## Code map`. It is why the plan names real modules, and it is read-only so your code stays as it was.
+
+3. You approve.
+
+   ```text frame="terminal" title="Claude Code · ~/superlite" mark={1} ins={2}
+   Reply approve to start, or tell me what to change
+   ❯ approve
+   ```
+
+   A hook blocks the prototype until your typed reply is newer than the plan ([plan and approval](/superlite/run/plan-and-approval/)). Edit the plan later and you approve again.
+
+4. The prototype appears in a sandbox. superlite cuts a folder inside your checkout. Six agent tasks build it, from a plan of its own that is capped at 8 tasks.
+
+   <FileTree>
+   - .superlite/sandboxes/per-repo-learning/per-repo-learning/
+     - docs/plans/ the prototype's own plan
+     - fixtures/ copies of real incident and history files
+     - tests/ 80 tests, 11 of them acceptance tests
+     - tryout.py the script you run
+   </FileTree>
+
+   This is a [sandbox](/superlite/sessions/sandbox/): no worktree, no branch, and your tracked files are never edited. Real data shapes mattered here, so the plan chose level L2 and copied real files into `fixtures/`.
+
+5. You try it. `proto tryout` prints how to run it and what to check.
+
+   ```text frame="terminal" title="Claude Code · ~/superlite" mark={1}
+   run: cd ".superlite/sandboxes/per-repo-learning/per-repo-learning" && python3 tryout.py
+   try:
+     - Run `learn sync` twice in a row: the second run adds no history rows, incidents or findings.
+     - ...
+   ```
+
+   **You decide:** reply "it works", or list changes. Changes go back to the prototype as a fix round, and the port stays blocked until you say it works. In this run you had told superlite to decide, so it ran `tryout.py` itself. Three fixture runs went by, the first stopped early, and all 80 tests passed. The ruling went to `.superlite/progress.md`.
+
+6. The port runs on its own worktree. superlite cuts `per-repo-learning-int` off `main`. Agents rewrite the prototype's work into the real modules, one task per module. Stubs stay behind, FROZEN interfaces do not change, and the existing tests must pass ([parallel build](/superlite/run/parallel-build/)).
+
+7. You read the report.
+
+   ```text frame="terminal" title="superlite build report" mark={2}
+                       Projected   Actual
+   wall-clock (min)         8.0     28.2
+   agents                    11        8
+   ```
+
+   The integration ran well over its forecast, and the [report](/superlite/run/report/) shows it. The prototype and the port each get their own report.
+
+</Steps>
+
+**What you end up with:** a pull request from `superlite/sessions/per-repo-learning-int` into `main`, with the full suite green at 2459 tests. The sandbox is discarded at finish. You review and merge.
+
+![PR #60 on GitHub: "Per-repo learning loop: lessons cache, progressive sync, tests folder", open](../../../assets/screens/flows/pr-60.png)
 
 ## Good to know
 

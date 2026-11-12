@@ -5,6 +5,8 @@ sidebar:
   order: 6
 ---
 
+import { Steps } from "@astrojs/starlight/components";
+
 :::tip[TL;DR]
 Use Small for a change of a few files in one chain, such as a rename. superlite does it inline, runs the focused tests, and has one reviewer check the diff before it says done. No plan document.
 :::
@@ -22,7 +24,7 @@ flowchart LR
 
 ## How it works
 
-A plan is worth its cost when the work is big enough to go wrong. A rename is not. So Small drops the plan, the review plan and the agent waves, and keeps two things: the session and the reviewer.
+A plan is worth its cost when the work is big enough to go wrong. A rename is not: renaming `build` to `render` touches a handful of files, and any mistake shows in the tests. So Small drops the plan, the review plan and the agent waves, and keeps two things: the session and the reviewer.
 
 The session still opens before the first edit, so the change sits on its own branch and is easy to inspect or throw away. The change itself happens in a few tool calls, and superlite says that it is working inline.
 
@@ -32,16 +34,50 @@ If you use the human [orchestrator](/superlite/run/orchestrators/), your yes in 
 
 ## Example: rename `build` to `render`
 
-```text
-you        /superlite:small Rename `build` to `render` everywhere
-superlite  opens a session for the rename
-superlite  doing this inline: the function, its callers and the tests
-superlite  runs the focused tests for the files it changed
-superlite  one package reviewer reads the diff
-superlite  done: 6 files changed, tests pass, reviewer found nothing to fix
-```
+Say a function name no longer fits and you want it changed everywhere.
 
-The counts in the last line depend on your project. The changes stay uncommitted in your folder. `superlite-cli finish` marks the [session](/superlite/sessions/sessions/) finished and leaves your work where it is.
+<Steps>
+
+1. You say it in one line.
+
+   ```text frame="terminal" title="Claude Code · ~/shop" ins={1}
+   ❯ /superlite:small Rename `build` to `render` everywhere
+   ```
+
+   You named `small`, so there is no menu to answer and no plan to read. superlite opens a [session](/superlite/sessions/sessions/) first, so the rename sits on its own branch and is easy to inspect or throw away.
+
+2. superlite edits inline. It says so, then changes the function, its callers and the tests.
+
+   ```diff lang="py" title="src/pages.py"
+   - from site import build
+   + from site import render
+   - html = build(page)
+   + html = render(page)
+   ```
+
+   An edit this size takes a few tool calls. A plan document would cost more than the change.
+
+3. Focused tests run.
+
+   ```text frame="terminal" title="Claude Code · ~/shop" mark={1}
+   tests/test_pages.py  tests/test_site.py  passed
+   ```
+
+   Only the tests for the files it changed run. The full suite defaults to no and superlite does not ask.
+
+4. One reviewer reads the diff. This is the `superlite:package-reviewer` agent. It fixes what it finds and adds a regression test for each fix, and it is the whole review for a change this size.
+
+5. superlite says it is done.
+
+   ```text frame="terminal" title="Claude Code · ~/shop" mark={1}
+   done: 6 files changed, tests pass, reviewer found nothing to fix
+   ```
+
+   **You decide:** keep it, adjust it or throw the branch away. `superlite-cli finish` marks the session finished and leaves your work where it is.
+
+</Steps>
+
+**What you end up with:** the rename, uncommitted on the session branch, with passing tests and a review behind it.
 
 ## Good to know
 

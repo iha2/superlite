@@ -5,6 +5,8 @@ sidebar:
   order: 5
 ---
 
+import { Steps } from "@astrojs/starlight/components";
+
 :::tip[TL;DR]
 Every tool is one command through one launcher: `superlite-cli <tool>`. The coordinator calls them for you, and you can call them to look at plans, sessions, tests, cost and reports.
 :::
@@ -78,22 +80,41 @@ The folder `skills/swarm/scripts/` also holds helper modules (session, compact a
 
 A checkpoint is a hidden save of one task under `refs/superlite/*`. superlite never commits during a run.
 
-## Example
+## Example: using the tools by hand
 
-You are in a folder with existing code and want to know which flow fits a request.
+Say you want to know which flow fits a bug report, then run one test file without freezing your terminal.
 
-```text
-$ bash skills/swarm/scripts/superlite-cli suggest_flow --text "fix the login bug"
-suggest: debug - existing code, the request reports a fault ("bug") | also fits: feature, regular
-```
+<Steps>
 
-The tool is deterministic, so the same request in the same project gives the same line. Starting a background test run is a two-step call.
+1. You ask for the suggested flow:
 
-```text
-$ bash skills/swarm/scripts/superlite-cli run_tests --fast tests/test_login.py --background
-wait: run_tests --wait --run <id>
-summary: .superlite/test-summary.json
-$ bash skills/swarm/scripts/superlite-cli run_tests --wait --run <id>
-```
+   ```text frame="terminal" title="Terminal · ~/shop" ins={1} mark={2}
+   $ bash skills/swarm/scripts/superlite-cli suggest_flow --text "fix the login bug"
+   suggest: debug - existing code, the request reports a fault ("bug") | also fits: feature, regular
+   ```
 
-The first call returns at once. The wait call blocks until the run ends, and returns early with a `SUSPECT HANG` report if the tests stop producing output.
+   The tool is deterministic: the same request in the same project gives the same line. It reads your folder and your words, with no model call.
+
+2. You start a focused test run in the background:
+
+   ```text frame="terminal" title="Terminal · ~/shop" ins={1} mark={2}
+   $ bash skills/swarm/scripts/superlite-cli run_tests --fast tests/test_login.py --background
+   wait: run_tests --wait --run <id>
+   summary: .superlite/test-summary.json
+   ```
+
+   The call returns at once and prints the id of the run. Tests run in a separate process so nothing blocks the session.
+
+3. You wait for the run with the line it printed, filling in the id:
+
+   ```text frame="terminal" title="Terminal · ~/shop" ins={1}
+   $ bash skills/swarm/scripts/superlite-cli run_tests --wait --run <id>
+   ```
+
+   The call blocks until the run ends. If the tests stop producing output, it returns early with a `SUSPECT HANG` report, so a hung run never looks like a slow one.
+
+4. **You decide:** read `.superlite/test-summary.json` for the result, or ask for the broader run with `--full`.
+
+</Steps>
+
+**What you end up with:** a flow suggestion and a test result, each from one script. Every skill and agent uses these same tools, so what you ran by hand is what a build runs.

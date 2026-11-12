@@ -5,6 +5,8 @@ sidebar:
   order: 1
 ---
 
+import { Steps } from "@astrojs/starlight/components";
+
 :::tip[TL;DR]
 Both plugins built the same project from the same spec, and a hidden test suite scored the result. In the first run superlite finished in 8.8 minutes against 34.4 and cost $3.28 against $8.15, at the same score. It is one run per arm, so read the gaps as indications.
 :::
@@ -58,8 +60,33 @@ The README reports a second task, a site generator plus a spreadsheet engine (17
 - The hidden suite checks the spec only, so it does not measure review quality.
 - On the later task, superlite can cost more than superpowers and scores lower on the extra robustness probes (4 of 7 against about 5.7 of 7).
 
-## Example
+## Example: reading the results in five checks
 
-You want to see whether a gap is real. Look at the row that matches your worry. If you worry about quality, check hidden tests and own tests written: same pass count, and superlite wrote fewer tests of its own. If you worry about cost, check the per-model split, where Opus spend fell from $6.43 to $1.53. If you worry about noise, the 3-run spread row shows how far one run can drift.
+Say you opened this page to decide whether the claim "3.9x faster, 60% cheaper" is worth trusting.
 
-The harness is in `bench/`; the full write-up is `docs/benchmark-report.md` in the repository.
+<Steps>
+
+1. **Check the score first.** Find "Hidden acceptance tests" in the first table.
+
+   ```text title="Hidden acceptance tests" mark={1-2}
+   superpowers 6.4.1   89 / 89
+   superlite 0.1.0     89 / 89
+   ```
+
+   Both arms passed the same hidden suite, which neither had seen. So the speed and cost gaps do not come from a weaker result.
+
+2. **Read the time, then its cause.** 34.4 min against 8.8 min is what you wait. The rows below explain it: 21 dispatches strictly serial against 10 with up to 5 at once, and 25.1 min of agent-busy time against 4.8.
+
+   superlite builds independent tasks in parallel waves, which is the whole speed gain. See [Parallel build](/superlite/run/parallel-build/).
+
+3. **Read the cost split.** $8.15 against $3.28 is API-equivalent, meaning list price. On a subscription it shows up as usage-limit use instead. The split row shows Opus spend falling from $6.43 to $1.53, because superlite takes fewer turns at a smaller context: median 70k per request against 108k.
+
+4. **Check how noisy it is.** The first table is one run per arm, so timings could move by 30%. The later task ran superpowers three times, and its slowest run was 26.4 min slower than its fastest. superlite's spread was 9.1 min.
+
+5. **Check what the test misses.** The hidden suite checks the spec only, so it says nothing about review quality. On the later task superlite scored 4 of 7 on the extra robustness probes against about 5.7 of 7.
+
+</Steps>
+
+**You decide:** whether a faster, cheaper build with weaker robustness probes fits your work. For a prototype it may; for a payment path you may want the deeper review.
+
+**What you end up with:** a verdict you can defend. Same hidden score, a large time gap with a known cause, a smaller cost gap with a known cause, and two limits (one run, spec-only checks). The harness is in `bench/` and the full write-up is `docs/benchmark-report.md`.

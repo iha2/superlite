@@ -5,6 +5,8 @@ sidebar:
   order: 1
 ---
 
+import { Steps } from "@astrojs/starlight/components";
+
 :::tip[TL;DR]
 superlite ships 14 skills. Each one is a short instruction file that loads when its trigger fires, so the right rules apply at the right moment. You rarely call one by hand.
 :::
@@ -44,17 +46,32 @@ The main line runs left to right. `diagnosis` is the side door for a bug. The ot
 
 All skills live in `skills/<name>/SKILL.md`.
 
-## Example
+## Example: which skill runs when you ask for a feature
 
-You ask for a new feature in an existing project.
+Say you ask for CSV export in an existing project.
 
-```text
-you        Add CSV export to the reports page
-superlite  using-superlite sizes the request: a feature, not a one-line fix
-superlite  inventing explores the code and agrees a design with you
-superlite  drafting turns the design into a plan with a task graph
-superlite  swarm builds it; testing comes first inside each task
-superlite  proof runs the checks before it says "done"
-```
+<Steps>
 
-Each line names the skill that is active at that step. If a test then fails, `diagnosis` takes over before anyone proposes a fix.
+1. You type the request:
+
+   ```text frame="terminal" title="Claude Code · ~/shop" ins={1}
+   Add CSV export to the reports page
+   ```
+
+   `using-superlite` is already loaded, because the `session-start` hook injected it. It sizes the request as a feature, not a one-line fix, and picks the skill that fits.
+
+2. `inventing` reads the code and asks you questions about the design.
+
+   **You decide:** answer the questions and approve the design. The skill stops before any implementation code exists, so a wrong idea costs you a conversation instead of a rewrite.
+
+3. `drafting` turns the design into a plan with a task graph, and `swarm` builds it. Inside each task, `testing` comes first: the test is written before the code it checks.
+
+   `swarm` is the scheduler, with scripts for the mechanical steps. See [Parallel build](/superlite/run/parallel-build/).
+
+4. Say a test fails during the build. `diagnosis` takes over and finds the cause before anyone proposes a fix, so the fix is aimed at the real fault.
+
+5. `proof` runs the checks before superlite says "done", and `shipping` offers the ways to integrate the work.
+
+</Steps>
+
+**What you end up with:** a finished feature that was designed with you, tested as it was built, and checked before the claim. Each skill held back until its turn, which is why the order never changes.
