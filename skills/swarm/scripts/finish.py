@@ -122,17 +122,18 @@ def synced_rows(history, plan, sl_dir, rid):  # O(R + n*w)
     return bool(rows) and all(history._id_key(dict(r, repository=repo)) in done for r in rows)
 
 
-def record_run_keeping_outcomes(history, plan, sl_dir, rid, expected=(OSError, ValueError, KeyError)):  # O(R + n*w)
-    """history.record_run, except it never replaces rows the learn sync wrote (they carry status and findings)."""
+def record_run_keeping_outcomes(history, plan, sl_dir, rid, expected=(OSError, ValueError, KeyError), learned=None):  # O(R + n*w)
+    """history.record_run, except it never replaces rows the learn sync wrote (they carry status and findings).
+    `learned` is the id the sync used when an archive collision suffixed `rid`."""
     try:
-        if synced_rows(history, plan, sl_dir, rid):
+        if any(synced_rows(history, plan, sl_dir, r) for r in dict.fromkeys((rid, learned)) if r):
             return []
     except expected:  # an unreadable plan or history: let record_run report it
         pass
     return history.record_run(plan, sl_dir, run_id=rid)
 
 
-def history_section(plan, sl_dir, rid=None):  # O(M + B + n*(n + e))
+def history_section(plan, sl_dir, rid=None, learned=None):  # O(M + B + n*(n + e))
     """Append the run's rows to history (global and project), refresh stats, and report predicted against actual."""
     sl = Path(sl_dir)
     if not plan or not (sl / "metrics.jsonl").is_file():
@@ -143,9 +144,9 @@ def history_section(plan, sl_dir, rid=None):  # O(M + B + n*(n + e))
     import predict
     expected = (OSError, ValueError, KeyError, TypeError, ArithmeticError, planfile.PlanError, predict.PredictError)
     try:
-        rows = record_run_keeping_outcomes(history, plan, sl_dir, rid, expected)
+        rows = record_run_keeping_outcomes(history, plan, sl_dir, rid, expected, learned)
         if not rows:  # the sync already recorded this run: report its rows
-            rows = history.run_rows(plan, sl_dir, rid)
+            rows = history.run_rows(plan, sl_dir, learned or rid)
     except expected as e:
         return f"history: not recorded ({e})"
     out = [f"history: {len(rows)} rows appended"]  # predicted vs actual is the build report's job
@@ -211,7 +212,7 @@ def card_line(plan, sl_dir, ledger=None):  # O(file + R*w + m log m)
     return run_widget.widget_line(out, Path.cwd()) if out else ""  # ledger paths are from the cwd
 
 
-def summary(ledger, log, lint_log=DEFAULT_LINT_LOG, plan=None, sl_dir=None, rid=None):  # O(R*w + I*w + C + G)
+def summary(ledger, log, lint_log=DEFAULT_LINT_LOG, plan=None, sl_dir=None, rid=None, learned=None):  # O(R*w + I*w + C + G)
     rulings, checkpoints, tests = read_ledger(ledger)
     incidents = open_incidents(log)
     out = ["# superlite run summary", ""]
@@ -249,7 +250,7 @@ def summary(ledger, log, lint_log=DEFAULT_LINT_LOG, plan=None, sl_dir=None, rid=
     out += [f"- {a}" for a in accepted]
     out.append("")
     if plan is not None:
-        out.append(history_section(plan or None, sl_dir or str(Path(ledger).parent), rid))  # see history_section
+        out.append(history_section(plan or None, sl_dir or str(Path(ledger).parent), rid, learned))  # see history_section
         out.append("")
     out.append(f"open incidents: {len(incidents)}")
     for e in incidents:
@@ -273,7 +274,8 @@ def _keep(sl_dir):  # O(1): `keep` kwarg for run_archive, empty unless a prototy
 
 
 def run_ids(sl_dir):  # O(files) + registry read; reserve the final id before history refers to it
-    """The session slug, final archive id and reserved folder; unavailable values are None."""
+    """The session slug, final archive id, reserved folder and the run's learning id (the marker's id before any
+    collision suffix, which checkpoint syncs used); unavailable values are None."""
     reserved = None
     try:
         import run_archive
@@ -284,16 +286,16 @@ def run_ids(sl_dir):  # O(files) + registry read; reserve the final id before hi
         rid = reserved.name if reserved else base_id
         if marker and rid != marker["id"]:
             run_archive.write_current_run(sl_dir, dict(marker, id=rid))
-        return slug, rid, reserved
+        return slug, rid, reserved, base_id
     except (ImportError, OSError, ValueError) as e:
         if reserved is not None:
             import run_archive
             run_archive.cancel_reservation(reserved)
         print(f"run: archive id not made ({e})", file=sys.stderr)
-        return None, None, None
+        return None, None, None, None
 
 
-def learn_sync(sl_dir, plan, rid):  # O(sync) advisory: fold the run into the lessons; same run id as history
+def learn_sync(sl_dir, plan, rid):  # O(sync) advisory: fold the run into the lessons under its logical run id
     try:
         import base
         import learn
@@ -315,12 +317,12 @@ def archive_run(root, sl_dir, slug, plan, rid, reserved=None):  # O(files); fail
 
 
 def _finish_locked(a, root, sl_dir):  # O(R*w + I*w)
-    slug, rid, reserved = run_ids(sl_dir)
+    slug, rid, reserved, logical = run_ids(sl_dir)
     try:
         with contextlib.redirect_stdout(io.StringIO()) as learned:  # before the summary: its history rows are synced
-            learn_sync(sl_dir, a.plan, rid)
+            learn_sync(sl_dir, a.plan, logical)  # one logical run id: the checkpoint syncs recorded under it
         sys.stdout.write(summary(a.ledger, a.log, a.lint_log or str(Path(a.ledger).with_name("lint-log.jsonl")),
-                                 a.plan, None, rid))
+                                 a.plan, None, rid, logical))
         sys.stdout.write(learned.getvalue())  # the sync's own line, after the summary it feeds
         import exclusive  # the run is done: peer plugins may load again
         widget = card_line(a.plan, root, a.ledger)  # before cleanup, which removes checkpoint state the card counts

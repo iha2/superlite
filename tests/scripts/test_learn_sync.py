@@ -641,3 +641,32 @@ def test_findings_owner_matches_globs(env):
     jl(env.sl / "review-findings.jsonl", {"run": "r1", "file": "src/pkg/a.py", "problem": "p", "category": "state"})
     sync(env, plan="p.md")
     assert {r["task"]: r["findings"] for r in hist(env)} == {"T1": 1}
+
+
+def test_final_sync_after_archive_collision_keeps_the_runs_learning_identity(env):
+    """The archive folder name gets a `-2` suffix, but the checkpoint syncs recorded tasks and deliveries under the
+    run's own id: finish's final sync must use that id, or it misses their outcomes and the finished mark."""
+    import finish
+    import run_archive
+    _live(env)
+    inc(env)
+    sync(env, "r0")
+    inc(env)
+    sync(env, RID)
+    lid = next(iter(store(env)["lessons"]))
+    jl(env.sl / "deliveries.jsonl", {"run": RID, "task": "T1", "agent": "implementer", "lessons": [lid]})
+    env.tasks["T1"] = {"owns": ["skills/x/y.py"], "first_time_pass": False}
+    sync(env, RID, plan="p.md")  # a checkpoint sync, before finish
+    assert store(env)["lessons"][lid]["deliveries"] == [{"run": RID, "task": "T1", "hit": False}]
+    (run_archive.runs_dir(env.sl.parent) / RID).mkdir(parents=True)  # the collision
+    env.tasks["T1"] = {"owns": ["skills/x/y.py"], "first_time_pass": True}
+    slug, rid, reserved, logical = finish.run_ids(env.sl)
+    assert rid == RID + "-2" and logical == RID and reserved.name == rid
+    finish.learn_sync(env.sl, "p.md", logical)
+    assert store(env)["lessons"][lid]["deliveries"] == [{"run": RID, "task": "T1", "hit": True}]
+    assert [r["status"] for r in hist(env) if r["run"] == RID] == ["unfinished", "finished"]
+    assert not [r for r in hist(env) if r["run"] == rid]
+    memo = json.loads((env.hub / "learn-state.json").read_text())
+    assert f"{learn._ck(env.sl)}|{RID}" in memo["final"]
+    sync(env, RID, plan="p.md")  # a late checkpoint sync of the sealed run changes nothing
+    assert [r["status"] for r in hist(env) if r["run"] == RID] == ["unfinished", "finished"]
