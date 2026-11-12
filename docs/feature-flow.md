@@ -96,7 +96,7 @@ Then, in that worktree:
 
 The prototype sandbox is removed at finish with `superlite-cli proto discard`, which first saves the prototype's report headline into `feature.json`, then deletes the sandbox folder and archives its run files into `.superlite/runs/`. `session close` discards an open sandbox too. The integration worktree (`.superlite/worktrees/<topic>`) is removed in the same finish, from the main checkout, once the branch is merged or pushed, or on keep when that tree is clean. A keep with uncommitted work leaves the worktree. The flow does not leave a worktree it created. `superlite-cli proto status [--json]` shows the state at any time.
 
-**The report.** When `.superlite/feature.json` exists, `superlite-cli report` adds a feature-flow part: the prototype and the integration on two lines, each with wall-clock and agent cost, projected and actual, and the prototype's cost as a share of the integration against the 25% cap. The prototype numbers come from its own build report in the worktree (`report.json` in the run folder), saved into `feature.json` at try-out and discard so they outlive the sandbox.
+**The report.** When `.superlite/feature.json` exists, `superlite-cli report` adds a feature-flow part: the prototype and the integration on two lines, each with wall-clock and agent cost, projected and actual, and the prototype's cost as a share of the integration against the 25% cap. The prototype numbers come from its own build report (`report.json` in the run folder), saved into `feature.json` at try-out and discard so they outlive the sandbox.
 
 ## What has to be built
 

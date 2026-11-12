@@ -8,7 +8,7 @@
       v
   [4 APPROVE]
       v
-.- SANDBOX: own worktree, your code untouched ----------.
+.- SANDBOX: folder in this checkout, no worktree -------.
 : [5 PROTOTYPE] <-----------------------+               :
 :     |                                 |               :
 :     +-----------+-----------+         |               :
@@ -38,8 +38,9 @@
   2  PLAN       What changes and how you will check it (acceptance checks).
   3  RESEARCH   Read-only code map: entry points, seams, interfaces to keep.
   4  APPROVE    Human mode: you approve the plan. AI mode: skipped.
-  5  PROTOTYPE  A sandbox: its own worktree, your checkout untouched. Agents
-                build side by side, 8 tasks at most.
+  5  PROTOTYPE  A sandbox folder in this checkout (.superlite/sandboxes/).
+                No worktree, no branch: it uses your real code in place and
+                never edits it. Agents build side by side, 8 tasks at most.
   6  TRY IT     You run it. "It works" moves on. Changes go back to step 5.
   7  PORT       Agents side by side port the prototype into your real code.
                 Existing interfaces stay frozen. Existing tests must pass.
