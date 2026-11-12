@@ -1,0 +1,1 @@
+{"name":"superlite-docs","private":true,"type":"module","version":"0.0.1","scripts":{"build":"astro build && python3 checks/check_pages.py --docs src/content/docs --main ..","dev":"astro dev"},"dependencies":{"@astrojs/starlight":"0.42.7","astro":"7.4.1","astro-mermaid":"2.2.0","mermaid":"12.2.0"}}
