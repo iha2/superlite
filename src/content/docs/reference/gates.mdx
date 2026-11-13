@@ -52,7 +52,7 @@ Say you work in human mode and ask for CSV export on the reports page.
 
 1. You type the request in Claude Code:
 
-   ```text frame="terminal" title="Claude Code · ~/shop" ins={1}
+   ```text frame="terminal" title="Claude Code · ~/social" ins={1}
    Add CSV export to the reports page
    ```
 
@@ -60,7 +60,7 @@ Say you work in human mode and ask for CSV export on the reports page.
 
 2. Say the coordinator moves too fast and calls `superlite-cli dispatch` before you have answered. You see the call refused:
 
-   ```text frame="terminal" title="Claude Code · ~/shop" mark={2}
+   ```text frame="terminal" title="Claude Code · ~/social" mark={2}
    $ superlite-cli dispatch ...
    Human orchestrator: no build is orchestrated until the human approves the plan.
    Write the review plan docs/plans/<date>-<topic>.review.md ...
@@ -70,7 +70,7 @@ Say you work in human mode and ask for CSV export on the reports page.
 
 3. The coordinator ends its turn and shows the path to the plan, a five-line summary and a closing line.
 
-   ```text frame="terminal" title="Claude Code · ~/shop" mark={2}
+   ```text frame="terminal" title="Claude Code · ~/social" mark={2}
    docs/plans/2026-11-12-csv-export.review.md
    Reply approve to start, or tell me what to change
    ```
@@ -79,7 +79,7 @@ Say you work in human mode and ask for CSV export on the reports page.
 
 4. You reply:
 
-   ```text frame="terminal" title="Claude Code · ~/shop" ins={1}
+   ```text frame="terminal" title="Claude Code · ~/social" ins={1}
    looks good
    ```
 

@@ -45,16 +45,16 @@ For example, a request to change existing code picks the Feature flow, which ope
 | Review and fixes | Reviewers check the work, fixers repair findings by tier. | [Reviews and fixes](/superlite/run/reviews-and-fixes/) |
 | Report | Time and cost, projected against actual, and what changed from the plan. | [Report](/superlite/run/report/) |
 
-## Example: a feature, from request to PR #60
+## Example: a feature, from request to branch
 
-A real run in this repo: teach superlite to learn from each run in the repo it runs in. It changes existing code, so it used the Feature flow. Each step names the concept at work.
+Say your social network lives in `~/social` and you want to suggest "People you may know" from friends of friends. It changes existing code, so it uses the Feature flow. Each step names the concept at work.
 
 <Steps>
 
 1. **You ask for a change to existing code.**
 
-   ```text frame="terminal" title="Claude Code · superlite" ins={1}
-   ❯ /superlite:feature Let superlite learn from each run in the repo it runs in
+   ```text frame="terminal" title="Claude Code · ~/social" ins={1}
+   ❯ /superlite:feature Suggest "People you may know" from friends of friends
    ```
 
    The command picks the [flow](/superlite/flows/choose/) and opens a [session](/superlite/sessions/sessions/), a branch `superlite/sessions/<topic>`, before anything is touched.
@@ -63,58 +63,56 @@ A real run in this repo: teach superlite to learn from each run in the repo it r
 
    <FileTree>
    - docs/plans/
-     - 2026-11-12-superlite-learning-loop.research.md
-     - 2026-11-12-superlite-learning-loop.findings.md
-     - 2026-11-12-superlite-learning-loop.contradictions.md
-     - 2026-11-12-superlite-learning-loop.sources.md
+     - 2026-11-12-people-you-may-know.research.md
+     - 2026-11-12-people-you-may-know.findings.md
+     - 2026-11-12-people-you-may-know.contradictions.md
+     - 2026-11-12-people-you-may-know.sources.md
    </FileTree>
 
    Agents run side by side and fill a sourced ledger, because each question is independent. They are the "agents" on the map.
 
 3. **You validate the feature plan.** **You decide:** approve it or change it.
 
-   ```md title="docs/plans/2026-11-12-per-repo-learning.feature.md" mark={4}
-   # Per-repo learning loop: feature plan
+   ```md title="docs/plans/2026-11-12-people-you-may-know.feature.md" mark={4}
+   # People you may know: feature plan
 
    ## Goal
-   **Get the code right the first time in this repo, so fewer fixes are needed at the end, and the run costs less.**
+   **Suggest people a member may know, based on friends of friends.**
    ```
 
    The plan is the contract: the prototype and the build are judged against its acceptance checks. The one who says yes is the [orchestrator](/superlite/run/orchestrators/), here you.
 
 4. **A prototype appears in a sandbox, and you try it.** **You decide:** does it work?
 
-   ```md title="docs/plans/2026-11-12-per-repo-learning.feature.md"
+   ```md title="docs/plans/2026-11-12-people-you-may-know.feature.md"
    ## Prototype scope
-   - **New in the sandbox:** `lessons.py`, `review_findings.py`, `learn.py` (`sync`), and a fixture driver that calls sync at each hook point in the real order.
+   - **New in the sandbox:** a suggestion query, a "People you may know" card on the feed, a Dismiss button, and a stub for the friends database.
    ```
 
    The [sandbox](/superlite/sessions/sandbox/) is a hidden folder in your checkout, not a second worktree, so there is no extra branch to clean up.
 
 5. **The build ports the prototype.**
 
-   ```md title="docs/plans/2026-11-12-per-repo-learning.feature.md"
-   Dedicated worktree `per-repo-learning-int` off `main`. One task per module.
+   ```md title="docs/plans/2026-11-12-people-you-may-know.feature.md"
+   Dedicated worktree `people-you-may-know-int` off `main`. One task per module.
    The prototype's acceptance tests are the target; code is ported task by task, and stubs stay behind.
    ```
 
-   The prototype's 80 acceptance tests became unit tests in the real code. One task per module means agents work on separate files and do not collide.
+   The prototype's acceptance tests become unit tests in the real code. One task per module means agents work on separate files and do not collide.
 
 6. **You read the report.**
 
    ```text frame="terminal" title="Claude Code · build report" mark={2}
                             Projected    Actual
-   wall-clock (min)               8.0      28.2
-   agent cost (USD, +rework)      1.42      3.02
+   wall-clock (min)               8.0       9.5
+   agent cost (USD, +rework)      1.42      1.65
    ```
 
-   The run took 28.2 minutes against 8.0 forecast, and the report says so. See [Report](/superlite/run/report/).
-
-   On GitHub the pull request shows the learning loop as one change from the session branch.
+   The report puts forecast and actual side by side. See [Report](/superlite/run/report/).
 
 </Steps>
 
-**What you end up with:** PR #60 from `superlite/sessions/per-repo-learning-int`, with the full suite at 2459 passed, 0 failed. What is left for you: review the PR and merge it yourself.
+**What you end up with:** the branch `superlite/sessions/people-you-may-know-int`, with the app's full suite green. What is left for you: open the pull request, review it and merge it yourself.
 
 ## Good to know
 

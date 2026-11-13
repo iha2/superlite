@@ -1,9 +1,9 @@
-title: Claude Code · ~/superlite
+title: Claude Code · ~/social
 ins: 1
 mark: 12-23
 words: [5 PROTOTYPE]|[6 TRY IT]|[7 PORT]
 ---
-❯ /superlite:feature Each run should teach superlite how work goes in this repo
+❯ /superlite:feature Suggest "People you may know" from friends of friends
  FEATURE
  ------------------------------------------------------------------------------
   [1 ASK]

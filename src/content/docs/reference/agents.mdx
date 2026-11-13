@@ -44,7 +44,7 @@ Say task T4 of a build fails its tests and a first fixer cannot clear it.
 
 1. You see an agent named `fixer-sonnet` start on the failure.
 
-   ```text frame="terminal" title="Claude Code · ~/shop" mark={2}
+   ```text frame="terminal" title="Claude Code · ~/social" mark={2}
    T4 tests failed
    dispatch fixer-sonnet  finding F-T4-1  note .superlite/fixes/F-T4-1.md
    ```
@@ -63,7 +63,7 @@ Say task T4 of a build fails its tests and a first fixer cannot clear it.
 
 4. Say the coordinator tried to skip a tier on a task marked blocked. The `pre-tool` hook refuses:
 
-   ```text frame="terminal" title="Claude Code · ~/shop" mark={1}
+   ```text frame="terminal" title="Claude Code · ~/social" mark={1}
    Blocked: BLOCKED task needs fixer tier opus. Launch the fixer one tier up, not tier T4 need=opus got=sonnet.
    ```
 

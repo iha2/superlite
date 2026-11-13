@@ -78,7 +78,7 @@ flowchart LR
 
 ## How it works
 
-A feature on existing code can go wrong in two ways. The plan can misread the code (a plan for "learn from earlier runs" can pick the wrong module to record runs), or the change can pass its tests and still feel wrong. The flow answers both before your real code is touched.
+A feature on existing code can go wrong in two ways. The plan can misread the code (a plan for "People you may know" can read the wrong friends table, or miss that blocked users are stored elsewhere), or the change can pass its tests and still feel wrong. The flow answers both before your real code is touched.
 
 **Research before design.** Read-only agents map the code: entry points, the files and tests the feature touches, and the seams where new and old code meet. The interfaces that must not change are marked FROZEN. If something material is still open, superlite asks one batch of up to four questions that name real files, not guesses.
 
@@ -88,81 +88,83 @@ A feature on existing code can go wrong in two ways. The plan can misread the co
 
 **Port, not merge.** The port runs on a dedicated integration [worktree](/superlite/sessions/worktrees/) with its own branch. Agents rewrite the prototype's work task by task into your real code. The stubs and fakes stay behind, FROZEN interfaces do not change, and every existing test must still pass. Seam checks, a final review and [fixes by tier](/superlite/run/reviews-and-fixes/) follow, then the [report](/superlite/run/report/).
 
-## Example: per-repo learning, tried in the sandbox
+## Example: People you may know, tried in the sandbox
 
-This is the run that built superlite's per-repo learning (PR #60). The idea: each run should teach superlite how work goes in this repo, and brief the next agents with it.
+Say your social network lives in `~/social` and you want to suggest "People you may know" from friends of friends. The app already exists, so this is a feature on existing code.
 
 <Steps>
 
 1. You describe the change.
 
-   ![The Feature command typed in the superlite repo, followed by the Feature flow screen, with the prototype, try-it and port stages marked](../../../assets/screens/flow-feature.png)
+   ![The Feature command typed in the social app, followed by the Feature flow screen, with the prototype, try-it and port stages marked](../../../assets/screens/flow-feature.png)
 
-   *Real output: the command and the screen it prints.*
+   *Real output: the Feature screen. The diagram is the same for any feature; only your request changes.*
 
    superlite opens a session on its own branch, then asks the [Regular](/superlite/flows/regular/) menu: human or AI, and whether to run the whole suite.
 
 2. You read the plan, and push back on it.
 
-   ```md title="docs/plans/2026-11-12-per-repo-learning.feature.md"
+   ```md title="docs/plans/2026-11-12-people-you-may-know.feature.md"
    ## Goal
-   **Get the code right the first time in this repo, so fewer fixes are needed at the end, and the run costs less.**
+   **Suggest people a member may know, based on friends of friends.**
    ...
    ## Acceptance checks
-   - Run `learn sync` twice in a row: the second run adds no history rows, incidents or findings.
+   - Someone 2 friends away appears with "3 mutual friends".
+   - Existing friends and yourself never appear.
+   - Dismissing a suggestion hides it after reload.
+   - Blocked users never appear.
    ```
 
-   **You decide:** approve, or change it. Here the goal was reframed, a routing idea was dropped and "learn from successes" was added before approval. Behind the plan, read-only agents mapped the code: entry points, the files and tests the idea touches and the interfaces that must not change. That is the `## Code map`. It is why the plan names real modules, and it is read-only so your code stays as it was.
+   **You decide:** approve, or change it. Say you drop "invite by email" and ask for a "Dismiss" button on each suggestion. The plan also has a `## Code map` of the files and tests the feature touches, which is why it names real files.
 
 3. You approve.
 
-   ```text frame="terminal" title="Claude Code · ~/superlite" mark={1} ins={2}
+   ```text frame="terminal" title="Claude Code · ~/social" mark={1} ins={2}
    Reply approve to start, or tell me what to change
    ❯ approve
    ```
 
-   A hook blocks the prototype until your typed reply is newer than the plan ([plan and approval](/superlite/run/plan-and-approval/)). Edit the plan later and you approve again.
+   Nothing is built until you reply ([plan and approval](/superlite/run/plan-and-approval/)). Edit the plan later and you approve again.
 
-4. The prototype appears in a sandbox. superlite cuts a folder inside your checkout. Six agent tasks build it, from a plan of its own that is capped at 8 tasks.
+4. The prototype appears in a sandbox. superlite cuts a folder inside your checkout and builds a small version of the feature there.
 
    <FileTree>
-   - .superlite/sandboxes/per-repo-learning/per-repo-learning/
+   - .superlite/sandboxes/people-you-may-know/people-you-may-know/
      - docs/plans/ the prototype's own plan
-     - fixtures/ copies of real incident and history files
-     - tests/ 80 tests, 11 of them acceptance tests
-     - tryout.py the script you run
+     - app/ the social app's entry point, feed and profile pages
+     - stubs/ the friends database and notifications, faked
+     - tests/ the acceptance checks as tests
+     - package.json npm run dev starts it
    </FileTree>
 
-   This is a [sandbox](/superlite/sessions/sandbox/): no worktree, no branch, and your tracked files are never edited. Real data shapes mattered here, so the plan chose level L2 and copied real files into `fixtures/`.
+   This is a [sandbox](/superlite/sessions/sandbox/): no worktree, no branch, and your tracked files are never edited. The sandbox keeps what the feature touches and stubs the rest.
 
 5. You try it. `proto tryout` prints how to run it and what to check.
 
-   ```text frame="terminal" title="Claude Code · ~/superlite" mark={1}
-   run: cd ".superlite/sandboxes/per-repo-learning/per-repo-learning" && python3 tryout.py
+   ```text frame="terminal" title="Claude Code · ~/social" mark={1}
+   run: cd ".superlite/sandboxes/people-you-may-know/people-you-may-know" && npm run dev
    try:
-     - Run `learn sync` twice in a row: the second run adds no history rows, incidents or findings.
-     - ...
+     - Open http://localhost:3000/feed and find the "People you may know" card.
+     - Click Dismiss on a suggestion, reload the page: it stays hidden.
    ```
 
-   **You decide:** reply "it works", or list changes. Changes go back to the prototype as a fix round, and the port stays blocked until you say it works. In this run you had told superlite to decide, so it ran `tryout.py` itself. Three fixture runs went by, the first stopped early, and all 80 tests passed. The ruling went to `.superlite/progress.md`.
+   **You decide:** reply "it works", or list changes ("the card should also show on the profile page"). Changes go back to the prototype as a fix round, and the port stays blocked until you say it works. In AI mode superlite runs the checks itself and tells you the result.
 
-6. The port runs on its own worktree. superlite cuts `per-repo-learning-int` off `main`. Agents rewrite the prototype's work into the real modules, one task per module. Stubs stay behind, FROZEN interfaces do not change, and the existing tests must pass ([parallel build](/superlite/run/parallel-build/)).
+6. The port runs on its own worktree. superlite cuts `people-you-may-know-int` off `main` and rewrites the prototype's work into the real social app code. Stubs stay behind, the existing code's interfaces do not change, and the existing tests must pass ([parallel build](/superlite/run/parallel-build/)).
 
 7. You read the report.
 
    ```text frame="terminal" title="superlite build report" mark={2}
                        Projected   Actual
-   wall-clock (min)         8.0     28.2
-   agents                    11        8
+   wall-clock (min)         8.0      9.5
+   agents                    11       10
    ```
 
-   The integration ran well over its forecast, and the [report](/superlite/run/report/) shows it. The prototype and the port each get their own report.
+   The prototype and the port each get their own [report](/superlite/run/report/).
 
 </Steps>
 
-**What you end up with:** a pull request from `superlite/sessions/per-repo-learning-int` into `main`, with the full suite green at 2459 tests. The sandbox is discarded at finish. You review and merge.
-
-On GitHub that pull request is titled "Per-repo learning loop: lessons cache, progressive sync, tests folder" and stays open until you merge it.
+**What you end up with:** a branch `superlite/sessions/people-you-may-know-int` ready for a pull request into `main`, with the app's full test suite green. The sandbox is discarded at finish. You review and merge.
 
 ## Good to know
 

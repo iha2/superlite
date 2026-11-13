@@ -73,12 +73,12 @@ def test_lifecycle_walks_one_real_session():
 
 def test_worktrees_example_is_this_docs_session():
     t = _text("worktrees")
-    assert "sessions-docs-site" in t and "docs-site" in t and "sessions-per-repo-learning-int" in t
+    assert "sessions-docs-site" in t and "docs-site" in t and "sessions-people-you-may-know-int" in t
 
 
-def test_sandbox_example_is_the_per_repo_learning_prototype():
+def test_sandbox_example_is_the_people_you_may_know_prototype():
     t = _text("sandbox")
-    assert "per-repo-learning" in t and "PR #60" in t and "tryout.py" in t
+    assert "people-you-may-know" in t and "PR #60" not in t and "npm run dev" in t
 
 
 def test_lifecycle_state_diagram_and_three_steps():
