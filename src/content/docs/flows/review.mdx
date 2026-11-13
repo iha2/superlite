@@ -41,7 +41,7 @@ Say a branch adds CSV export and you want it checked before you merge.
 
 1. You name the branch.
 
-   ```text frame="terminal" title="Claude Code · ~/shop" ins={1}
+   ```text frame="terminal" title="Claude Code · ~/social" ins={1}
    ❯ /superlite:review superlite/sessions/csv-export
    ```
 
@@ -49,7 +49,7 @@ Say a branch adds CSV export and you want it checked before you merge.
 
 2. You answer one batch, once superlite has read the diff.
 
-   ```text frame="terminal" title="Claude Code · ~/shop" ins={5}
+   ```text frame="terminal" title="Claude Code · ~/social" ins={5}
    What is the intent of this change?
    Which risk matters most?
    What is out of bounds?
@@ -61,7 +61,7 @@ Say a branch adds CSV export and you want it checked before you merge.
 
 3. Package reviewers work through the diff. Each takes its part, fixes what it finds and adds a regression test for each fix.
 
-   ```text frame="terminal" title="Claude Code · ~/shop" mark={1}
+   ```text frame="terminal" title="Claude Code · ~/social" mark={1}
    package reviewer: export totals ignored the active filter. Fixed, test added.
    ```
 
@@ -69,7 +69,7 @@ Say a branch adds CSV export and you want it checked before you merge.
 
 4. A fresh reviewer ranks what is left. The final reviewer did not see the earlier work and edits nothing.
 
-   ```text frame="terminal" title="Claude Code · ~/shop" mark={1-2}
+   ```text frame="terminal" title="Claude Code · ~/social" mark={1-2}
    tier 2  the export has no limit on row count
    tier 3  the filename ignores the locale
    ```

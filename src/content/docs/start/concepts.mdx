@@ -47,14 +47,14 @@ For example, a request to change existing code picks the Feature flow, which ope
 
 ## Example: a feature, from request to branch
 
-Say your shop app lives in `~/shop` and you want customers to save products to a wishlist. It changes existing code, so it uses the Feature flow. Each step names the concept at work.
+Say your social network lives in `~/social` and you want to suggest "People you may know" from friends of friends. It changes existing code, so it uses the Feature flow. Each step names the concept at work.
 
 <Steps>
 
 1. **You ask for a change to existing code.**
 
-   ```text frame="terminal" title="Claude Code · ~/shop" ins={1}
-   ❯ /superlite:feature Customers can save products to a wishlist
+   ```text frame="terminal" title="Claude Code · ~/social" ins={1}
+   ❯ /superlite:feature Suggest "People you may know" from friends of friends
    ```
 
    The command picks the [flow](/superlite/flows/choose/) and opens a [session](/superlite/sessions/sessions/), a branch `superlite/sessions/<topic>`, before anything is touched.
@@ -63,38 +63,38 @@ Say your shop app lives in `~/shop` and you want customers to save products to a
 
    <FileTree>
    - docs/plans/
-     - 2026-11-12-wishlist.research.md
-     - 2026-11-12-wishlist.findings.md
-     - 2026-11-12-wishlist.contradictions.md
-     - 2026-11-12-wishlist.sources.md
+     - 2026-11-12-people-you-may-know.research.md
+     - 2026-11-12-people-you-may-know.findings.md
+     - 2026-11-12-people-you-may-know.contradictions.md
+     - 2026-11-12-people-you-may-know.sources.md
    </FileTree>
 
    Agents run side by side and fill a sourced ledger, because each question is independent. They are the "agents" on the map.
 
 3. **You validate the feature plan.** **You decide:** approve it or change it.
 
-   ```md title="docs/plans/2026-11-12-wishlist.feature.md" mark={4}
-   # Wishlist: feature plan
+   ```md title="docs/plans/2026-11-12-people-you-may-know.feature.md" mark={4}
+   # People you may know: feature plan
 
    ## Goal
-   **Let a customer save products to a wishlist and find them again later.**
+   **Suggest people a member may know, based on friends of friends.**
    ```
 
    The plan is the contract: the prototype and the build are judged against its acceptance checks. The one who says yes is the [orchestrator](/superlite/run/orchestrators/), here you.
 
 4. **A prototype appears in a sandbox, and you try it.** **You decide:** does it work?
 
-   ```md title="docs/plans/2026-11-12-wishlist.feature.md"
+   ```md title="docs/plans/2026-11-12-people-you-may-know.feature.md"
    ## Prototype scope
-   - **New in the sandbox:** a wishlist store, a save button on the product page, a wishlist page, and a stub for payments.
+   - **New in the sandbox:** a suggestion query, a "People you may know" card on the feed, a Dismiss button, and a stub for the friends database.
    ```
 
    The [sandbox](/superlite/sessions/sandbox/) is a hidden folder in your checkout, not a second worktree, so there is no extra branch to clean up.
 
 5. **The build ports the prototype.**
 
-   ```md title="docs/plans/2026-11-12-wishlist.feature.md"
-   Dedicated worktree `wishlist-int` off `main`. One task per module.
+   ```md title="docs/plans/2026-11-12-people-you-may-know.feature.md"
+   Dedicated worktree `people-you-may-know-int` off `main`. One task per module.
    The prototype's acceptance tests are the target; code is ported task by task, and stubs stay behind.
    ```
 
@@ -112,7 +112,7 @@ Say your shop app lives in `~/shop` and you want customers to save products to a
 
 </Steps>
 
-**What you end up with:** the branch `superlite/sessions/wishlist-int`, with the shop's full suite green. What is left for you: open the pull request, review it and merge it yourself.
+**What you end up with:** the branch `superlite/sessions/people-you-may-know-int`, with the app's full suite green. What is left for you: open the pull request, review it and merge it yourself.
 
 ## Good to know
 

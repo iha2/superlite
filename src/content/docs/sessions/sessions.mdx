@@ -52,40 +52,40 @@ One `.superlite/` holds the shared bookkeeping. Git never shows it, because supe
 
 ## Example: two chats on one project
 
-Say your shop app lives in `~/shop`. You work on a feature in one chat and a bug fix in another, at the same time.
+Say your social app lives in `~/social`. You work on a feature in one chat and a bug fix in another, at the same time.
 
 <Steps>
 
 1. **Chat 1: you ask for a feature.**
 
-   ```text frame="terminal" title="Chat 1 · ~/shop" ins={1}
+   ```text frame="terminal" title="Chat 1 · ~/social" ins={1}
    ❯ /superlite:feature Add CSV export
    ● Reading the code and writing a plan...
    ```
 
-   Underneath, the flow opens a session before it plans anything. It cuts the branch `superlite/sessions/export` from `main` and keeps the plan, ledger and checkpoints in the `.superlite/` folder of `~/shop`. The session is how a later chat finds this work and leaves it alone.
+   Underneath, the flow opens a session before it plans anything. It cuts the branch `superlite/sessions/export` from `main` and keeps the plan, ledger and checkpoints in the `.superlite/` folder of `~/social`. The session is how a later chat finds this work and leaves it alone.
 
    <FileTree>
 
-   - shop/  on branch superlite/sessions/export
+   - social/  on branch superlite/sessions/export
      - .superlite/  chat 1's run state
      - src/
 
    </FileTree>
 
-2. **Chat 2: you report a bug.** Chat 1 is still open and `~/shop` is its folder.
+2. **Chat 2: you report a bug.** Chat 1 is still open and `~/social` is its folder.
 
-   ```text frame="terminal" title="Chat 2 · ~/shop" ins={1}
+   ```text frame="terminal" title="Chat 2 · ~/social" ins={1}
    ❯ /superlite:debug Login redirect loops
    ```
 
-   Underneath, two chats in `~/shop` would overwrite each other's `.superlite/` and switch each other's branch. superlite does not guess. It stops and asks, and changes nothing until you answer.
+   Underneath, two chats in `~/social` would overwrite each other's `.superlite/` and switch each other's branch. superlite does not guess. It stops and asks, and changes nothing until you answer.
 
 3. **You decide: move chat 1 out?** The question names the folder `export` would move to and says its chat must be idle.
 
-   ```text frame="terminal" title="Chat 2 · ~/shop" mark={4} "Yes"
+   ```text frame="terminal" title="Chat 2 · ~/social" mark={4} "Yes"
    Move session export out of the main checkout into
-   ~/shop/.claude/worktrees/sessions-export? Its chat must be idle.
+   ~/social/.claude/worktrees/sessions-export? Its chat must be idle.
 
    ❯ 1. Yes
      2. No
@@ -93,11 +93,11 @@ Say your shop app lives in `~/shop`. You work on a feature in one chat and a bug
 
    Answer yes when chat 1 is waiting on you, not working. Answer no and chat 2 does not start. [Worktrees](/superlite/sessions/worktrees/) covers this question in full.
 
-4. **superlite moves the work.** Underneath, it gives `export` a [worktree](/superlite/sessions/worktrees/) with its run files and uncommitted work, gives `login-fix` its own, and puts `~/shop` back on `main`. If any step fails, it puts everything back.
+4. **superlite moves the work.** Underneath, it gives `export` a [worktree](/superlite/sessions/worktrees/) with its run files and uncommitted work, gives `login-fix` its own, and puts `~/social` back on `main`. If any step fails, it puts everything back.
 
    <FileTree>
 
-   - shop/  on branch main
+   - social/  on branch main
      - .claude/
        - worktrees/
          - sessions-export/  chat 1 now works here
@@ -107,13 +107,13 @@ Say your shop app lives in `~/shop`. You work on a feature in one chat and a bug
 
 5. **Each chat sees only its own folder.** Every turn in each chat starts with a status line about its own session:
 
-   ```text frame="terminal" title="Chat 1 · ~/shop/.claude/worktrees/sessions-export"
-   superlite session: export | branch superlite/sessions/export | worktree ~/shop/.claude/worktrees/sessions-export | active | stash:no | run:open
+   ```text frame="terminal" title="Chat 1 · ~/social/.claude/worktrees/sessions-export"
+   superlite session: export | branch superlite/sessions/export | worktree ~/social/.claude/worktrees/sessions-export | active | stash:no | run:open
    ❯
    ```
 
-   ```text frame="terminal" title="Chat 2 · ~/shop/.claude/worktrees/sessions-login-fix"
-   superlite session: login-fix | branch superlite/sessions/login-fix | worktree ~/shop/.claude/worktrees/sessions-login-fix | active | stash:no | run:open
+   ```text frame="terminal" title="Chat 2 · ~/social/.claude/worktrees/sessions-login-fix"
+   superlite session: login-fix | branch superlite/sessions/login-fix | worktree ~/social/.claude/worktrees/sessions-login-fix | active | stash:no | run:open
    ❯
    ```
 
@@ -123,7 +123,7 @@ Say your shop app lives in `~/shop`. You work on a feature in one chat and a bug
 
    ![The session status command in the superlite repo: one active session with its sandbox, then two parallel sessions in their own worktrees, each with its branch, stash flag and run state](../../../assets/screens/session-status.png)
 
-   *Real output: session status in the superlite repo itself, not the shop. One session is active in the checkout, with a sandbox listed under it. Two are parallel, in their own worktrees, and their runs are finished.*
+   *Real output: session status in the superlite repo itself, not the social app. One session is active in the checkout, with a sandbox listed under it. Two are parallel, in their own worktrees, and their runs are finished.*
 
    Your two chats print the same kind of lines: one `parallel` row for `export` and one for `login-fix`, each with `run:open`.
 

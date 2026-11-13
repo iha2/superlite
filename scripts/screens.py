@@ -8,7 +8,7 @@ Screens are real output captured from a real run, not typed up. Ordinary termina
 output stays in the pages as text frames; a screen is only for a moment worth seeing.
 A screen source is a small header, a `---` line, then the lines exactly as the terminal showed them:
 
-    title: Claude Code · ~/shop
+    title: Claude Code · ~/social
     ins: 1          (lines you typed: green bar)
     mark: 2-4       (lines to look at: accent bar)
     words: Yes      (words to highlight, `|`-separated)

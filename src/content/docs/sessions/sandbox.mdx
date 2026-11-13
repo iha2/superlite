@@ -68,33 +68,32 @@ Stand-ins are injected at the sandbox's entry point. A real file is copied only 
 
 The two meet at one point. The prototype's code is ported to the integration worktree task by task, never merged, so stubs and fakes stay behind.
 
-## Example: trying a wishlist feature
+## Example: trying People you may know
 
-Say your shop app lives in `~/shop` and you want customers to save products to a wishlist. It is a feature, so you try it before the real code changes.
+Say your social network lives in `~/social` and you want to suggest "People you may know" from friends of friends. It is a feature, so you try it before the real code changes.
 
 <Steps>
 
 1. **You ask for the feature and approve its plan.**
 
-   ```text frame="terminal" title="Claude Code · ~/shop" ins={1}
-   ❯ /superlite:feature Customers can save products to a wishlist
+   ```text frame="terminal" title="Claude Code · ~/social" ins={1}
+   ❯ /superlite:feature Suggest "People you may know" from friends of friends
    ```
 
-   Underneath, the plan has a "Prototype scope" section. It picks how real the prototype must be, here one that keeps the app's entry point, product and account pages and stubs payments. It also lists what to keep, what to stub and six small tasks, under the limit of eight.
+   The plan has a "Prototype scope" section. It says how real the prototype must be, here one that keeps the app's entry point, feed and profile pages and stubs the friends database. It also lists what to keep and what to stub.
 
-2. **superlite builds the prototype.** You wait. Underneath, `superlite-cli proto start` makes the sandbox folder and a normal superlite build fills it, with the tasks running in parallel. The build's own plan may write only inside the folder, and plan lint rejects a task that writes outside it.
+2. **superlite builds the prototype.** You wait. superlite makes the sandbox folder and builds the prototype inside it. Nothing outside the folder is written.
 
    <FileTree>
 
-   - ~/shop/
+   - ~/social/
      - .superlite/
-       - feature.json  topic, status, run command
        - sandboxes/
-         - wishlist/  the session
-           - wishlist/  the topic
-             - app/  the shop's entry point, product and account pages
-             - proto/  new code: wishlist store, save button, wishlist page
-             - stubs/  payments, faked
+         - people-you-may-know/  the session
+           - people-you-may-know/  the topic
+             - app/  the social app's entry point, feed and profile pages
+             - proto/  new code: suggestion query, "People you may know" card, Dismiss button
+             - stubs/  friends database and notifications, faked
              - tests/  written from the acceptance checks
              - package.json  npm run dev starts it
 
@@ -102,32 +101,32 @@ Say your shop app lives in `~/shop` and you want customers to save products to a
 
 3. **You decide: try it.** superlite prints how to reach the prototype and the acceptance checks. You run the command it gives.
 
-   ```text frame="terminal" title="Try-out · ~/shop/.superlite/sandboxes/wishlist/wishlist" ins={1} mark={2,6}
+   ```text frame="terminal" title="Try-out · ~/social/.superlite/sandboxes/people-you-may-know/people-you-may-know" ins={1} mark={2,6}
    ❯ npm run dev
-   shop (sandbox): http://localhost:3000
-   wishlist: 2 products saved
-   payments: stubbed
+   social (sandbox): http://localhost:3000/feed
+   suggestions: 4 people you may know
+   friends database: stubbed
    ...
-   shop files changed: none
+   social files changed: none
    ```
 
-   Underneath, the command starts the sandbox app and prints the address to open. You save a product, reload and save it twice, as the acceptance checks say. The last line proves the point of a sandbox: no shop file was touched.
+   The command starts the sandbox app and prints the address to open. You open the feed, see the "People you may know" card, click Dismiss and reload, as the acceptance checks say. The last line proves the point of a sandbox: no app file was touched.
 
 4. **You decide: it works, or change it.** You reply in plain text. Say you ask for one round of changes first.
 
-   ```text frame="terminal" title="Claude Code · ~/shop" ins={1}
+   ```text frame="terminal" title="Claude Code · ~/social" ins={1}
    ❯ <what you want different>
    ```
 
-   Underneath, a change request starts a fix round in the same sandbox, not a new plan, and then another try-out. `feature.json` counts the rounds. Replying that it works records your approval. In human mode the real build stays blocked until you give it.
+   A change request starts a fix round in the same sandbox, not a new plan, and then another try-out. Replying that it works records your approval. In human mode the real build stays blocked until you give it.
 
-5. **The real feature gets its own worktree.** Underneath, the integration build runs in `.claude/worktrees/sessions-wishlist-int` (see [Worktrees](/superlite/sessions/worktrees/)). The prototype's acceptance tests are ported as unit tests, task by task. Stubs stay behind.
+5. **The real feature gets its own worktree.** The integration build runs in `.claude/worktrees/sessions-people-you-may-know-int` (see [Worktrees](/superlite/sessions/worktrees/)). The prototype's acceptance tests are ported as unit tests, task by task. Stubs stay behind.
 
    <FileTree>
 
-   - ~/shop/
-     - .claude/worktrees/sessions-wishlist-int/  the real build
-     - .superlite/sandboxes/wishlist/  deleted at the end
+   - ~/social/
+     - .claude/worktrees/sessions-people-you-may-know-int/  the real build
+     - .superlite/sandboxes/people-you-may-know/  deleted at the end
 
    </FileTree>
 
@@ -135,7 +134,7 @@ Say your shop app lives in `~/shop` and you want customers to save products to a
 
 </Steps>
 
-**What you end up with:** a pull request (#60) with only the real code and the ported tests, a prototype you tried before any of it was written, and no stubs or fakes on your branch.
+**What you end up with:** a branch `superlite/sessions/people-you-may-know-int` ready for a pull request, with only the real code and the ported tests, a prototype you tried before any of it was written, and no stubs or fakes on your branch.
 
 ## Good to know
 

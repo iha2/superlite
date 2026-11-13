@@ -34,7 +34,7 @@ By default superlite uses one desk. Sessions take turns in your main checkout. I
 
 <FileTree>
 
-- shop/  your main checkout
+- social/  your main checkout
   - .claude/
     - worktrees/
       - sessions-export/  a session superlite moved out
@@ -53,7 +53,7 @@ Older sessions may sit under `.superlite/worktrees/sessions/<slug>`. They keep w
 When a new flow starts and your main checkout holds an open session, superlite does not touch that session on its own. It asks first, and changes nothing until you answer:
 
 ```text
-ASK move slug=export: export moves from the main checkout to /work/shop/.claude/worktrees/sessions-export; its chat must be idle
+ASK move slug=export: export moves from the main checkout to /work/social/.claude/worktrees/sessions-export; its chat must be idle
 ```
 
 - **Yes** moves `export`, with its run files and uncommitted work, into its own worktree. Your main checkout goes back to the base branch, and the new topic gets a worktree too. If anything fails, superlite puts everything back.
@@ -127,7 +127,7 @@ This docs site was built in a session called `docs-site`, in the main checkout `
 
    Underneath, git allows a branch in only one folder. Under Claude Code the chat calls `EnterWorktree path=<abs>`; elsewhere you `cd` there. It carries on with the same plan and files.
 
-5. **Later, a feature builds in a worktree of its own.** A wishlist feature tries its prototype in a [sandbox](/superlite/sessions/sandbox/). After you approve it, the real build goes to an `-int` worktree.
+5. **Later, a feature builds in a worktree of its own.** A "People you may know" feature tries its prototype in a [sandbox](/superlite/sessions/sandbox/). After you approve it, the real build goes to an `-int` worktree.
 
    <FileTree>
 
@@ -135,9 +135,9 @@ This docs site was built in a session called `docs-site`, in the main checkout `
      - .claude/
        - worktrees/
          - sessions-docs-site/  the docs session
-         - sessions-wishlist-int/  the wishlist feature's integration build
+         - sessions-people-you-may-know-int/  the feature's integration build
      - .superlite/
-       - sandboxes/wishlist/  the prototype, not a worktree
+       - sandboxes/people-you-may-know/  the prototype, not a worktree
 
    </FileTree>
 
@@ -145,7 +145,7 @@ This docs site was built in a session called `docs-site`, in the main checkout `
 
 </Steps>
 
-**What you end up with:** the docs session and the wishlist feature each in their own folder and branch. When a session closes, `session close` removes the worktree superlite cut for it and keeps the branch for the pull request.
+**What you end up with:** the docs session and the "People you may know" feature each in their own folder and branch. When a session closes, `session close` removes the worktree superlite cut for it and keeps the branch for the pull request.
 
 ## Good to know
 

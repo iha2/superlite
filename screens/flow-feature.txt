@@ -1,9 +1,9 @@
-title: Claude Code · ~/shop
+title: Claude Code · ~/social
 ins: 1
 mark: 12-23
 words: [5 PROTOTYPE]|[6 TRY IT]|[7 PORT]
 ---
-❯ /superlite:feature Customers can save products to a wishlist
+❯ /superlite:feature Suggest "People you may know" from friends of friends
  FEATURE
  ------------------------------------------------------------------------------
   [1 ASK]
