@@ -68,65 +68,66 @@ Stand-ins are injected at the sandbox's entry point. A real file is copied only 
 
 The two meet at one point. The prototype's code is ported to the integration worktree task by task, never merged, so stubs and fakes stay behind.
 
-## Example: trying the per-repo learning feature
+## Example: trying a wishlist feature
 
-PR #60 added a learning loop: superlite learns from past runs in a repo and feeds lessons to its agents. It is a feature, so you try it before the real code changes.
+Say your shop app lives in `~/shop` and you want customers to save products to a wishlist. It is a feature, so you try it before the real code changes.
 
 <Steps>
 
 1. **You ask for the feature and approve its plan.**
 
-   ```text frame="terminal" title="Claude Code · ~/superlite" ins={1}
-   ❯ /superlite:feature <the learning loop idea>
+   ```text frame="terminal" title="Claude Code · ~/shop" ins={1}
+   ❯ /superlite:feature Customers can save products to a wishlist
    ```
 
-   Underneath, the plan has a "Prototype scope" section. It picks level L2, because the real shapes of incident rows and history rows matter, so the fixtures are copies of real files. It also lists what to keep, what to stub and six small tasks, under the limit of eight.
+   Underneath, the plan has a "Prototype scope" section. It picks how real the prototype must be, here one that keeps the app's entry point, product and account pages and stubs payments. It also lists what to keep, what to stub and six small tasks, under the limit of eight.
 
 2. **superlite builds the prototype.** You wait. Underneath, `superlite-cli proto start` makes the sandbox folder and a normal superlite build fills it, with the tasks running in parallel. The build's own plan may write only inside the folder, and plan lint rejects a task that writes outside it.
 
    <FileTree>
 
-   - ~/superlite/
+   - ~/shop/
      - .superlite/
        - feature.json  topic, status, run command
        - sandboxes/
-         - per-repo-learning/  the session
-           - per-repo-learning/  the topic
-             - proto/  new code: lessons, signals, learn
+         - wishlist/  the session
+           - wishlist/  the topic
+             - app/  the shop's entry point, product and account pages
+             - proto/  new code: wishlist store, save button, wishlist page
+             - stubs/  payments, faked
              - tests/  written from the acceptance checks
-             - fixtures/  copies of real incident and history rows
-             - tryout.py  the try-out driver
+             - package.json  npm run dev starts it
 
    </FileTree>
 
 3. **You decide: try it.** superlite prints how to reach the prototype and the acceptance checks. You run the command it gives.
 
-   ```text frame="terminal" title="Try-out · ~/superlite/.superlite/sandboxes/per-repo-learning/per-repo-learning" ins={1} mark={2,6}
-   ❯ python3 tryout.py
-   learn: admitted 2, evicted 0, proven 0
-   run-3 brief:
-   In this repo (learned from past runs):
+   ```text frame="terminal" title="Try-out · ~/shop/.superlite/sandboxes/wishlist/wishlist" ins={1} mark={2,6}
+   ❯ npm run dev
+   shop (sandbox): http://localhost:3000
+   wishlist: 2 products saved
+   payments: stubbed
    ...
-   superlite files changed: none
+   shop files changed: none
    ```
 
-   Underneath, the driver plays three fixture runs through the learning code and prints what run 3 would tell its agents. The last line proves the point of a sandbox: no superlite file was touched. The lines in between hold the lessons, the report and the outbox rows.
+   Underneath, the command starts the sandbox app and prints the address to open. You save a product, reload and save it twice, as the acceptance checks say. The last line proves the point of a sandbox: no shop file was touched.
 
-4. **You decide: it works, or change it.** You reply in plain text. In this run you asked for one round of changes first.
+4. **You decide: it works, or change it.** You reply in plain text. Say you ask for one round of changes first.
 
-   ```text frame="terminal" title="Claude Code · ~/superlite" ins={1}
+   ```text frame="terminal" title="Claude Code · ~/shop" ins={1}
    ❯ <what you want different>
    ```
 
    Underneath, a change request starts a fix round in the same sandbox, not a new plan, and then another try-out. `feature.json` counts the rounds. Replying that it works records your approval. In human mode the real build stays blocked until you give it.
 
-5. **The real feature gets its own worktree.** Underneath, the integration build runs in `.claude/worktrees/sessions-per-repo-learning-int` (see [Worktrees](/superlite/sessions/worktrees/)). The prototype's acceptance tests, 80 of them, were ported as unit tests, task by task. Stubs and fixtures stay behind.
+5. **The real feature gets its own worktree.** Underneath, the integration build runs in `.claude/worktrees/sessions-wishlist-int` (see [Worktrees](/superlite/sessions/worktrees/)). The prototype's acceptance tests are ported as unit tests, task by task. Stubs stay behind.
 
    <FileTree>
 
-   - ~/superlite/
-     - .claude/worktrees/sessions-per-repo-learning-int/  the real build
-     - .superlite/sandboxes/per-repo-learning/  deleted at the end
+   - ~/shop/
+     - .claude/worktrees/sessions-wishlist-int/  the real build
+     - .superlite/sandboxes/wishlist/  deleted at the end
 
    </FileTree>
 

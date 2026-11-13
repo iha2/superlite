@@ -127,7 +127,7 @@ This docs site was built in a session called `docs-site`, in the main checkout `
 
    Underneath, git allows a branch in only one folder. Under Claude Code the chat calls `EnterWorktree path=<abs>`; elsewhere you `cd` there. It carries on with the same plan and files.
 
-5. **Later, a feature builds in a worktree of its own.** The per-repo learning feature (PR #60) tried its prototype in a [sandbox](/superlite/sessions/sandbox/). After you approved it, the real build went to an `-int` worktree.
+5. **Later, a feature builds in a worktree of its own.** A wishlist feature tries its prototype in a [sandbox](/superlite/sessions/sandbox/). After you approve it, the real build goes to an `-int` worktree.
 
    <FileTree>
 
@@ -135,9 +135,9 @@ This docs site was built in a session called `docs-site`, in the main checkout `
      - .claude/
        - worktrees/
          - sessions-docs-site/  the docs session
-         - sessions-per-repo-learning-int/  the learning feature's integration build
+         - sessions-wishlist-int/  the wishlist feature's integration build
      - .superlite/
-       - sandboxes/per-repo-learning/  the prototype, not a worktree
+       - sandboxes/wishlist/  the prototype, not a worktree
 
    </FileTree>
 
@@ -145,7 +145,7 @@ This docs site was built in a session called `docs-site`, in the main checkout `
 
 </Steps>
 
-**What you end up with:** the docs session and the learning feature each in their own folder and branch. When a session closes, `session close` removes the worktree superlite cut for it and keeps the branch for the pull request.
+**What you end up with:** the docs session and the wishlist feature each in their own folder and branch. When a session closes, `session close` removes the worktree superlite cut for it and keeps the branch for the pull request.
 
 ## Good to know
 
