@@ -1,0 +1,10 @@
+title: Claude Code · PreToolUse hook · Write .superlite/fixes/F-SCR-2.md
+mark: 1,2,5
+words: Blocked:|fixer-sonnet|fixer-sonnet-high|fixer-opus
+---
+Blocked: the superlite coordinator must not write project code. Dispatch it instead:
+- Fix: give a fixer a finding id F-<Tn>-<n> and the note path .superlite/fixes/<id>.md, tiered per skills/swarm/fixing.md: known cause, one module -> fixer-sonnet; cross-module -> fixer-sonnet-high; unknown cause -> fixer-opus.
+- Wave 0 skeleton/stub/config files belong to an implementer-haiku task.
+- New code belongs to an implementer task. You may write only docs/plans/**, SPEC*.md, docs/**/*.md, .agents/**, spikes/**/*.md, a root *.md file and .superlite/**.
+
+This hook comes from the superlite@superlite-dev plugin.

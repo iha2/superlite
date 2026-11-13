@@ -20,7 +20,7 @@ Local setup, from a clone of the `site` branch:
 
 ## Screenshots
 
-Ordinary terminal output stays as text frames in the pages. Only a few critical-moment screens, where superlite is running or drawing a diagram, are PNGs. Each has a plain-text source in `screens/<name>.txt` (a header with `title:`, `ins:`, `mark:`, `words:`, optional `graph:`, then `---` and the lines as the terminal shows them; see the docstring in `scripts/screens.py`). The page shows the PNG from `src/assets/screens/`. There are no PR or Copilot captures.
+Ordinary terminal output stays as text frames in the pages. Only the 17 real-output screens (a flow starting, a hook blocking, a run finishing, a diagram) are PNGs. Each has a plain-text source in `screens/<name>.txt` (a header with `title:`, `ins:`, `mark:`, `words:`, optional `graph:`, then `---` and the lines as the terminal shows them; see the docstring in `scripts/screens.py`). The page shows the PNG from `src/assets/screens/`. There are no PR or Copilot captures.
 
 To edit a screen, change its `.txt` and re-render it from `site/`:
 

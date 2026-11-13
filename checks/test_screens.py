@@ -1,4 +1,4 @@
-"""Screens: six critical-moment PNGs, each with a source, every image resolves, none is too big or a PR capture."""
+"""Screens: seventeen real-output PNGs, each with a source, every image resolves, none is too big or a PR capture."""
 import re
 from pathlib import Path
 
@@ -8,7 +8,11 @@ SOURCES = SITE / "screens"
 ASSETS = SITE / "src" / "assets" / "screens"
 MAX_BYTES = 250_000
 IMAGE = re.compile(r"!\[[^\]]*\]\(([^)\s]+\.(?:png|jpg|jpeg|gif|webp|svg))\)")
-EXPECTED = {"flow-regular", "lint-graph", "dispatch", "agents-parallel", "ledger", "report"}
+EXPECTED = {
+    "flow-regular", "lint-graph", "dispatch", "agents-parallel", "ledger", "report",
+    "flow-debug", "flow-feature", "flow-mvp", "flow-research", "suggest-flow", "session-status",
+    "rulings", "hook-block", "run-tests", "review-packet", "config-status",
+}
 BANNED = re.compile(r"github|copilot|(^|[^a-z])pr[-_ ]?\d|pull[-_]?request", re.I)
 
 
@@ -16,7 +20,7 @@ def _pages():
     return sorted(list(DOCS.rglob("*.md")) + list(DOCS.rglob("*.mdx")))
 
 
-def test_exactly_the_six_critical_moment_sources_exist():
+def test_exactly_the_seventeen_real_output_sources_exist():
     assert {p.stem for p in SOURCES.glob("*.txt")} == EXPECTED
     assert not [p for p in SOURCES.rglob("*") if p.is_dir()], "sources are flat"
 

@@ -118,6 +118,12 @@ Say your laptop struggles when many agents run at once, and your project writes 
 
    The next command exits with code 2 and names `superlite.json`, even when you pass `--cap`. superlite does not ignore the line and run with the wrong setting.
 
+6. Some settings are not in the overlay. Three are kept per user, and each has a status command.
+
+   ![Three status commands: orchestrator status prints AI, agent_specs status prints off with its source file, and graphify_gate prints a JSON verdict](../../../assets/screens/config-status.png)
+
+   *Real output: the orchestrator mode, the agent-specs preference and the graph-tool gate, read from the user's own settings.*
+
 </Steps>
 
 **What you end up with:** one committed file that changes the concurrency and the ignore list for this project only. The shipped defaults, `routing.json` and the rule that a critical-path task never gets haiku stay as they were.

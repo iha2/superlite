@@ -58,11 +58,9 @@ Say you approved a plan for CSV export and the build is running. A test in `test
 
 1. The coordinator, the main Claude Code session, tries to patch `src/reports/export.py` itself. You see the edit refused:
 
-   ```text frame="terminal" title="Claude Code · ~/shop" mark={1}
-   Blocked: the superlite coordinator must not write project code. Dispatch it instead:
-   - Fix: give a fixer a finding id F-<Tn>-<n> and the note path .superlite/fixes/<id>.md ...
-   - New code belongs to an implementer task. You may write only docs/plans/**, SPEC*.md, ...
-   ```
+   ![The Blocked message the pre-tool hook prints when the coordinator tries to write project code: dispatch a fixer by tier, or an implementer for new code, and the short list of files the coordinator may write](../../../assets/screens/hook-block.png)
+
+   *Real output: the refusal the hook printed in a real run, when the coordinator tried to write a fix note itself.*
 
    The `pre-tool` hook runs before every `Edit`, `Write` and `Bash` call. Its edit guard denies the call with exit code 2, so the file never changes. It exists because a coordinator that edits code skips the tiers, the checkpoints and the reviews. A script enforces this, since an instruction in a prompt can drift.
 

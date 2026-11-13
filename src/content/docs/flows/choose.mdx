@@ -65,9 +65,9 @@ Say you are in your shop project and you type the request without a mode.
 
 2. The script prints one line. It read your words and the folder.
 
-   ```text frame="terminal" title="superlite-cli suggest_flow" mark={1}
-   suggest: feature - existing code, the request changes the app ("add") | also fits: small, regular
-   ```
+   ![Six suggest_flow runs, each printing one suggest line: add gives Feature, fails gives Debug, rename gives Small, review gives Review, research gives Research, and an empty folder gives MVP](../../../assets/screens/suggest-flow.png)
+
+   *Real output: the script's one-line answer, shown for six different requests; the first is the one in this example.*
 
    The folder has code, and "add" is a change word, so the answer is Feature. The same words in an empty folder would give MVP. The script is plain rules, so the same input always gives the same line.
 

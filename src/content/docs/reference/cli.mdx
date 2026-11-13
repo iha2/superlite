@@ -105,6 +105,10 @@ Say you want to know which flow fits a bug report, then run one test file withou
 
    The call returns at once and prints the id of the run. Tests run in a separate process so nothing blocks the session.
 
+   ![The run_tests command started in the background, the wait line it printed, then the wait command and its JSON result: 135 passed, 0 failed, 0 skipped](../../../assets/screens/run-tests.png)
+
+   *Real output: a full start, wait and result cycle, run on the files that check this site.*
+
 3. You wait for the run with the line it printed, filling in the id:
 
    ```text frame="terminal" title="Terminal · ~/shop" ins={1}

@@ -101,6 +101,10 @@ For example, replying "go ahead" to a review plan is the yes the human gate wait
 
    This is the "switch to AI" in practice: after your one yes, the run decides alone. Each ruling states its cost if wrong, so you judge it at the end instead of being interrupted. It is why the page tasks started after the research tasks ([parallel build](/superlite/run/parallel-build/)).
 
+   ![The orchestrator status command, then the Ruling lines grep finds in progress.md: each names the choice, the reason and the cost if wrong](../../../assets/screens/rulings.png)
+
+   *Real output: the rulings from this docs-site run, as `grep Ruling .superlite/progress.md` lists them.*
+
 6. **You decide:** say you must leave the desk while it builds. You type `/superlite:ai`.
 
    ```text frame="terminal" title="Claude Code · ~/superlite" ins={1}

@@ -121,12 +121,11 @@ Say your shop app lives in `~/shop`. You work on a feature in one chat and a bug
 
 6. **You check on both.** Run `superlite-cli session status` in either chat to list every session:
 
-   ```text frame="terminal" title="Chat 2 · ~/shop/.claude/worktrees/sessions-login-fix" ins={1}
-   ❯ superlite-cli session status
-   session: active=- host=~/shop
-   session: parallel export | branch superlite/sessions/export | worktree ~/shop/.claude/worktrees/sessions-export | stash:no | run:open
-   session: parallel login-fix | branch superlite/sessions/login-fix | worktree ~/shop/.claude/worktrees/sessions-login-fix | stash:no | run:open
-   ```
+   ![The session status command in the superlite repo: one active session with its sandbox, then two parallel sessions in their own worktrees, each with its branch, stash flag and run state](../../../assets/screens/session-status.png)
+
+   *Real output: session status in the superlite repo itself, not the shop. One session is active in the checkout, with a sandbox listed under it. Two are parallel, in their own worktrees, and their runs are finished.*
+
+   Your two chats print the same kind of lines: one `parallel` row for `export` and one for `login-fix`, each with `run:open`.
 
 </Steps>
 
