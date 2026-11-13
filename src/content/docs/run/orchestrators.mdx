@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-import { Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+import { Tabs, TabItem, Aside, Steps } from "@astrojs/starlight/components";
 
 :::tip[TL;DR]
 The orchestrator is whoever decides when a build starts and settles questions on the way. Pick the human one to approve a plan first, or the AI one to hand everything off. Either way, superlite never pushes, merges or deletes on its own.
@@ -45,25 +45,86 @@ Think of a building site. Someone has to say "start" and sort out surprises. Tha
   </TabItem>
 </Tabs>
 
-## Example
+For example, replying "go ahead" to a review plan is the yes the human gate waits for. Saying "I am away, decide yourself" in your request skips the menu and picks AI.
 
-superlite asks once, as one choice, usually together with its other opening questions.
+## Example: the docs site run, from the question to the AI switch
 
-```text
-you        /superlite:feature Add CSV export
-superlite  Human orchestrator: I approve the plan before it runs
-           AI orchestrator: hands off, it does everything
-you        Human orchestrator
-superlite  writes docs/plans/2026-11-12-csv-export.review.md and waits
-```
+<Steps>
 
-It skips the question when your request already settles it: "decide yourself", "I am away", or a design and plan you pre-approved all mean AI. A headless `claude -p` run defaults to AI. You can switch later with `/superlite:human` or `/superlite:ai`, and check the state at any time:
+1. **You ask** for a documentation site for superlite on GitHub Pages. Before it plans anything, you get one menu.
+
+   ```text frame="terminal" title="Claude Code · ~/superlite" ins={1} mark={3-4}
+   ❯ /superlite:start A documentation site for superlite on GitHub Pages
+
+   ❯ 1. Human orchestrator: I approve the plan before it runs
+     2. AI orchestrator: hands off, it does everything
+   ```
+
+   The `inventing` skill asks once, in the same menu call as its other opening questions, because every later gate depends on the answer. It skips the menu when your request already says "decide yourself" or "I am away".
+
+2. **You decide:** you pick the human orchestrator. superlite sets the mode.
+
+   ```text frame="terminal" title="Claude Code · ~/superlite" mark={2}
+   $ superlite-cli orchestrator status
+   orchestrator: human, awaiting approval
+   ```
+
+   The mode lives in `.superlite/orchestrator.json` with `approved: false`. From here, hooks and scripts refuse `lint --stable`, `dispatch`, `wave0` and `build_prime`, so a forgetful model cannot start the build.
+
+3. **You read** the review plan. The coordinator writes only this file, opens it, and stops.
+
+   ```md title="docs/plans/2026-11-12-docs-site.review.md" mark={1-2}
+   # superlite docs site: review plan
+
+   ## Summary
+   A short, clear documentation site on GitHub Pages, so people know exactly how to use superlite and what it does while it works. [...]
+   ## Rough time and cost
+   About 45 to 75 minutes and $15 to $30, mostly research and writing (rough, until the plan is linted).
+   ```
+
+   Plain words come first because this is the one point where you can still change the scope for free.
+
+4. **You decide:** you reply with a clear yes, such as "go ahead".
+
+   ```text frame="terminal" title="Claude Code · ~/superlite" ins={2}
+   Reply approve to start, or tell me what to change
+   ❯ go ahead
+   ```
+
+   A hook writes your reply to `.superlite/human-replies.jsonl`. The coordinator then runs `superlite-cli orchestrator approve --review docs/plans/2026-11-12-docs-site.review.md`, which exits with BLOCKED unless a newer human reply is on file. The typed reply opens the gate, not the model's belief. Detail: [plan and approval](/superlite/run/plan-and-approval/).
+
+5. **superlite rules.** The coordinator writes the machine plan and records a decision you were not asked about.
+
+   ```md title="docs/plans/2026-11-12-docs-site.md" mark={1}
+   Ruling: content edges - writers must read finished fact sheets and the style guide; no stub can stand in for facts - cost: wave 2 waits on wave 1.
+   ```
+
+   This is the "switch to AI" in practice: after your one yes, the run decides alone. Each ruling states its cost if wrong, so you judge it at the end instead of being interrupted. It is why the page tasks started after the research tasks ([parallel build](/superlite/run/parallel-build/)).
+
+   ![The orchestrator status command, then the Ruling lines grep finds in progress.md: each names the choice, the reason and the cost if wrong](../../../assets/screens/rulings.png)
+
+   *Real output: the rulings from this docs-site run, as `grep Ruling .superlite/progress.md` lists them.*
+
+6. **You decide:** say you must leave the desk while it builds. You type `/superlite:ai`.
+
+   ```text frame="terminal" title="Claude Code · ~/superlite" ins={1}
+   ❯ /superlite:ai
+   orchestrator: AI
+   ```
+
+   superlite no longer ends a turn to wait for you. It still defers anything destructive, security-sensitive or outward-facing, such as a push, and lists what it deferred. `/superlite:human` switches back.
+
+</Steps>
+
+**What you end up with:** a review plan you approved, a machine plan with its rulings, and a finished build. Shipping stays yours: pushing, merging and publishing happen only on your answer. This run ended in PR #58.
+
+Check the state at any time:
 
 ```bash
 superlite-cli orchestrator status
 ```
 
-It prints one line: `human, awaiting approval`, `human, approved <time> by <name>`, `AI`, or `not set (ungated)`.
+It prints `human, awaiting approval`, `human, approved <time> by <name>`, `AI`, or `not set (ungated)`. A headless `claude -p` run defaults to AI.
 
 ## Good to know
 

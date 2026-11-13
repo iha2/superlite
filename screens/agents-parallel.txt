@@ -1,0 +1,21 @@
+title: superlite-cli tail · run 20261112-034055-docs-site
+ins: 1
+mark: 3-7
+words: START
+---
+$ bash "$CLI" tail --dir .superlite/runs/20261112-034055-docs-site
+04:05:27 + 1036s  START  implementer          a1bebe66  T1 skeleton implementer
+04:05:56 + 1065s  START  implementer          aa586db0  T4 facts reference
+04:05:56 + 1065s  START  implementer          a00ca804  T3 facts run+sessions
+04:05:56 + 1065s  START  implementer          a734e2b3  T2 facts start+flows
+04:05:56 + 1065s  START  implementer          a038a4c0  T6 check_pages implementer
+04:05:56 + 1065s  START  researcher           a0760feb  T5 style guide researcher
+04:06:01 + 1070s  DONE   implementer          a038a4c0
+04:06:02 + 1071s  DONE   implementer          a00ca804
+04:06:02 + 1071s  DONE   implementer          a734e2b3
+04:06:03 + 1072s  DONE   implementer          aa586db0
+04:06:13 + 1082s  DONE   researcher           a0760feb
+…
+04:08:51 + 1239s  DONE   implementer          a734e2b3
+04:09:15 + 1264s  DONE   implementer          aa586db0
+04:09:20 + 1269s  DONE   implementer          a00ca804

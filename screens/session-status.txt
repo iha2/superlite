@@ -1,0 +1,11 @@
+title: Terminal · ~/superlite
+ins: 1
+mark: 3,5,6
+words: active|parallel|sandbox|run:open|run:finished
+---
+❯ superlite-cli session status
+session: active=per-repo-learning host=~/superlite
+session: active per-repo-learning | branch superlite/sessions/per-repo-learning | worktree ~/superlite | stash:no | run:open
+session:   sandbox per-repo-learning approved .superlite/sandboxes/per-repo-learning/per-repo-learning
+session: parallel docs-site | branch superlite/sessions/docs-site | worktree ~/superlite/.claude/worktrees/sessions-docs-site | stash:no | run:finished
+session: parallel per-repo-learning-int | branch superlite/sessions/per-repo-learning-int | worktree ~/superlite/.claude/worktrees/sessions-per-repo-learning-int | stash:no | run:finished

@@ -5,7 +5,7 @@ sidebar:
   order: 2
 ---
 
-import { Tabs, TabItem } from "@astrojs/starlight/components";
+import { Tabs, TabItem, Steps, FileTree } from "@astrojs/starlight/components";
 
 :::tip[TL;DR]
 Use Regular to build something when you do not need a prototype first. You get a plan, code built by agents side by side, reviewed and fixed, and a report with time and cost. Nothing is committed.
@@ -59,7 +59,7 @@ Use Regular to build something when you do not need a prototype first. You get a
 
 Regular is the default build path. The other build flows add a step in front of it: a prototype you try ([MVP](/superlite/flows/mvp/), [Feature](/superlite/flows/feature/)).
 
-**Size first.** superlite sorts your request into trivial, bounded or large. A trivial change is just done, after a yes in chat if you approve plans. A bounded change gets a short design in chat. A large request gets one batch of questions (up to four) and one document that holds the design and the task plan. Sizing keeps a one-line change away from a full plan, and a big project away from guesses.
+**Size first.** superlite sorts your request into trivial, bounded or large. A trivial change is just done, after a yes in chat if you approve plans. A bounded change gets a short design in chat. A large request gets one batch of questions (up to four) and one document that holds the design and the task plan. For example, "fix the typo in the README" is trivial, and "build a docs site" is large. Sizing keeps a one-line change away from a full plan, and a big project away from guesses.
 
 **Gate before agents.** Lint checks the task plan. Only stable tasks go out. The rest wait with a reason. A plan that looks fine on paper does not send agents off in the wrong direction. See [plan and approval](/superlite/run/plan-and-approval/).
 
@@ -78,24 +78,81 @@ The last step is the [report](/superlite/run/report/): time and cost, projected 
 
 [Orchestrators](/superlite/run/orchestrators/) covers the choice in full.
 
-## Example: a REST API for a bookshelf
+## Example: building this docs site
 
-The folder is empty, so you ask for a build with a mode.
+This is the run that built the page you are reading. You are in an ordinary checkout, you want a whole site, and you pick Regular.
 
-```text
-you        /superlite:start regular Build a REST API for a bookshelf, with tests
-superlite  one question batch: who orchestrates, and the few design choices a large request needs
-you        human. SQLite is fine, no auth
-superlite  opens a session on its own branch, superlite/sessions/<topic>
-superlite  writes docs/plans/<date>-<topic>.review.md: plain words, diagrams, rough time and cost
-superlite  Reply approve to start, or tell me what to change
-you        looks good, go ahead
-superlite  writes the task plan, lint splits stable tasks from waiting ones, agents start
-superlite  package reviewers fix their findings, final review, fixers by tier, tests again
-superlite  report: time and cost, projected vs actual
-```
+<Steps>
 
-Your folder now holds the new code, uncommitted. When you ship, superlite asks once whether to commit to the session branch or leave the work uncommitted.
+1. You type the request.
+
+   ![The Regular flow screen superlite prints after the start command: ten stages from ASK to REPORT, with the BUILD stage fanning out to Haiku and Sonnet agents](../../../assets/screens/flow-regular.png)
+
+   *Real output: the screen printed the moment you start.*
+
+   Because you named `regular`, superlite skips the flow suggestion, shows the screen above and sizes the request. A whole site is large, so it asks everything it needs in one batch, not in many small questions.
+
+2. You answer one menu.
+
+   ```text frame="terminal" title="Claude Code · ~/superlite" mark={2}
+   Who orchestrates?
+   › 1. Human   you approve a plain-language review plan first
+     2. AI      hands off
+   Run the whole test suite at finish?  › No, affected tests only (Recommended)
+   ```
+
+   **You decide:** human, and no. The first answer sets whether anything waits for you ([orchestrators](/superlite/run/orchestrators/)). Another run was open in the main checkout, so superlite opened this one in its own [worktree](/superlite/sessions/worktrees/) on its own branch. Your branch stays as it was.
+
+   <FileTree>
+   - .claude/worktrees/sessions-docs-site/ branch superlite/sessions/docs-site
+   </FileTree>
+
+3. You read the review plan. superlite writes it as a file and stops.
+
+   ```md title="docs/plans/2026-11-12-docs-site.review.md"
+   ## Summary
+   A short, clear documentation site on GitHub Pages, so people know exactly how to use superlite and what it does while it works.
+   ...
+   ## Rough time and cost
+   About 45 to 75 minutes and $15 to $30, mostly research and writing (rough, until the plan is linted).
+   ```
+
+   ```text frame="terminal" title="Claude Code · ~/superlite" mark={1}
+   Reply approve to start, or tell me what to change
+   ❯ 
+   ```
+
+   **You decide:** reply "approve", or ask for changes and read the plan again. Until you reply, a hook blocks every agent, so nothing is built. The estimate is marked rough because no task list exists yet ([plan and approval](/superlite/run/plan-and-approval/)).
+
+4. You wait while the plan is checked. After your yes, superlite writes 12 tasks and lints them. Lint saves a forecast of 6.8 minutes and lets only stable tasks out. Page writers need the facts and the style guide, so they wait for wave 1.
+
+   ```mermaid
+   flowchart LR
+     A["Wave 1: facts, style guide, skeleton"] --> B["Wave 2: page writers, checker"]
+     B --> C["Wave 3: publish"]
+   ```
+
+5. You watch the build. Agents run side by side, up to 6 at once here. Sonnet writes the research and the pages. The one mechanical task, publish, goes to Haiku ([parallel build](/superlite/run/parallel-build/)). Rulings and progress land in `.superlite/progress.md`.
+
+6. The review and fix rounds run without you. Package reviewers fix their own findings while tests run. One fresh reviewer then reads the packet, and fixers take what is left by tier ([reviews and fixes](/superlite/run/reviews-and-fixes/)). This run needed one rework dispatch.
+
+7. You read the report.
+
+   ```text frame="terminal" title="superlite build report" mark={2-4}
+                       Projected   Actual
+   wall-clock (min)         6.8      6.3
+   agent cost (USD)        1.83     2.66
+   agents                    12       19
+   tests                  36 passed, 0 failed
+   ```
+
+   The forecast was fixed at lint, so the table compares it with what happened ([report](/superlite/run/report/)). The coordinator's own cost, $6.81, is listed apart from the agents.
+
+</Steps>
+
+**What you end up with:** a `site/` folder on the session branch `superlite/sessions/docs-site`, tested and uncommitted. You commit it and open the pull request. Here that became PR #58.
+
+On GitHub that pull request is titled "Docs site: diagram-first guide to how superlite works".
 
 ## Good to know
 

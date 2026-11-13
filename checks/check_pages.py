@@ -174,7 +174,8 @@ def check(docs_dir, main_dir):
                 problems.append(f"{r}: no ## Example section")
         prose = [l for l in prose_lines
                  if not l.strip().startswith("|") and not l.startswith("#")
-                 and not l.startswith("import ") and l.strip() != ":::"]
+                 and not l.startswith("import ") and l.strip() != ":::"
+                 and not re.match(r"^\s*(\d+\.\s+|[-*]\s+)?!\[", l)]
         words = len(re.findall(r"\S+", " ".join(prose)))
         if words > MAX_WORDS and not index:
             problems.append(f"{r}: {words} prose words (max {MAX_WORDS})")

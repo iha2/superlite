@@ -1,0 +1,23 @@
+title: superlite-cli suggest_flow · six requests
+ins: 1,4,7,10,13,17
+mark: 2,5,8,11,14,18
+words: "add"|"fails"|"rename"|"review"|"research"|empty folder
+---
+❯ suggest_flow --text "Add CSV export for the invoices page"
+suggest: feature - existing code, the request changes the app ("add") | also fits: small, regular
+
+❯ suggest_flow --text "test_login_after_timeout fails: expects 200, gets 401"
+suggest: debug - existing code, the request reports a fault ("fails") | also fits: feature, regular
+
+❯ suggest_flow --text "Rename build to render everywhere"
+suggest: small - existing code, the request says "rename", a few files at most | also fits: feature, regular
+
+❯ suggest_flow --text "Review this branch before the merge"
+suggest: review - existing code, the request asks to "review" what exists | also fits: debug, feature
+
+❯ suggest_flow --text "Research the state of the art in vector search"
+suggest: research - existing code, the request asks to investigate ("research", "state of the art") | also fits: feature, review
+
+  (in an empty folder)
+❯ suggest_flow --text "A habit tracker where I tick off my daily habits"
+suggest: mvp - empty folder, a new idea, so try the smallest version first | also fits: regular

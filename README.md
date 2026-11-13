@@ -18,6 +18,18 @@ Local setup, from a clone of the `site` branch:
 
 `_main/` is in `.gitignore`. Tests under `checks/` that need the real `main` files skip, with a reason, when no main checkout is found.
 
+## Screenshots
+
+Ordinary terminal output stays as text frames in the pages. Only the 17 real-output screens (a flow starting, a hook blocking, a run finishing, a diagram) are PNGs. Each has a plain-text source in `screens/<name>.txt` (a header with `title:`, `ins:`, `mark:`, `words:`, optional `graph:`, then `---` and the lines as the terminal shows them; see the docstring in `scripts/screens.py`). The page shows the PNG from `src/assets/screens/`. There are no PR or Copilot captures.
+
+To edit a screen, change its `.txt` and re-render it from `site/`:
+
+    python3 scripts/screens.py render [name]   # one screen; omit the name to render all
+
+It needs Google Chrome (`CHROME=<path>` to override) and Pillow. Commit the `.txt` and the PNG together.
+
+A `graph:` screen inlines a pre-rendered mermaid SVG named in its header (`screens/lint-graph.svg`). Render the `.mmd` to SVG from the shell with headless Chrome `--dump-dom`, not from Python: Chrome hangs when Python launches that render.
+
 ## Facts
 
 Source facts for the pages live in `research/`. Update them there before editing the pages that cite them.

@@ -1,0 +1,31 @@
+title: plan_tools lint --stable · docs-site
+ins: 1
+mark: 2,22-23
+words: DISPATCH NOW|class T1,T8,T12 critical
+graph: lint-graph.svg
+---
+$ bash "$CLI" plan_tools lint --plan docs/plans/2026-11-12-docs-site.md --stable
+GRAPH (show the user as a mermaid block):
+flowchart TD
+  T1["T1 skeleton"]
+  T2["T2 facts: start and flows"]
+  T3["T3 facts: run and sessions"]
+  T4["T4 facts: reference"]
+  T5["T5 style guide"]
+  T6["T6 check_pages"]
+  …
+  T12["T12 publish"]
+  T1 --> T7
+  T2 --> T7
+  T5 --> T7
+  T1 --> T8
+  …
+  T11 --> T12
+  classDef critical stroke:#d33,stroke-width:3px
+  class T1,T8,T12 critical
+END GRAPH
+STABLE: T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 T12
+FIX:
+  PLAN: MISSED TARGET: predicted 20.1 min vs target 14.0 min — critical path T1 → T8 → T12
+TIERS: T1=sonnet T2=sonnet T3=sonnet T4=sonnet T5=sonnet T6=sonnet T7=sonnet …
+DISPATCH NOW: T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 T12

@@ -11,27 +11,38 @@ import { Steps, Aside } from "@astrojs/starlight/components";
 Agents build tasks side by side. A task waits only when its tests run another task's code. Each finished task is saved as a hidden checkpoint, and nothing is committed during the run.
 :::
 
+The docs site run, as its plan drew it. Six tasks have no incoming edge, so they start together.
+
 ```mermaid
-flowchart TD
-  W0["Wave 0: skeleton and stubs (Haiku)"]
-  W0 -.-> T1["T1 CSV writer (Sonnet)"]
-  W0 -.-> T2["T2 column table (Haiku)"]
-  W0 -.-> T3["T3 file reader (Sonnet)"]
-  T1 --> T4["T4 export command (Sonnet)"]
-  T3 --> T4
-  T2 --> T5["T5 format flags (Haiku)"]
-  T4 --> T6["T6 integration (Sonnet)"]
-  T5 --> T6
-  T6 --> CP["Checkpoint, then review"]
+flowchart LR
+  T1["T1 skeleton"]
+  T2["T2 facts: start, flows"]
+  T3["T3 facts: run, sessions"]
+  T4["T4 facts: reference"]
+  T5["T5 style guide"]
+  T6["T6 check_pages"]
+  T7["T7 start pages"]
+  T8["T8 flow pages"]
+  T9["T9 run pages"]
+  T10["T10 sessions pages"]
+  T11["T11 reference pages"]
+  T12["T12 publish"]
+  T1 --> T7 & T8 & T9 & T10 & T11
+  T2 --> T7 & T8
+  T3 --> T9 & T10
+  T4 --> T11
+  T5 --> T7 & T8 & T9 & T10 & T11
+  T6 --> T12
+  T7 & T8 & T9 & T10 & T11 --> T12
 ```
 
 ## How it works
 
-Picture a kitchen. A prep cook lays out the board and knives (wave 0) while several cooks already start on dishes that do not need each other. Only the plating waits for the dishes it plates.
+Picture a kitchen. Several cooks start dishes that do not need each other. Only the plating waits for the dishes it plates.
 
-**Waves and the task graph.** The machine plan lists tasks and draws an edge `Tn --> Tm` only when Tm's tests execute Tn's code. Tasks with no incoming edges form the first wave and run together. A task that merely uses another's interface does not wait. It builds against a stub and the `e.g.` examples in the plan. Waves are a planning view. The scheduler sends a task the moment its dependencies are checkpointed, with no barrier between waves.
+**Waves and the task graph.** The machine plan draws an edge `Tn --> Tm` when Tm's tests execute Tn's code, or when Tm must read what Tn writes. Tasks with no incoming edges form the first wave and run together. A task that merely uses another's interface does not wait. It builds against a stub and the `e.g.` examples in the plan. Waves are a planning view. The scheduler sends a task the moment its dependencies are checkpointed, with no barrier between waves.
 
-**Wave 0** holds the manifest, package inits, test config, shared error types and a stub for every interface another task consumes. `implementer-haiku` builds it from a brief that the tools write from the plan, sent with the first dispatch. Tasks never wait for its checkpoint, because they build against the stubs (the dashed lines above). Integration is one small task per package at the end.
+**Wave 0** holds the manifest, package inits, test config, shared error types and a stub for every interface another task consumes. `implementer-haiku` builds it. Tasks never wait for its checkpoint, because they build against the stubs.
 
 **Tiers.** Lint picks the agent from `config/routing.json`, and nothing overrides it.
 
@@ -40,45 +51,77 @@ Picture a kitchen. A prep cook lays out the board and knives (wave 0) while seve
 | Sonnet (default) | `implementer` | every task that is not mechanical | 80k |
 | Haiku | `implementer-haiku` | `Kind: mechanical` tasks off the critical path | 60k |
 
-A critical-path task never gets Haiku. A task goes only to an idle agent of its own tier, and nothing queues behind a busy one.
+The critical path is the longest chain of waiting tasks, so a slow task on it delays the run. It never gets Haiku. A task goes only to an idle agent of its own tier, and nothing queues behind a busy one.
 
-## Example: six tasks in three waves
-
-The diagram above is a CSV export feature. Beside wave 0, three tasks start at once (wave 1), two more start as soon as their inputs are checkpointed (wave 2), and integration closes (wave 3).
-
-| Wave | Tasks | Why they can run together |
-|---|---|---|
-| 1 | T1, T2, T3 | no edges between them |
-| 2 | T4, T5 | each needs only its wave 1 inputs |
-| 3 | T6 | its tests run T4 and T5 |
-
-T2 and T5 are routine wiring with exact inputs and outputs, so lint marks them Haiku. T1, T3, T4 and T6 hold logic and go to Sonnet. The critical path is T1, T4, T6. Because T2 and T5 are off it, Haiku is allowed. A slow Haiku task cannot delay the run.
+## Example: twelve tasks in three waves
 
 <Steps>
 
-1. `superlite-cli dispatch` packs ready tasks into batches. Each line is `Tn agent=ID`, `Tn poll IDs` or `Tn fresh tier=T`.
-2. Each agent first reads the same small prime: rules, plan header, global constraints, and each stable task's title, files and interfaces. It replies READY.
-3. Its task arrives with `superlite-cli task Tn --plan PLAN`, which also prints what the task consumes.
-4. It writes a failing test, runs it, implements, runs again, and replies DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT or BLOCKED in at most 200 words.
-5. The coordinator checkpoints the task.
+1. **You watch.** Nothing to answer. Open the agent map to see tasks and agents.
+
+   ```text frame="terminal" title="Claude Code · ~/superlite" ins={1}
+   ❯ /superlite:agents
+   ```
+
+   Wave 1 is six tasks at once: T1 skeleton, T2, T3 and T4 (three fact sheets), T5 style guide and T6 check_pages. `superlite-cli dispatch` packs every ready task into one message. They share no edge and own different files, so they cannot collide. The report later shows `peak 6 at once`, which is this wave.
+
+   ![The dispatch command output: wave 0 for the Haiku task, then T6 and T5 and four more tasks fresh on Sonnet, followed by the ledger line "dispatched T1 T2 T3 T4 T5 T6"](../../../assets/screens/dispatch.png)
+
+   *Real output: the dispatch lines that start the wave.*
+
+   ![The agent tail: five implementers and one researcher START within seconds of each other, then DONE lines follow](../../../assets/screens/agents-parallel.png)
+
+   *Real output: six agents start together, and finish a few seconds apart.*
+
+2. **Wave 2 starts task by task.** T7 to T11 are the page tasks. Each waits for T1, T5 and the facts file it writes from. This is the edge list the plan holds for T9, the run pages.
+
+   ```md title="docs/plans/2026-11-12-docs-site.md" mark={1,2,3}
+   T1 --> T9
+   T3 --> T9
+   T5 --> T9
+   ```
+
+   These are content edges, the ruling from the [orchestrator](/superlite/run/orchestrators/) page: a page writer cannot guess the facts. T10 needed only T1, T3 and T5, so it could start before T4 finished. There is no barrier between waves.
+
+3. **Each agent builds one task.** It first reads a shared prime: rules, the plan header, global constraints and each stable task's title, files and interfaces. Then it fetches its own task.
+
+   ```text frame="terminal" title="agent for T9" ins={1}
+   $ superlite-cli task T9 --plan docs/plans/2026-11-12-docs-site.md
+   ```
+
+   The prime is the same for every agent, so the shared part is cached and each task brief stays short. The agent writes a failing test, runs it, implements, runs again, and replies DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT or BLOCKED in at most 200 words.
+
+4. **The tiers split the work.** Eleven tasks went to Sonnet `implementer`. T12 is a workflow file and a README line with exact steps, so the plan marks it for `implementer-haiku`.
+
+   ```md title="docs/plans/2026-11-12-docs-site.md" mark={3-4}
+   ### T12 publish · Complexity 2 · Est. context 25k
+   **Owns:** site/.github/workflows/deploy.yml, site/README.md, README.md
+   **Kind:** mechanical
+   **Model:** haiku
+   ```
+
+   Haiku costs less, and a mechanical task has little to get wrong. The report shows T12's model as `?`, so treat that one as unmeasured.
+
+5. **The coordinator checkpoints each result** with `superlite-cli checkpoint Tn`. The task's own files are saved under `refs/superlite/*`, a hidden ref, not a commit on your branch. `Tn FAILED` means it touched files it does not own, or has syntax or import problems, and it goes back to its agent.
+
+6. **Wave 3: T12 publish** waits for all five page tasks and for T6, the check script, because it adds the deploy workflow that runs that check. Then you read how it went.
+
+   ```text frame="terminal" title="docs/plans/2026-11-12-docs-site.report.md" mark={1}
+   concurrency: peak 6 at once (projected 6); critical path actual T4 T11; projected T1 > T8 > T12 (6.8 min)
+   ```
+
+   The actual critical path was T4 then T11: the reference facts took 3.3 minutes and the reference pages waited for them. The twelve tasks added up to 23.4 task-minutes inside 6.3 minutes of wall-clock, about 3.7 tasks running at any moment.
 
 </Steps>
 
-```text
-superlite  superlite-cli checkpoint T1 T2 T3 --dispatch
-T1 3f9c2a1
-T2 8b01d7e
-T3 FAILED
-```
-
-A checkpoint saves a task's own files under `refs/superlite/*`. `Tn FAILED` means the task touched files it does not own, or has syntax or import problems, and goes back to its agent. Probes, seam checks and tests then start in the background.
+**What you end up with:** twelve checkpointed tasks, none committed, and tests that ran in the background the whole time. The reviews come next.
 
 ## Good to know
 
 - Tests never block the build. `run_tests` writes `.superlite/test-summary.json` in the background, and a raw `pytest` is rewritten into it. A hidden wait is denied.
 - No agent spawns agents. The coordinator is the only dispatcher.
 - Cost caps warn at 70% of the cap. Over the cap, optional work stops.
-- Watch with `/superlite:agents` or `/superlite:tail`. See state with `/superlite:status`. `/superlite:stop` halts dispatching cleanly, and `/superlite:resume` continues from the last checkpointed, tested wave.
+- `/superlite:status` shows state. `/superlite:stop` halts dispatching cleanly, and `/superlite:resume` continues from the last checkpointed, tested wave.
 
 <Aside type="note" title="Why a checkpoint is not a commit">
 A hidden checkpoint is a safe copy of one task, not part of your history. Your branch gets commits only when you choose, at shipping.

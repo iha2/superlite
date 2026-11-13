@@ -1,0 +1,14 @@
+title: .superlite/review-packet.md · docs-site
+mark: 1,4
+words: REVIEW REQUIRED|contract mismatches 2|incidents 8
+---
+# Review packet: REVIEW REQUIRED
+plan: 2026-11-12-docs-site.md
+Answer in one turn, no tools: a verdict, then findings as `file:line - problem - fix`. Anything marked unverified is judged from its excerpt or listed as a finding.
+Open items: 10 (incidents 8, probe failures 0, unverified categories 0, contract mismatches 2, failing tests 0). Excerpts are +-12 lines.
+
+## 1. Open incidents (repeated file:line first, then unresolved, then low confidence)
+### [1] site/checks/test_pages_flows.py:1  (repeated, unresolved; 3 entries)
+- [exception/open/high/pt_review] seam T1↔T8: T8 tests fail with the real producer (SUPERLITE_REAL=1)
+- [exception/open/high/pt_review] seam T2↔T8: T8 tests fail with the real producer (SUPERLITE_REAL=1)
+- [exception/open/high/pt_review] seam T5↔T8: T8 tests fail with the real producer (SUPERLITE_REAL=1)

@@ -5,6 +5,8 @@ sidebar:
   order: 2
 ---
 
+import { Steps, FileTree } from "@astrojs/starlight/components";
+
 :::tip[TL;DR]
 You pick a flow. superlite opens a session for it and writes a plan. An orchestrator, you or the AI, approves it. Agents build, reviewers check, and a report closes the run. Each idea below links to its full page.
 :::
@@ -26,7 +28,7 @@ flowchart LR
 
 Read the diagram left to right. Your request chooses a flow, the flow opens a session, and the plan is the contract between you and the build. The orchestrator is the one who says yes to the plan. The agents do the work inside the session. The report is how you find out what happened.
 
-This page is the map. It does not explain each idea in full, so every row links to the one page that does.
+For example, a request to change existing code picks the Feature flow, which opens a session, writes a plan, and so on down the table. This page is the map. It does not explain each idea in full, so every row links to the one page that does.
 
 ## The pieces
 
@@ -43,24 +45,76 @@ This page is the map. It does not explain each idea in full, so every row links 
 | Review and fixes | Reviewers check the work, fixers repair findings by tier. | [Reviews and fixes](/superlite/run/reviews-and-fixes/) |
 | Report | Time and cost, projected against actual, and what changed from the plan. | [Report](/superlite/run/report/) |
 
-## Example: one request through the map
+## Example: a feature, from request to PR #60
 
-Take the request "Add CSV export to the existing app". The right column names the concept at work.
+A real run in this repo: teach superlite to learn from each run in the repo it runs in. It changes existing code, so it used the Feature flow. Each step names the concept at work.
 
-```text
-you        /superlite:feature Add CSV export
-superlite  chooses the Feature flow                      flow
-superlite  opens superlite/sessions/csv-export           session
-superlite  writes a plan and asks for your yes           plan, orchestrator
-you        approve
-superlite  builds a prototype in .superlite/sandboxes    sandbox
-you        it works
-superlite  ports it into your code, tasks side by side   agents
-superlite  checks the seams and fixes findings           review and fixes
-superlite  shows time and cost                           report
-```
+<Steps>
 
-The same shape holds for every flow. Only the middle changes: a bug flow finds the cause first, and a research flow fills a ledger instead of writing code.
+1. **You ask for a change to existing code.**
+
+   ```text frame="terminal" title="Claude Code · superlite" ins={1}
+   ❯ /superlite:feature Let superlite learn from each run in the repo it runs in
+   ```
+
+   The command picks the [flow](/superlite/flows/choose/) and opens a [session](/superlite/sessions/sessions/), a branch `superlite/sessions/<topic>`, before anything is touched.
+
+2. **Researchers read the code and the field.**
+
+   <FileTree>
+   - docs/plans/
+     - 2026-11-12-superlite-learning-loop.research.md
+     - 2026-11-12-superlite-learning-loop.findings.md
+     - 2026-11-12-superlite-learning-loop.contradictions.md
+     - 2026-11-12-superlite-learning-loop.sources.md
+   </FileTree>
+
+   Agents run side by side and fill a sourced ledger, because each question is independent. They are the "agents" on the map.
+
+3. **You validate the feature plan.** **You decide:** approve it or change it.
+
+   ```md title="docs/plans/2026-11-12-per-repo-learning.feature.md" mark={4}
+   # Per-repo learning loop: feature plan
+
+   ## Goal
+   **Get the code right the first time in this repo, so fewer fixes are needed at the end, and the run costs less.**
+   ```
+
+   The plan is the contract: the prototype and the build are judged against its acceptance checks. The one who says yes is the [orchestrator](/superlite/run/orchestrators/), here you.
+
+4. **A prototype appears in a sandbox, and you try it.** **You decide:** does it work?
+
+   ```md title="docs/plans/2026-11-12-per-repo-learning.feature.md"
+   ## Prototype scope
+   - **New in the sandbox:** `lessons.py`, `review_findings.py`, `learn.py` (`sync`), and a fixture driver that calls sync at each hook point in the real order.
+   ```
+
+   The [sandbox](/superlite/sessions/sandbox/) is a hidden folder in your checkout, not a second worktree, so there is no extra branch to clean up.
+
+5. **The build ports the prototype.**
+
+   ```md title="docs/plans/2026-11-12-per-repo-learning.feature.md"
+   Dedicated worktree `per-repo-learning-int` off `main`. One task per module.
+   The prototype's acceptance tests are the target; code is ported task by task, and stubs stay behind.
+   ```
+
+   The prototype's 80 acceptance tests became unit tests in the real code. One task per module means agents work on separate files and do not collide.
+
+6. **You read the report.**
+
+   ```text frame="terminal" title="Claude Code · build report" mark={2}
+                            Projected    Actual
+   wall-clock (min)               8.0      28.2
+   agent cost (USD, +rework)      1.42      3.02
+   ```
+
+   The run took 28.2 minutes against 8.0 forecast, and the report says so. See [Report](/superlite/run/report/).
+
+   On GitHub the pull request shows the learning loop as one change from the session branch.
+
+</Steps>
+
+**What you end up with:** PR #60 from `superlite/sessions/per-repo-learning-int`, with the full suite at 2459 passed, 0 failed. What is left for you: review the PR and merge it yourself.
 
 ## Good to know
 

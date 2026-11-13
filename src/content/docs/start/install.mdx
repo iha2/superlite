@@ -24,7 +24,7 @@ flowchart LR
 
 ## How it works
 
-A harness is the tool that runs the model: Claude Code, Cursor, Gemini CLI and so on. superlite is a plugin, so each harness gets its own copy from the GitHub repository. The install line adds it to that harness only.
+A harness is the tool that runs the model: Claude Code, Cursor, Gemini CLI and so on. superlite is a plugin, so each harness gets its own copy from the GitHub repository. The install line adds it to that harness only: installing in Claude Code does nothing for Cursor.
 
 Open a fresh session after you install.
 
@@ -77,22 +77,49 @@ For one session only, load a local checkout: `claude --plugin-dir <path-to-super
 
 Each harness has a tool-mapping file in `skills/using-superlite/references/`. It tells superlite which tool to call for each Claude Code tool name. Details per harness are on [Harnesses and install](/superlite/reference/harnesses/).
 
-## Example: checking a fresh install
+## Example: a test message that does nothing
 
-`/superlite:setup` is the first-run check. It gives one pass or fix line per item and changes nothing without your yes. The lines below are illustrative.
+Say you installed the plugin, sent the test message, and got an ordinary reply, not a superlite one.
 
-```text
-you        /superlite:setup
-superlite  project language and test command: pass, or fix
-superlite  Python for the command line tools: pass, or fix
-superlite  model tiers: pass, or fix
-superlite  superpowers suspended during a run: pass, or fix
-superlite  .superlite/ is gitignored: pass, or fix
-you        yes, fix the gitignore line
-superlite  applies only that fix
-```
+<Steps>
 
-If the test message in step 3 does nothing, run this check first. Then confirm that you opened a new session after installing.
+1. **You send the test message and nothing starts.**
+
+   ```text frame="terminal" title="Claude Code · ~/shop" ins={1}
+   ❯ Let's make a react todo list
+   Sure, here is a plan for a todo list...
+   ```
+
+   Claude answered on its own. The plugin did not load into this session: a plugin is read when a session opens, so one opened before the install does not have it.
+
+2. **You run the first-run check.**
+
+   ```text frame="terminal" title="Claude Code · ~/shop" ins={1} mark={6}
+   ❯ /superlite:setup
+     pass  project language and test command
+     pass  Python for the command line tools
+     pass  model tiers
+     pass  superpowers is not suspended by a run
+     fix   .superlite/ is not gitignored
+   ```
+
+   `/superlite:setup` checks the toolchain and gives one pass or fix line per item. It only reads. If the command is unknown, the plugin is not installed: go back to the install line.
+
+3. **You answer the fix.** **You decide:**
+
+   ```text frame="terminal" title="Claude Code · ~/shop" ins={1}
+   ❯ yes, add it to .gitignore
+   ```
+
+   superlite changes nothing without a yes, and it applies only the line you approved. The ignore line keeps run state out of your commits.
+
+4. **You open a fresh session and send the test message again.** This time a run starts: superlite asks about mode and orchestrator before any code is written.
+
+   The hook that loads superlite runs at session start, which is why the fresh session matters.
+
+</Steps>
+
+**What you end up with:** an install that answers the test message with `inventing`, and a project where `.superlite/` stays out of git. If it still does nothing, check [Harnesses](/superlite/reference/harnesses/) for your tool's steps.
 
 ## Good to know
 

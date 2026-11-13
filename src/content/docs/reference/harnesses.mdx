@@ -5,6 +5,8 @@ sidebar:
   order: 8
 ---
 
+import { Steps } from "@astrojs/starlight/components";
+
 :::tip[TL;DR]
 superlite installs as a plugin in 15 harnesses. Install it once per harness you use, then open a fresh session and send a build request to check it works.
 :::
@@ -46,15 +48,39 @@ Claude Code can also load a checkout for one session: `claude --plugin-dir <path
 
 To verify, open a fresh session and send `Let's make a react todo list`. A working install starts `inventing` before any code. Install separately for each harness you use.
 
-## Example
+## Example: installing in two harnesses and checking
 
-You use Claude Code and Gemini CLI. You install in each.
+Say you use Claude Code and Gemini CLI.
 
-```text
-claude  /plugin marketplace add iha2/superlite
-claude  /plugin install superlite@superlite-dev
-gemini  gemini extensions install https://github.com/iha2/superlite
-you     Let's make a react todo list
-```
+<Steps>
 
-In a fresh session of either tool, that last request should start `inventing` before any code is written. If code appears first, the install did not load in that harness.
+1. In Claude Code you add the marketplace, then install:
+
+   ```text frame="terminal" title="Claude Code · ~/shop" ins={1-2}
+   /plugin marketplace add iha2/superlite
+   /plugin install superlite@superlite-dev
+   ```
+
+   Claude Code needs no mapping file, because the skills are written in its own tool names.
+
+2. In a terminal you install the extension for Gemini CLI:
+
+   ```text frame="terminal" title="Terminal · ~/shop" ins={1}
+   $ gemini extensions install https://github.com/iha2/superlite
+   ```
+
+   Gemini CLI gets a mapping file from `skills/using-superlite/references/`, which says that "dispatch an agent" means `invoke_agent` there. Install is per harness, so this step does not cover Claude Code.
+
+3. **You decide:** open a fresh session in either tool and send the check request.
+
+   ```text frame="terminal" title="Gemini CLI · ~/shop" ins={1}
+   Let's make a react todo list
+   ```
+
+4. A working install starts `inventing` before any code is written, and asks you about the design.
+
+   If code appears first, the install did not load in that harness. Repeat the install there, or try `claude --plugin-dir <path-to-superlite>` for a single Claude Code session.
+
+</Steps>
+
+**What you end up with:** superlite installed in two harnesses, each confirmed by the same request. The plugin is the same in both, and the mapping file covers the tool names.

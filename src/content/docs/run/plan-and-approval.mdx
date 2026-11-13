@@ -69,25 +69,84 @@ T1 --> T4
 
 Each task must predict 1.5 to 6 minutes (over 6 fails lint with `SIZE:`), and the whole plan stays under 15,000 characters.
 
-## Example
+## Example: the docs site, from review plan to machine plan
 
 <Steps>
 
-1. You ask for work and choose the human orchestrator. superlite writes the review plan and, if `open_in_harness` is on, opens it for you.
-2. It ends its turn with the path, a five-line summary and "Reply approve to start, or tell me what to change".
-3. You reply. Add `map` to also open the agent map.
-4. It records the approval, writes the machine plan and runs lint.
+1. **You read** the review plan for the docs site. Its "What will be built" table lists eight parts, such as these three.
+
+   ```md title="docs/plans/2026-11-12-docs-site.review.md" mark={3-5}
+   | Part | What it does | Size | Built by |
+   |---|---|---|---|
+   | Research: how superlite works | Reads the code and docs and writes a fact sheet per page, with the diagrams each page needs | M | a careful helper |
+   | Site skeleton | Sets up Starlight, the Warp-style theme, diagram drawing, the sidebar, the base path and search | M | a careful helper |
+   | Publishing | The deploy workflow and the README link | S | a fast helper |
+   ```
+
+   The coordinator writes only this file and stops. Size (S, M, L) and "a fast" or "a careful helper" are an estimate and a model choice in plain words, so you judge scope, not agent names.
+
+2. **You decide.** The same plan lists "Decisions you can change", each with a default.
+
+   ```md title="docs/plans/2026-11-12-docs-site.review.md" mark={2}
+   ## Decisions you can change
+   - Where the site lives: its own `site` branch (default) | a separate repo `iha2/superlite-docs`. Checked: [...]
+   [...]
+   - Page length: about 300 words of prose per guide page (default) | stricter, 200.
+   - Full test suite at finish: no, affected tests only (your choice).
+   ```
+
+   Answer "use a separate repo" and superlite revises the plan and asks again. A change request never counts as a yes. Answer "go ahead" and it moves on. Approval is asked in plain text because your typed reply is what the hook verifies.
+
+3. **superlite unlocks the build.**
+
+   ```text frame="terminal" title="Claude Code · ~/superlite" ins={1}
+   ❯ go ahead
+   $ superlite-cli orchestrator approve --review docs/plans/2026-11-12-docs-site.review.md
+   ```
+
+   The command records the approval and opens the gate. Until then `lint --stable` and `dispatch` stay blocked.
+
+4. **superlite translates.** It writes the machine plan, whose header points back at what you approved and carries your answers as settings.
+
+   ```md title="docs/plans/2026-11-12-docs-site.md" mark={1,4}
+   **Review plan:** docs/plans/2026-11-12-docs-site.review.md
+   [...]
+   **Detail:** tests
+   **Full suite:** no
+   **Target-min:** 14
+   ```
+
+   Your decision "Full test suite at finish: no" became `Full suite: no`. Same scope, new format, so agents get exact contracts and you never have to read them.
+
+5. **superlite shows its work** as one block per task. This is T12, the plan's mechanical, Haiku-routed task.
+
+   ```md title="docs/plans/2026-11-12-docs-site.md" mark={3-4}
+   ### T12 publish · Complexity 2 · Est. context 25k
+   **Owns:** site/.github/workflows/deploy.yml, site/README.md, README.md
+   **Kind:** mechanical
+   **Model:** haiku
+   **Review Focus:** workflow checks out `main` into `_main` for the name check
+   ```
+
+   `Owns` is why parallel agents never collide: every file has one owner. `Review Focus` tells reviewers where to look first.
+
+6. **superlite lints** the plan with `lint --stable` and saves a forecast before the first dispatch.
+
+   ![Lint output for the docs site plan: the task graph as a mermaid block, the stable task list, and DISPATCH NOW, beside the diagram it renders with the critical path T1, T8, T12 in red](../../../assets/screens/lint-graph.png)
+
+   *Real output: lint prints the task graph, and the diagram below it is that graph drawn.*
+
+   ```text frame="terminal" title="docs/plans/2026-11-12-docs-site.report.md" mark={1} "Projected"
+                            Projected    Actual  Delta
+   wall-clock (min)               6.8       6.3  -0.5 (-7%)
+   agents                          12        19  +7 (+58%)
+   ```
+
+   The review plan had guessed "45 to 75 minutes" and said "rough, until the plan is linted". The Projected column is the forecast. It is saved once, so the final [report](/superlite/run/report/) compares the result with what lint predicted, not with a number adjusted afterward.
 
 </Steps>
 
-```text
-superlite  Reply approve to start, or tell me what to change
-you        go ahead, and open the map
-superlite  superlite-cli orchestrator approve --review docs/plans/2026-11-12-csv-export.review.md
-superlite  writes the machine plan, lints it, dispatches the stable tasks
-```
-
-`orchestrator approve` exits with BLOCKED (exit 3) unless a human reply newer than the review plan exists in `.superlite/human-replies.jsonl`. If you answer with changes instead, superlite revises the review plan and asks again.
+**What you end up with:** two files in `docs/plans/`, an approval on record, and stable tasks ready to dispatch.
 
 ## Good to know
 

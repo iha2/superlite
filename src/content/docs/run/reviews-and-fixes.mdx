@@ -5,6 +5,8 @@ sidebar:
   order: 4
 ---
 
+import { Steps } from "@astrojs/starlight/components";
+
 :::tip[TL;DR]
 Reviewers find problems and fix-only agents repair them, each with a regression test. Fixes start at the cheapest tier that fits and move up after two failed rounds. The coordinator never edits code.
 :::
@@ -42,43 +44,64 @@ Two reviews, then fixes. Think of a newsroom. An editor checks each story as it 
 | 2 | `fixer-sonnet-high` (Sonnet, high) | cause known, but it spans modules or a seam, or is a known probe class |
 | 3 | `fixer-opus` (Opus, high) | cause unknown, or a lower tier failed twice |
 
+For example, a wrong path in one test is tier 1, and a bug that spans `package.json`, a script and two tests is tier 2.
+
 Haiku never fixes, because a fix keeps a decision. Haiku stays on mechanical implementation tasks. If one ends red, BLOCKED or NEEDS_CONTEXT, it goes to tier 1 and is never retried on Haiku.
 
-## Example: one finding from found to fixed
+## Example: six review findings on PR #58, fixed in four minutes
 
-The final reviewer reports two findings on the CSV export.
+<Steps>
 
-```text
-Verdict: CHANGES_REQUESTED
-src/export.py:42 - fields containing a comma are not quoted - quote them - tier 1
-src/export.py:77 - the writer drops the last row of a one-column table - fix the loop exit - tier 1
-```
+1. **You open the PR and see a review.** Copilot, a reviewer outside superlite, has read the docs site PR and posted six findings, each with a severity.
 
-Here is what happens to the first one.
+   The review comes back as "Changes recommended" with six open issues: two High, three Medium, one Low.
 
-1. The coordinator, which cannot edit code, sends `fixer-sonnet` a brief with a finding id such as `F-T4-1`.
-2. The fixer reads the code, fixes line 42, and adds one regression test that fails without the fix.
-3. It runs only the touched tests in the background and checkpoints the task.
-4. It replies with a closed list, one line per finding.
+   superlite's own final reviewer reports in the same shape, one line per finding: `file:line - problem - fix - tier N`. It only reports, so that the reviewer that judges is never the agent that edits.
 
-```text
-FIXED - src/export.py:42 - fields containing a comma are not quoted
-tests: 14 0 0 run r7
-```
+2. **You decide:** you hand the review to superlite and let it fix.
 
-When a round fails, the fixer still writes its note. Round 2 is a fresh agent that reads only this note, not the old transcript.
+   ```text frame="terminal" title="Claude Code · ~/superlite" ins={1}
+   ❯ apply the Copilot review on PR 58
+   ```
 
-```text
-# F-T4-2 · tier 1 · round 2 · NOT_FIXED
-Goal: one-column table keeps its last row
-Where: src/export.py:70-82
-Changed: nothing kept
-Tried and failed: slice end - row still dropped - loop exits early
-Evidence: test_one_column_last_row - AssertionError
-Next: read the loop condition at 74 first
-```
+   The coordinator reads the findings and routes each one. It cannot edit code, so every fix goes to a fix-only agent.
 
-After two failed rounds at a tier, the finding moves up one tier. F-T4-2 would go to `fixer-sonnet-high`, again with a fresh agent that reads the note first. Each failed round is logged as an incident. The note is at most 1,500 characters, so a fresh agent starts with 10 to 20k tokens of context instead of an old 60 to 100k session.
+3. **Each finding gets a tier.** Open the first one: a unit test resolves the wrong folder.
+
+   Copilot's inline comment says `REPO` resolves outside the site checkout, so `test_real_names` fails; use the `MAIN` fixture.
+
+   The cause is known and sits in one test file, so tier 1, `fixer-sonnet`. The `--main ..` finding spans `package.json`, the checker and two page tests, a seam, so the rules put it at tier 2, `fixer-sonnet-high`.
+
+4. **A fixer works from a note, not a chat.** Each fix keeps its state in `.superlite/fixes/<id>.md`. Here is a real note from this site's later rewrite round.
+
+   ```md title=".superlite/fixes/F-RW-D.md" mark={1}
+   # F-RW-D · tier 2 · round 1 · FIXED
+   Goal: rewrite site/src/content/docs/run/** as teaching .mdx pages (TL;DR, diagram, Example, Tabs/Steps/FileTree), update test_pages_run.py.
+   Tried and failed: root pyproject addopts has -n; run pytest with `-o addopts=` from site/.
+   Evidence: pytest checks/test_pages_run.py 10 passed; …
+   ```
+
+   If a round fails, it writes `NOT_FIXED`, and a fresh agent starts from the note alone. After two failed rounds the finding moves up a tier. The note stays under 1,500 characters, so a new agent starts with 10 to 20k tokens instead of an old 60 to 100k session.
+
+5. **Only the touched tests run, in the background.** The ledger records each run.
+
+   ![The progress ledger: a tests fast line with failed=1, then after the fix a tests fast line with failed=0](../../../assets/screens/ledger.png)
+
+   *Real output: the ledger goes from failed=1 to failed=0.*
+
+   The first run logged a failing test. The fix landed and the next run was green. Each fix adds one regression test that fails without it.
+
+6. **You decide: commit.** Superlite asks at shipping. The six findings became one commit.
+
+   ```text frame="terminal" title="git log · site branch" mark={1}
+   318308a Docs site: apply Copilot review (light mode, checks, session close)
+   ```
+
+   Light mode, the `--main` lookup, bare names, index links and session close are the five bullets in the message. The commit came under four minutes after Copilot's review at 04:29.
+
+</Steps>
+
+**What you end up with:** six closed findings, a green test run and one commit on the PR branch. Red tests are findings too. The one blocking run happens at shipping, where red blocks the merge.
 
 ## Good to know
 

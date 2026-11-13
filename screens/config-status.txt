@@ -1,0 +1,15 @@
+title: Terminal · ~/superlite
+ins: 1,4,9
+mark: 2,5,6,10
+words: AI (set|: off|: on|(prefer)|"use": true|"allowed": false
+---
+❯ superlite-cli orchestrator status
+orchestrator: AI (set 2026-11-12T04:06:07 by user)
+
+❯ superlite-cli agent_specs status
+agent_specs: off
+open_in_harness: on
+source: ~/.local/share/superlite/preferences.json (prefer)
+
+❯ superlite-cli graphify_gate
+{"use": true, "reason": "graphify installed", "installed": true, "needs_install": false, "allowed": false}

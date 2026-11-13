@@ -1,0 +1,20 @@
+title: Terminal · ~/superlite/.claude/worktrees/sessions-docs-site
+ins: 1,5
+mark: 2,7-9
+words: --background|--wait|"passed": 135|"failed": 0
+---
+❯ superlite-cli run_tests --fast site/checks --background
+wait: run_tests --wait --run 20261112T200001-73587-e70ec3
+summary: ./.superlite/test-summary-20261112T200001-73587-e70ec3.json
+
+❯ superlite-cli run_tests --wait --run 20261112T200001-73587-e70ec3
+{
+ "passed": 135,
+ "failed": 0,
+ "skipped": 0,
+ "seconds": 1.1,
+ "mode": "fast",
+ "failures": [],
+ "skipped_tests": [],
+ "run_id": "20261112T200001-73587-e70ec3"
+}

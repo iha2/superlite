@@ -1,0 +1,12 @@
+title: .superlite/progress.md · docs-site
+ins: 1,4
+mark: 2,5-7
+words: Ruling:|cost if wrong
+---
+❯ superlite-cli orchestrator status
+orchestrator: AI (set 2026-11-12T04:06:07 by user)
+
+❯ grep Ruling .superlite/progress.md
+- Ruling: skip Wave 0 - no task consumes a code stub and T1 owns the site manifest; a T0 manifest would collide with T1 - cost if wrong: T1 sets up npm itself (already in its brief)
+- Ruling: T5 runs on superlite:researcher - it needs web access to study docs practice - cost if wrong: style guide from training knowledge
+- Ruling: orchestrator switched to AI at user's request (test it yourself, open a PR, apply Copilot suggestions, don't wait) - cost if wrong: none

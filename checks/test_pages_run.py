@@ -81,3 +81,15 @@ def test_report_explains_numbers():
     body = _page("report")
     for word in ("Projected", "first-time pass", "critical path", "takeaway", "history write", "/superlite:report"):
         assert word in body
+
+
+@pytest.mark.parametrize("name", PAGES)
+def test_example_is_a_framed_walkthrough(name):
+    body = _page(name)
+    example = body[body.index("\n## Example"):]
+    assert "<Steps>" in example and "</Steps>" in example
+    assert re.search(r'```(text|md) [^\n]*title=', example) or re.search(r"!\[[^\]]*\]\([^)]*assets/screens/[^)]*\.png\)", example)
+    assert "**What you end up with:**" in example
+    assert "illustrative" not in body.lower()
+    for img in re.findall(r"\]\((\.\./[^)]*\.png)\)", body):
+        assert (DOCS / img).resolve().exists(), img
