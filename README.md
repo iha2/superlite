@@ -9,6 +9,10 @@
 </p>
 
 <p align="center">
+  <a href="https://iha2.github.io/superlite/"><b>📖 Documentation site: how superlite works, with diagrams</b></a>
+</p>
+
+<p align="center">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-6366f1">
   <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-2dd4bf">
   <img alt="parallel agents" src="https://img.shields.io/badge/parallel%20agents-up%20to%2018-c084fc">
@@ -141,6 +145,8 @@ And it is not tied to one language. A TypeScript site generator went from spec t
 ---
 
 ## More
+
+The full guide, with walkthroughs and diagrams, is on the [documentation site](https://iha2.github.io/superlite/).
 
 How it works, in [docs/](docs/): [how a run works](docs/how-a-run-works.md) · [skills and agents](docs/skills-and-agents.md) · [hooks](docs/hooks.md) · [tools](docs/tools.md) · [config](docs/config.md) · [language support](docs/language.md) · [how the rules are enforced](docs/gates.md) · [an example review plan](docs/example-review-plan.md). Installation for other harnesses, the benchmark harness and the task list follow below.
 
