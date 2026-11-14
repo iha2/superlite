@@ -1,7 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
-name = "superlite-session-cost-proto"
-version = "0.0.0"
+name = "superlite"
+dynamic = ["version"]  # read from package.json, the plugin's version
+description = "Superlite plugin helpers importable as a package (learn_signals outbox allow-list)"
 requires-python = ">=3.12"
+dependencies = []
+
+[tool.hatch.version]
+path = "package.json"
+pattern = '"version":\s*"(?P<version>[^"]+)"'
+
+[tool.hatch.build.targets.wheel]
+include = ["python/superlite/__init__.py", "skills/swarm/scripts/learn_signals.py"]
+dev-mode-dirs = ["python"]  # editable: python/ on sys.path; superlite/__init__.py then reaches the plugin script in place
+
+[tool.hatch.build.targets.wheel.sources]
+"python" = ""
+"skills/swarm/scripts" = "superlite"
+
+[tool.hatch.build.targets.sdist]
+include = ["python/superlite", "skills/swarm/scripts/learn_signals.py", "package.json", "pyproject.toml"]
 
 [dependency-groups]
 dev = [
