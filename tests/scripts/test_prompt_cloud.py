@@ -21,7 +21,7 @@ def env(tmp_path):
     shim = tmp_path / "pyshim"
     log = tmp_path / "calls.log"
     shim.write_text(f'#!/usr/bin/env bash\necho "$@" >> "{log}"\ncat > /dev/null\n'
-                    f'[ -n "${{SHIM_OUT:-}}" ] && printf \'%s\' "$SHIM_OUT"\nexit "${{SHIM_RC:-0}}"\n')
+                    f'[ -n "${{SHIM_OUT_FILE:-}}" ] && cat "$SHIM_OUT_FILE"\nexit "${{SHIM_RC:-0}}"\n')
     shim.chmod(0o755)
     home = tmp_path / "home"
     home.mkdir()
@@ -30,13 +30,18 @@ def env(tmp_path):
     e = dict(os.environ, SUPERLITE_PYTHON=str(shim), SUPERLITE_HOME=str(home), HOME=str(tmp_path),
              SUPERLITE_NO_SESSION_HUD="1", SUPERLITE_NO_COST_REPORT="1", CLAUDE_PLUGIN_ROOT=str(ROOT))
     e.pop("SHIM_OUT", None)
+    e.pop("SHIM_OUT_FILE", None)
     return e, log, home, proj
 
 
 def call(env, proj, prompt, **extra):
     e = dict(env, **extra)
+    if "SHIM_OUT" in e:  # a file, not an env var: Windows narrows env values to the ANSI code page and loses "→"
+        out_file = proj.parent / "shim-out"
+        out_file.write_bytes(e.pop("SHIM_OUT").encode("utf-8"))
+        e["SHIM_OUT_FILE"] = out_file.as_posix()
     data = json.dumps({"prompt": prompt, "cwd": str(proj), "session_id": "s1"})
-    return subprocess.run([BASH, str(HOOK)], input=data, capture_output=True, text=True, env=e, cwd=proj, timeout=60)
+    return subprocess.run([BASH, str(HOOK)], input=data, capture_output=True, text=True, encoding="utf-8", env=e, cwd=proj, timeout=60)
 
 
 def hook_calls(log):
