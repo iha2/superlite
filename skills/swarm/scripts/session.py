@@ -7,6 +7,7 @@
     session.py use --slug S [--continue] [--root DIR]
     session.py split --new S [--keep S] [--base REF] [--root DIR]
     session.py discard --slug S [--keep-branch] [--root DIR]
+    session.py rename --slug S --to T [--root DIR]
     session.py status [--root DIR] [--json]
     session.py untracked [ask|stash|keep] [--root DIR]
     session.py branch-name [status|worktree|superlite|PATTERN]   (branch for Claude-created worktrees; PATTERN holds {slug})
@@ -36,6 +37,7 @@ import session_registry as R  # noqa: E402
 from session_ensure import (  # noqa: E402,F401
     cmd_close, cmd_create, cmd_ensure, cmd_untracked, enter_session, guarded, park_active, split_move,
     start_in_host, untracked_gate)
+from session_rename import cmd_rename  # noqa: E402
 from session_switch import cmd_discard, cmd_split, cmd_status, cmd_use, continue_apply  # noqa: E402
 from session_registry import (  # noqa: E402,F401
     EXIT_REDIRECT, FILE, ORCH, RESERVED, SLUG, STASH_PREFIX, STORE, GitError, base_now, base_row, base_sha_of,
@@ -94,6 +96,11 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("--slug", required=True)
     d.add_argument("--keep-branch", action="store_true")
     d.add_argument("--root")
+
+    rn = sp.add_parser("rename", help="give a session a new slug (branch and store folder follow)")
+    rn.add_argument("--slug", required=True)
+    rn.add_argument("--to", required=True)
+    rn.add_argument("--root")
 
     n = sp.add_parser("untracked", help="show or set how a park treats untracked files (ask|stash|keep)")
     n.add_argument("value", nargs="?", choices=["ask", "stash", "keep"])
@@ -183,7 +190,7 @@ def cmd_branch_name(a) -> int:
 
 COMMANDS = {"ensure": cmd_ensure, "create": cmd_create, "close": cmd_close, "use": cmd_use, "split": cmd_split,
             "discard": cmd_discard, "status": cmd_status_inventory, "untracked": cmd_untracked,
-            "reconcile": cmd_reconcile, "branch-name": cmd_branch_name}
+            "reconcile": cmd_reconcile, "rename": cmd_rename, "branch-name": cmd_branch_name}
 PRECHECKED = ("ensure", "use", "status")
 ENTERING = ("ensure", "create", "use")
 

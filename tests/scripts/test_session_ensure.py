@@ -985,3 +985,32 @@ def test_review_of_finished_sessions_branch_keeps_its_uncommitted_work(repo):
     assert branch(repo) == "superlite/sessions/s"
     assert last(cp).endswith(" branch=superlite/sessions/s"), cp.out
     assert row_of(repo, "s").get("run") == "open"
+
+
+def _fresh(tmp_path):
+    r = tmp_path.resolve() / "fresh"
+    r.mkdir()
+    git(r, "init", "-q", "-b", "main")
+    git(r, "config", "user.email", "t@example.com")
+    git(r, "config", "user.name", "t")
+    (r / "app.py").write_text("print('hi')\n")
+    git(r, "add", "-A")
+    git(r, "commit", "-q", "-m", "init")
+    return r
+
+
+def test_fresh_repo_own_superlite_state_is_not_dirty(tmp_path):
+    r = _fresh(tmp_path)
+    (r / ".superlite").mkdir()
+    (r / ".superlite" / "x.json").write_text("{}")
+    cp = run("create", "--slug", "x", "--base", "main", "--branch-name", "superlite", cwd=r)
+    assert cp.returncode == 0, cp.both
+
+
+def test_fresh_repo_real_changes_still_block_create(tmp_path):
+    r = _fresh(tmp_path)
+    (r / ".superlite").mkdir()
+    (r / ".superlite" / "x.json").write_text("{}")
+    (r / "real.txt").write_text("user change\n")
+    cp = run("create", "--slug", "x", "--base", "main", cwd=r)
+    assert cp.returncode == 2 and "uncommitted changes" in cp.both

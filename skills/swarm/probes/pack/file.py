@@ -1,4 +1,5 @@
 """file: traversal, symlinks, huge files, missing permissions."""
+import atexit
 import os
 import sys
 
@@ -97,12 +98,21 @@ def _symlink_loop(n, ctx):
     return str(a)
 
 
+def _restore(path):  # O(1) give the owner read and write back at exit
+    if os.path.exists(path):
+        os.chmod(path, 0o600)
+
+
 def _unreadable(n, ctx):
     if sys.platform == "win32" or (hasattr(os, "geteuid") and os.geteuid() == 0):
         raise Skip("permission bits not enforced here")
     p = ctx.tmp / "unreadable.txt"
+    if p.exists():
+        p.chmod(0o600)
+        p.unlink()
     p.write_text("secret")
     p.chmod(0)
+    atexit.register(_restore, str(p))
     return str(p)
 
 

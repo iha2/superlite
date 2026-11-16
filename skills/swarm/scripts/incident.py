@@ -20,7 +20,7 @@ MAX_CONTEXT = 200
 if os.name == "nt":
     import msvcrt
 
-    def _lock(f):
+    def _lock(f, shared=False):  # msvcrt has no shared mode: readers lock exclusively too
         f.seek(0)
         while True:
             try:
@@ -35,8 +35,8 @@ if os.name == "nt":
 else:
     import fcntl
 
-    def _lock(f):
-        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+    def _lock(f, shared=False):
+        fcntl.flock(f.fileno(), fcntl.LOCK_SH if shared else fcntl.LOCK_EX)
 
     def _unlock(f):
         fcntl.flock(f.fileno(), fcntl.LOCK_UN)
@@ -103,23 +103,86 @@ def cmd_add(a):  # O(c) + file append O(c) + fsync
     return 0
 
 
+def _resolve_rows(text, file, line, evidence):
+    """(rewritten lines, count) with the open rows at file:line marked fixed; other rows keep their bytes."""
+    out = []
+    matched = 0
+    for raw in text.splitlines(keepends=True):
+        body = raw.rstrip("\r\n")
+        ending = raw[len(body):]
+        try:
+            e = json.loads(body) if body.strip() else None
+        except json.JSONDecodeError:
+            e = None
+        if (isinstance(e, dict) and "file" in e and "line" in e
+                and e.get("kind") != "verified"
+                and e.get("resolution") in (None, "open")
+                and e["line"] == line
+                and PurePosixPath(_norm(e["file"])).as_posix() == file):
+            e["resolution"] = "fixed"
+            e["evidence"] = evidence
+            matched += 1
+            out.append(json.dumps(e, ensure_ascii=False) + ending)
+        else:
+            out.append(raw)
+    return out, matched
+
+
+def cmd_resolve(a):  # O(B) + one temp write, replace and fsync under the lock
+    """Mark open rows at file:line as fixed with evidence; other rows keep their bytes."""
+    file = PurePosixPath(_norm(a.file)).as_posix()
+    path = Path(a.log)
+    if not path.exists():
+        print(f"incident: nothing open at {file}:{a.line}")
+        return 1
+    matched = 0
+    with open(path, "r+b") as f:
+        _lock(f)
+        try:
+            out, matched = _resolve_rows(f.read().decode("utf-8"), file, a.line, a.evidence)
+            if matched:  # in place under the lock: add() on this inode never lands in an orphan
+                f.seek(0)
+                f.write("".join(out).encode("utf-8"))
+                f.truncate()
+                f.flush()
+                os.fsync(f.fileno())
+        finally:
+            _unlock(f)
+    if not matched:
+        print(f"incident: nothing open at {file}:{a.line}")
+        return 1
+    print(f"incident: resolved {matched} at {file}:{a.line}")
+    return 0
+
+
+def read_text(log):  # O(B), one shared lock: never sees a half-done append or in-place rewrite
+    """The log's text ("" when missing), read under the same interprocess lock every writer takes."""
+    try:
+        f = open(log, "rb")
+    except FileNotFoundError:
+        return ""
+    with f:
+        _lock(f, shared=True)
+        try:
+            data = f.read()
+        finally:
+            _unlock(f)
+    return data.decode("utf-8", errors="replace")
+
+
 def read_all(log):  # O(B)
     """Every JSON object row of the log, hook rows (no file/line) included."""
-    path = Path(log)
-    if not path.exists():
-        return []
     out = []
-    with open(path, encoding="utf-8") as f:
-        for ln in f:
-            ln = ln.strip()
-            if not ln:
-                continue
-            try:
-                e = json.loads(ln)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(e, dict):
-                out.append(e)
+    for ln in read_text(log).splitlines():
+        ln = ln.strip()
+        if not ln:
+            continue
+        try:
+            e = json.loads(ln)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(e, dict):
+            out.append(e)
     return out
 
 
@@ -180,6 +243,12 @@ def main(argv=None):
     s.add_argument("--category")
     s.add_argument("--log", default=DEFAULT_LOG)
     s.set_defaults(fn=cmd_add)
+    s = sub.add_parser("resolve")
+    s.add_argument("--file", required=True)
+    s.add_argument("--line", type=int, required=True)
+    s.add_argument("--evidence", required=True)
+    s.add_argument("--log", default=DEFAULT_LOG)
+    s.set_defaults(fn=cmd_resolve)
     s = sub.add_parser("hotspots")
     s.add_argument("--files")
     s.add_argument("--log", default=DEFAULT_LOG)

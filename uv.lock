@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.12"
 
 [[package]]
@@ -176,9 +176,8 @@ wheels = [
 ]
 
 [[package]]
-name = "superlite-session-cost-proto"
-version = "0.0.0"
-source = { virtual = "." }
+name = "superlite"
+source = { editable = "." }
 
 [package.dev-dependencies]
 dev = [

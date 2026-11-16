@@ -446,9 +446,10 @@ def run(args=(), stdin="", package=None, timeout=10):
         args = shlex.split(args, posix=(os.name != "nt"))
     env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONPATH=os.pathsep.join(
         [str(ROOT / "src"), str(ROOT)] + ([os.environ["PYTHONPATH"]] if os.environ.get("PYTHONPATH") else [])))
-    p = subprocess.run(cmd + list(args), input=stdin, capture_output=True, text=True, encoding="utf-8",
-                       errors="replace", cwd=ROOT, env=env, timeout=timeout)
-    return p.returncode, p.stdout, p.stderr
+    data = stdin.encode("utf-8", "replace") if isinstance(stdin, str) else bytes(stdin or b"")
+    p = subprocess.run(cmd + list(args), input=data, capture_output=True,
+                       cwd=ROOT, env=env, timeout=timeout)
+    return p.returncode, p.stdout.decode("utf-8", "replace"), p.stderr.decode("utf-8", "replace")
 '''
 
 _ADAPTER_SERVE = '''

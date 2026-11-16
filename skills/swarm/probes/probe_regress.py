@@ -1,10 +1,15 @@
 """Regression tests written from probe failures, and shrinking a failing size."""
 from __future__ import annotations
 
+import hashlib
 import re
+import sys
 import threading
 import time
 from pathlib import Path
+
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from probe_common import SHRINK_BUDGET, load_module, untrusted
 from probe_pool import Cfg, Lease, Pool, group_key, timeout_for
@@ -102,6 +107,16 @@ def test_{test_name}():
 
 
 _reg_lock = threading.Lock()
+def _copy_adapter(cfg: Cfg, outdir: Path, out_root: Path) -> str:  # O(len adapter)
+    """Snapshot the adapter next to the tests under a content-addressed name, so each test keeps the adapter
+    it was generated against and a later plan's adapter never changes earlier tests. Older tests that name
+    probe_adapter.py or probe_adapter_gen.py keep their file: nothing here touches those names."""
+    src = Path(cfg.adapter).read_bytes()
+    outdir.mkdir(parents=True, exist_ok=True)
+    dest = outdir / f"probe_adapter_{hashlib.sha256(src).hexdigest()[:12]}.py"
+    if not dest.exists():
+        dest.write_bytes(src)
+    return dest.relative_to(out_root).as_posix()
 
 
 def write_regression(cfg: Cfg, group: dict, rep: dict, shrunk_size) -> str | None:  # O(t * B + len text) total, serialized by global lock
@@ -124,11 +139,12 @@ def _write_regression(cfg: Cfg, group: dict, rep: dict) -> str | None:  # O(t lo
     cat = group["category"]
     out_root = getattr(cfg, "out_root", cfg.root)
     outdir = out_root / "tests" / "regression"
+    adapter_rel = _copy_adapter(cfg, outdir, out_root)
     existing = sorted(outdir.glob(f"test_probe_{cat}_*.py")) if outdir.is_dir() else []
     n = 1 + max([int(re.search(r"_(\d+)\.py$", p.name).group(1)) for p in existing] or [0])
     text = REGRESSION_TEMPLATE.format(
         category=cat, kind=group["kind"], key=group["key"].replace('"', "'"),
-        orig_size=group.get("size"), probe_id=group["probe"], adapter_rel=cfg.rel(str(cfg.adapter)),
+        orig_size=group.get("size"), probe_id=group["probe"], adapter_rel=adapter_rel,
         entry=meta["entry"], input_text=rep["input"], expect=expect,
         timeout=timeout_for(meta, cfg), test_name=f"probe_{cat}_{n}")
     def body(t):  # O(len t)

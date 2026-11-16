@@ -12,6 +12,7 @@ from pathlib import Path
 CATEGORIES = ("deep", "numeric", "encoding", "protocol", "file", "state")
 TAGS = ("setup", "test", "pairing", "convention")
 OUTBOX_FIELDS = ("id", "tool", "count", "requested", "ran", "run")  # allow-list: never command, target, file, path, text
+ROW_FIELDS = ("v", "date", "repo", "superlite", "signal") + OUTBOX_FIELDS  # base fields outbox_row always writes, then the allow-list
 FAMILIES = ("haiku", "sonnet", "opus")
 
 _FINDING = re.compile(
@@ -161,6 +162,16 @@ def outbox_row(signal: str, repo_id: str, date: str, version: str, **fields) -> 
             row[k] = fields[k]
     if "run" in row:
         row["run"] = hashlib.sha256(f"run|{repo_id}|{row['run']}".encode("utf-8")).hexdigest()[:16]
+    return row
+
+
+def accept_row(row: dict) -> dict:  # O(fields)
+    """The row itself when every key is in ROW_FIELDS; ValueError for a non-dict or any key outside the allow-list."""
+    if not isinstance(row, dict):
+        raise ValueError("row must be a dict")
+    extra = set(row) - set(ROW_FIELDS)
+    if extra:
+        raise ValueError(f"fields not allowed: {sorted(extra)}")
     return row
 
 

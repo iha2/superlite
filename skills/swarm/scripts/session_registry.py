@@ -22,6 +22,7 @@ import ident  # noqa: E402
 import state  # noqa: E402
 import worktree_home  # noqa: E402
 from journal import Journal  # noqa: E402
+from session_untracked import blocked_by, paths_text, untracked_files, untracked_gate  # noqa: E402,F401  (re-exported)
 from worktree_home import hide_all, hide_superlite  # noqa: E402,F401  (re-exported)
 
 GitError = base.GitError
@@ -84,7 +85,9 @@ def default_base(root: Path) -> str:
 
 
 def is_dirty(cwd: Path) -> bool:  # O(tree)
-    return bool(git("status", "--porcelain", cwd=cwd, check=False).stdout.strip())
+    """True when the tree has changes; superlite's own `.superlite/` state never counts."""
+    return bool(git("status", "--porcelain", "--", ".", f":(exclude){state.DIR_NAME}", f":(exclude){state.DIR_NAME}/**",
+                    cwd=cwd, check=False).stdout.strip())
 
 
 def validate_slug(name: str, flag: str = "--slug") -> str:
@@ -475,52 +478,6 @@ def owned_worktree(root: Path, row: dict) -> bool:
     if worktree_home.harness_name(wt, row.get("branch")):
         return False  # a harness checkout in the shared home is never ours to remove
     return bool(row.get("owned")) or ident.within(Path(wt), sessions_dir(root)) or worktree_home.superlite_cut(root, wt)
-
-
-# ---- untracked files: ask once, before any change
-
-def untracked_files(host: Path) -> list[str]:  # O(tree)
-    return git("ls-files", "--others", "--exclude-standard", cwd=host, check=False).stdout.splitlines()
-
-
-def paths_text(files: list[str]) -> str:
-    more = len(files) - 5
-    return ", ".join(files[:5]) + (f" (+{more} more)" if more > 0 else "")
-
-
-def blocked_by(host: Path, files: list[str], target: str) -> list[str]:  # O(tree)
-    """Untracked files git would refuse to overwrite when switching to `target` (same path, or file/dir clash)."""
-    tree = git("ls-tree", "-r", "--name-only", target, cwd=host, check=False).stdout.splitlines()
-    paths, dirs = set(tree), set()
-    for t in tree:
-        parts = t.split("/")
-        dirs.update("/".join(parts[:k]) for k in range(1, len(parts)))
-    return [f for f in files
-            if f in paths or f in dirs or any("/".join(f.split("/")[:k]) in paths for k in range(1, len(f.split("/"))))]
-
-
-def untracked_gate(host: Path, slug: str, mode: str | None, target: str) -> tuple[int | None, str | None, bool]:  # O(tree)
-    """Before a park: (stop_rc, note line, keep). Nothing is changed here; ask/keep-conflict stop the command."""
-    files = untracked_files(host)
-    if not files:
-        return None, None, False
-    mode = mode or "ask"
-    if mode == "ask":
-        print(f"ASK untracked={len(files)} slug={slug}: {paths_text(files)}")
-        print(f"ask: {len(files)} untracked file(s) would be parked with session {slug}: stash them with the "
-              f"session, or keep them in place? Options: stash | keep")
-        print("on stash: rerun with --untracked stash")
-        print("on keep: rerun with --untracked keep")
-        print("session: rerun with --untracked stash|keep, or set it with superlite-cli session untracked stash|keep")
-        return 4, None, False
-    if mode == "stash":
-        return None, f"session: stashed {len(files)} untracked file(s) with {slug}: {paths_text(files)}", False
-    clash = blocked_by(host, files, target)
-    if clash:
-        print(f"session: untracked file(s) would be overwritten by {target}: {paths_text(clash)}; "
-              f"nothing changed", file=sys.stderr)
-        return 2, None, False
-    return None, f"session: kept {len(files)} untracked file(s) in place: {paths_text(files)}", True
 
 
 # ---- moving the open run out of the main checkout (also used by split)

@@ -20,6 +20,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import base  # noqa: E402
+import incident  # noqa: E402
 import planfile  # noqa: E402
 import sandbox  # noqa: E402
 import state  # noqa: E402
@@ -54,7 +55,7 @@ def _incident(ln: str) -> dict | None:
 def read_incidents(path: Path) -> list[dict]:  # O(file size) total, single pass
     if not path.is_file():
         return []
-    lines = (ln.strip() for ln in path.read_text(encoding="utf-8", errors="replace").splitlines())
+    lines = (ln.strip() for ln in incident.read_text(path).splitlines())  # under the writers' shared lock
     return [e for e in map(_incident, (ln for ln in lines if ln)) if e is not None]
 
 
@@ -96,7 +97,7 @@ def incident_items(entries: list[dict]) -> list[Item]:  # O(K) total
         repeated = len(es) >= 2
         unresolved = any(str(e.get("resolution", "")).lower() not in RESOLVED for e in es)
         low = any(str(e.get("confidence", "")).lower() == "low" for e in es)
-        if not (repeated or unresolved or low):
+        if not unresolved and not low:
             continue
         why = [w for w, on in (("repeated", repeated), ("unresolved", unresolved), ("low confidence", low)) if on]
         tier = 0 if repeated else 1 if unresolved else 2

@@ -140,9 +140,9 @@ def test_packet_repeated_location_ranks_first(proj: Path):
     write_log(log, [
         {"file": "src/minisheet/workbook.py", "line": 8, "context": "unresolved guess", "kind": "assumption"},
         {"file": "src/minisheet/evaluator.py", "line": 8, "context": "first", "kind": "exception",
-         "resolution": "fixed", "confidence": "high"},
+         "resolution": "open", "confidence": "high"},
         {"file": "src/minisheet/evaluator.py", "line": 8, "context": "second", "kind": "exception",
-         "resolution": "fixed", "confidence": "high"},
+         "resolution": "open", "confidence": "high"},
     ])
     _rc, text = packet(proj, log)
     assert text.index("src/minisheet/evaluator.py:8") < text.index("src/minisheet/workbook.py:8")

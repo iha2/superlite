@@ -223,3 +223,11 @@ def test_sync_refuses_merge_commit(repo, capsys):
     assert sync(repo) == 2
     assert "session: needs a merge commit; not synced" in capsys.readouterr().err
     assert git(host(repo), "rev-parse", "HEAD") == before
+
+
+def test_untracked_helpers_live_in_their_own_module_and_stay_importable_from_the_registry():
+    import session_untracked
+    for name in ("untracked_files", "paths_text", "blocked_by", "untracked_gate"):
+        assert getattr(session_registry, name) is getattr(session_untracked, name)
+    assert session_untracked.paths_text(["a", "b"]) == "a, b"
+    assert session_untracked.paths_text([str(i) for i in range(7)]).endswith("(+2 more)")
