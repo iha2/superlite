@@ -141,3 +141,11 @@ def test_cloud_error_explicit_init():
     assert "__init__" in CloudError.__dict__
     assert list(inspect.signature(CloudError).parameters) == ["message"]
     assert str(CloudError("boom")) == "boom"
+    assert CloudError("boom").status is None
+
+
+def test_http_error_carries_status():
+    with mock.patch("urllib.request.urlopen", side_effect=http_error(404, {"error": "not found"})):
+        with pytest.raises(CloudError) as e:
+            Client(URL, TOKEN).task("t_1")
+    assert e.value.status == 404

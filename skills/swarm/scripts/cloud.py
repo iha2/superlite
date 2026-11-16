@@ -65,8 +65,10 @@ def _logout(_args) -> int:
     import cloud_config
     import cloud_entries
     import cloud_status
+    import cloud_hook
     cloud_status.restore(_claude_home() / "settings.json")
     cloud_entries.remove_all(_claude_home() / "skills")
+    cloud_hook.clear_attach()  # an old attachment must not revive on the next login
     cloud_config.clear()
     print("logged out")
     return 0
@@ -87,11 +89,11 @@ def cmd_runs(args) -> int:
         _err(NOT_LOGGED_IN)
         return 2
     try:
-        runs = client.runs(all=args.all)
-        try:
+        try:  # read the unread notices first: the list call marks them seen
             notices = client.status().get("notices", [])
         except cloud_client.CloudError:
             notices = []
+        runs = client.runs(all=args.all)
     except cloud_client.CloudError as e:
         _err(f"error: {e}", cfg["token"])
         return 1
@@ -122,6 +124,7 @@ def _give(args) -> int:
         _err(f"error: {e}", cfg["token"])
         return 1
     import cloud_hook
+    cloud_hook.detach_if_given(args.ref, t)
     print(cloud_hook.give_line(t, args.ref, args.email))
     return 0
 

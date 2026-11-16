@@ -54,3 +54,10 @@ def test_remove_all_count(tmp_path):
     assert ce.remove_all(tmp_path) == 2
     assert not list(tmp_path.iterdir())
     assert ce.remove_all(tmp_path / "missing") == 0
+
+
+def test_admin_entry_command_uses_slash_ref(tmp_path):
+    ce.sync([RUN], tmp_path, "sam", True)
+    body = (tmp_path / "superlite-attach-chris.login_fix/SKILL.md").read_text(encoding="utf-8")
+    assert "superlite-cli cloud attach chris/login_fix`" in body and "chris.login_fix`" in body
+    assert ce.ref_of("chris.login_fix") == "chris/login_fix" and ce.ref_of("login_fix") == "login_fix"

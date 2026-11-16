@@ -75,3 +75,34 @@ def test_fail_open(env):
     r = call(e, proj, ">> hi", SHIM_RC="1")
     assert r.returncode == 0
     assert "block" not in r.stdout
+
+
+def _reply_env(env, proj):
+    e, log, home, _ = env
+    sd = proj / ".superlite"
+    sd.mkdir()
+    (sd / "orchestrator.json").write_text('{"mode":"human","approved":false}')
+    return sd / "human-replies.jsonl"
+
+
+def test_blocked_cloud_line_is_not_recorded_as_reply(env):
+    e, log, home, proj = env
+    replies = _reply_env(env, proj)
+    out = '{"decision": "block", "reason": "ok"}'
+    r = call(e, proj, ">> yes approve", SHIM_OUT=out)
+    assert r.stdout.strip() == out and not replies.exists()
+    cur = '{"continue": false, "user_message": "ok"}'
+    call(e, proj, ">> yes approve", SHIM_OUT=cur)
+    assert not replies.exists()
+
+
+def test_backslash_passthrough_and_plain_prompts_are_recorded(env):
+    e, log, home, proj = env
+    replies = _reply_env(env, proj)
+    (home / "attach.json").write_text('{"run":"login_fix"}')
+    call(e, proj, "\\approve this", SHIM_OUT='{"hookSpecificOutput": {"additionalContext": "x"}}')
+    assert replies.exists() and "approve this" in replies.read_text()
+    replies.unlink()
+    (home / "attach.json").unlink()
+    call(e, proj, "approve")
+    assert replies.exists()

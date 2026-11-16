@@ -9,6 +9,8 @@ import urllib.request
 
 
 class CloudError(Exception):
+    status: int | None = None  # the HTTP status of an error reply; None for a network failure
+
     def __init__(self, message: str) -> None:
         super().__init__(message)
 
@@ -42,7 +44,9 @@ class Client:
             except (OSError, ValueError, AttributeError, http.client.HTTPException):
                 pass
             msg = self._scrub(msg) or f"HTTP {e.code}"
-            raise CloudError(f"{ref}: {msg}" if ref else msg) from None
+            err = CloudError(f"{ref}: {msg}" if ref else msg)
+            err.status = e.code
+            raise err from None
         except (urllib.error.URLError, OSError, ValueError):
             raise CloudError(f"cloud unreachable: {self.url}") from None
         if status not in expect:

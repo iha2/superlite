@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -20,11 +21,21 @@ from cloud_client import CloudError  # noqa: E402
 
 ENDED = {"done", "failed", "cancelled", "canceled", "ended", "error", "complete", "completed"}
 _SLASH = re.compile(r"^/superlite[:-](attach|detach|runs|watch|give)(?:[\s-]+(.*))?$", re.S)
+_ENTRY_LABEL = re.compile(r"^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$")
+_CURSOR_ENV = ("CURSOR_AGENT", "CURSOR_TRACE_ID", "CURSOR_PLUGIN_ROOT")
 
 
 def _home() -> Path:
     h = os.environ.get("SUPERLITE_HOME")
     return Path(h) if h else Path.home() / state.DIR_NAME
+
+
+def _api_ref(arg: str) -> str:
+    """A generated entry names another owner's run `chris.login_fix`; the API wants `chris/login_fix`."""
+    if _ENTRY_LABEL.match(arg):
+        import cloud_entries
+        return cloud_entries.ref_of(arg)
+    return arg
 
 
 def _client():
@@ -63,7 +74,9 @@ def refresh_attached(client) -> dict | None:
     """The attached run as {run, id, status}, its name refreshed from the server (a hand-back renames it).
 
     Looks the run up by id with GET /api/tasks/{id}, which never marks notices seen. status is None when
-    there is no id or the lookup failed; the stored name is kept then.
+    there is no id or the lookup failed; the stored name is kept then. `lost` is True when the server says
+    the run is gone or no longer visible (404/403, e.g. after giving it away), not on a network failure.
+    A qualified name (`chris/login_fix`) keeps its owner when the bare name is refreshed.
     """
     st = _attach_state()
     if not st:
@@ -73,18 +86,36 @@ def refresh_attached(client) -> dict | None:
         return out
     try:
         t = client.task(out["id"])
-    except (CloudError, AttributeError):
+    except CloudError as e:
+        out["lost"] = getattr(e, "status", None) in (403, 404)
+        return out
+    except AttributeError:
         return out
     if isinstance(t, dict):
         out["status"] = t.get("status")
+        owner, sep, bare = out["run"].rpartition("/")
         name = t.get("name")
-        if name and name != out["run"]:
-            out["run"] = name
+        if name and name != bare:
+            out["run"] = f"{owner}{sep}{name}"
             try:
-                (_home() / "attach.json").write_text(json.dumps({"run": name, "id": out["id"]}), encoding="utf-8")
+                (_home() / "attach.json").write_text(json.dumps({"run": out["run"], "id": out["id"]}), encoding="utf-8")
             except OSError:
                 pass
     return out
+
+
+def detach_if_given(ref: str, given: dict | None) -> None:
+    """Clear the attachment when it is the run just given away (by id, else by name)."""
+    st = _attach_state()
+    if not st:
+        return
+    gid = given.get("id") if isinstance(given, dict) else None
+    if st.get("id") and gid:
+        same = st["id"] == gid
+    else:
+        same = st["run"].split("/")[-1] == ref.split("/")[-1]
+    if same:
+        clear_attach()
 
 
 def give_line(out: dict, ref: str, email: str) -> str:
@@ -119,9 +150,17 @@ def _send(client, verb: str, ref: str, *args, label: str | None = None) -> dict:
 
 
 def _status_of(client, ref: str) -> str | None:
-    name = ref.split("/")[-1]
-    for r in client.runs():
-        if r.get("name") == name:
+    owner, _, name = ref.rpartition("/")
+    runs = None
+    if owner:  # another owner's run is only in the all-runs list (an admin's); a member's own run is in the default one
+        try:
+            runs = client.runs(all=True)
+        except CloudError:
+            runs = None
+    if runs is None:
+        runs = client.runs()
+    for r in runs:
+        if r.get("name") == name and (not owner or r.get("owner") == owner):
             return r.get("status")
     return None
 
@@ -167,20 +206,31 @@ def _slash(client, verb: str, arg: str) -> dict:
         clear_attach()
         return _block("detached")
     if verb == "runs":
-        runs = client.runs()
-        lines = [f"{r.get('owner', '')}/{r['name']}  {r.get('status', '')}  {r.get('agent', '')}" for r in runs]
+        import cloud
+        try:  # read the unread notices first: the list call marks them seen
+            notices = client.status().get("notices", [])
+        except CloudError:
+            notices = []
+        runs = client.runs(all=arg.lstrip("-") == "all")
+        lines = []
+        for r in runs:
+            line = f"{r.get('owner', '')}/{r['name']}  {r.get('status', '')}  {r.get('agent', '')}"
+            mark = cloud._mark(r, notices)
+            lines.append(f"{line}  {mark}" if mark else line)
         return _block("\n".join(lines) or "no runs")
     if verb == "give":
         ref, _, email = arg.partition(" ")
         if not ref or not email.strip():
             return _block("usage: /superlite:give <run> <email>")
         out = client.give(ref, email.strip())
+        detach_if_given(ref, out)
         return _block(give_line(out, ref, email.strip()))
     if not arg:
         return _block(f"usage: /superlite:{verb} <run>")
+    arg = _api_ref(arg)
     if verb == "watch":
         cli = Path(_HERE) / "superlite-cli"
-        cmd = f'bash "{cli}" cloud watch {arg}'
+        cmd = f"bash {shlex.quote(str(cli))} cloud watch {shlex.quote(arg)}"
         if os.environ.get("HERDR_ENV") == "1":
             pane = _sh(["herdr", "pane", "split", "--current", "--direction", "right", "--no-focus"])
             pid = (pane.stdout or "").strip()
@@ -190,6 +240,8 @@ def _slash(client, verb: str, arg: str) -> dict:
         return _block(f"run this in another terminal: {cmd}")
     info = client.attach(arg)
     name = info.get("run") or arg.split("/")[-1]
+    if "/" in arg:  # keep the owner: a bare name would address the caller's own same-named run
+        name = f"{arg.rpartition('/')[0]}/{name.split('/')[-1]}"
     if info.get("status") in ENDED:
         return _block(f"{name} has ended")
     home = _home()
@@ -229,6 +281,10 @@ def _route(client, prompt: str, current: str | None) -> dict | None:
     if attached and (text.startswith(">>") or text and (not text.startswith("/") or text in ("/cancel", "/approve"))):
         live = refresh_attached(client)
         attached = live["run"] if live else attached
+        if live and live.get("lost"):
+            clear_attach()
+            why = f"{attached} is no longer available to you; detached"
+            return _block(why) if text.startswith(">>") else {"context": why}
     ref = (live or {}).get("id") or attached
     cur = current or ref
     if text.startswith(">>"):
@@ -252,21 +308,34 @@ def _route(client, prompt: str, current: str | None) -> dict | None:
     return _send(client, "nudge" if status == "running" else "respond", ref, text, label=attached)
 
 
+def _is_cursor(data: dict) -> bool:
+    return data.get("hook_event_name") == "beforeSubmitPrompt" or any(os.environ.get(k) for k in _CURSOR_ENV)
+
+
+def render(res: dict, cursor: bool) -> dict | None:
+    """The hook's JSON for the host: Claude's decision/hookSpecificOutput, or Cursor's continue/additional_context."""
+    if res.get("block"):
+        if cursor:
+            return {"continue": False, "user_message": res["reason"]}
+        return {"decision": "block", "reason": res["reason"]}
+    if "context" in res:
+        text = res["context"]
+    elif "pass" in res:
+        text = "Leading backslash: this message is for you, not the cloud run: " + res["pass"]
+    else:
+        return None
+    if cursor:
+        return {"continue": True, "additional_context": text}
+    return {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": text}}
+
+
 def main(argv: list[str] | None = None) -> int:
     try:
         data = json.loads(sys.stdin.read() or "{}")
         res = route(str(data.get("prompt", "")))
-        if not res:
-            return 0
-        if res.get("block"):
-            print(json.dumps({"decision": "block", "reason": res["reason"]}))
-        elif "context" in res:
-            print(json.dumps({"hookSpecificOutput": {
-                "hookEventName": "UserPromptSubmit", "additionalContext": res["context"]}}))
-        elif "pass" in res:
-            print(json.dumps({"hookSpecificOutput": {
-                "hookEventName": "UserPromptSubmit",
-                "additionalContext": "Leading backslash: this message is for you, not the cloud run: " + res["pass"]}}))
+        out = render(res, _is_cursor(data)) if res else None
+        if out:
+            print(json.dumps(out))
     except Exception:
         return 0
     return 0

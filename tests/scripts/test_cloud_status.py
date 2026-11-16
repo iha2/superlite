@@ -135,6 +135,69 @@ def test_sync_uses_status_runs_not_tasks(env, monkeypatch, capsys):
     assert [r["name"] for r in synced] == ["login_fix"] and synced[0]["owner"] == "chris"
 
 
+def test_second_login_from_new_install_keeps_original_prev(env):
+    s = env / "ch" / "settings.json"
+    orig = b'{"model":"x",  "statusLine": {"type":"command","command":"echo hi"}}\n'
+    s.write_bytes(orig)
+    cloud_status.install(s, CMD)
+    new = 'bash "/y/superlite-cli" cloud statusline'
+    cloud_status.install(s, new)  # another plugin version
+    assert json.loads(s.read_text())["statusLine"]["command"] == new
+    mem = json.loads((env / "ch" / "superlite-statusline-prev.json").read_text())
+    assert mem["prev"]["command"] == "echo hi"
+    cloud_status.restore(s)
+    assert s.read_bytes() == orig
+
+
+def test_second_login_new_command_after_user_edit_restores_statusline_only(env):
+    s = env / "ch" / "settings.json"
+    s.write_bytes(b'{"statusLine": {"type":"command","command":"echo hi"}}')
+    cloud_status.install(s, CMD)
+    d = json.loads(s.read_text())
+    d["other"] = 2
+    s.write_text(json.dumps(d))
+    cloud_status.install(s, 'bash "/y/superlite-cli" cloud statusline')
+    cloud_status.restore(s)
+    d = json.loads(s.read_text())
+    assert d["other"] == 2 and d["statusLine"]["command"] == "echo hi"
+
+
+def test_admin_sync_skipped(env, monkeypatch, capsys):
+    calls = _fake_client(monkeypatch, {"runs": [RUN], "notices": []})
+
+    class A:
+        def me(self):
+            return {"handle": "sam", "role": "admin"}
+
+        def status(self):
+            return {"runs": [RUN], "notices": []}
+    monkeypatch.setattr(cloud_status, "_make_client", lambda: A())
+    _run_main(monkeypatch, capsys)
+    assert calls == []  # an admin's status lists only their own runs: a sync would drop others' entries
+
+
+def test_attached_lost_run_detaches(env, monkeypatch, capsys):
+    from cloud_client import CloudError
+    (env / "sl").mkdir()
+    (env / "sl" / "attach.json").write_text(json.dumps({"run": "login_fix", "id": "t_9"}))
+
+    class C:
+        def status(self):
+            return {"runs": [], "notices": []}
+
+        def me(self):
+            return {"handle": "chris", "role": "member"}
+
+        def task(self, ref):
+            e = CloudError("t_9: not found")
+            e.status = 404
+            raise e
+    _fake_client(monkeypatch, {"runs": [], "notices": []})
+    monkeypatch.setattr(cloud_status, "_make_client", lambda: C())
+    assert _run_main(monkeypatch, capsys) == ""
+    assert not (env / "sl" / "attach.json").exists()
+
+
 def test_attached_shows_new_notice():
     st = {"runs": [], "notices": [{"id": 3, "text": "gift from pat", "seen": 0}]}
     assert cloud_status.segment(st, attached="login_fix") == "ATTACHED login_fix · new: gift from pat"

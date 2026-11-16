@@ -188,7 +188,7 @@ def test_attach_writes_state_and_detach_clears(monkeypatch, env, capsys):
     capsys.readouterr()
     assert cloud.main(["attach", "chris/login_fix"]) == 0
     out = capsys.readouterr()
-    assert "attached login_fix" in out.out and TOKEN not in out.out + out.err
+    assert "attached chris/login_fix" in out.out and TOKEN not in out.out + out.err
     assert (env.sh / "attach.json").exists()
     assert cloud.main(["detach"]) == 0
     assert "detached" in capsys.readouterr().out
@@ -215,3 +215,31 @@ def test_help_lists_delegated_and_new_subcommands(capsys):
     assert cloud.main(["--help"]) == 0
     out = " ".join(capsys.readouterr().out.split())
     assert "attach,detach,watch,statusline,hook" in out
+
+
+def test_logout_clears_attachment(env, capsys):
+    login()
+    (env.sh / "attach.json").write_text('{"run": "login_fix", "id": "t_1"}')
+    assert cloud.main(["logout"]) == 0
+    assert not (env.sh / "attach.json").exists()
+
+
+def test_runs_reads_notices_before_listing(capsys, monkeypatch):
+    """The list call marks notices seen on the server, so /api/status must be read first."""
+    login()
+    capsys.readouterr()
+    order = []
+    monkeypatch.setattr(FakeClient, "status", lambda self: order.append("status") or {"notices": []})
+    monkeypatch.setattr(FakeClient, "runs", lambda self, all=False: order.append("runs") or [])
+    cloud.main(["runs"])
+    assert order == ["status", "runs"]
+
+
+def test_give_detaches_given_run(capsys, env):
+    login()
+    (env.sh / "attach.json").write_text('{"run": "login_fix", "id": "t_1"}')
+    assert cloud.main(["give", "login_fix", "pat@example.com"]) == 0
+    assert not (env.sh / "attach.json").exists()
+    (env.sh / "attach.json").write_text('{"run": "other", "id": "t_7"}')
+    cloud.main(["give", "login_fix", "pat@example.com"])
+    assert (env.sh / "attach.json").exists()

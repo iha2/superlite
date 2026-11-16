@@ -35,6 +35,9 @@ class FakeClient:
     def runs(self, all=False):
         return list(self.runs_data)
 
+    def status(self):
+        return {"runs": [], "notices": []}
+
     def nudge(self, ref, text):
         self._do("nudge", ref, text)
 
@@ -249,3 +252,87 @@ def test_main_ended_adds_context(fc, tmp_path, monkeypatch, capsys):
     out = json.loads(run_main(monkeypatch, capsys, json.dumps({"prompt": "go on"})))
     assert out["hookSpecificOutput"]["additionalContext"] == "login_fix has ended; detached"
     assert "decision" not in out
+
+
+def test_watch_command_is_shell_quoted(fc, monkeypatch):
+    monkeypatch.delenv("HERDR_ENV", raising=False)
+    r = cloud_hook.route("/superlite:watch x; touch /tmp/pwned $(id)")
+    cmd = r["reason"].split("another terminal: ", 1)[1]
+    import shlex
+    parts = shlex.split(cmd)
+    assert parts[-2:] == ["watch", "x; touch /tmp/pwned $(id)"]
+
+
+def test_attach_keeps_qualified_ref(fc, tmp_path):
+    fc.runs_data = [{"id": "t_1", "name": "login_fix", "owner": "chris", "status": "running"}]
+    cloud_hook.route("/superlite:attach chris/login_fix")
+    assert json.loads((tmp_path / "attach.json").read_text()) == {"run": "chris/login_fix", "id": "t_1"}
+    # a rename keeps the owner
+    fc.runs_data = [{"id": "t_1", "name": "login_fix_2", "owner": "chris", "status": "running"}]
+    cloud_hook.route("yes")
+    assert json.loads((tmp_path / "attach.json").read_text())["run"] == "chris/login_fix_2"
+
+
+def test_status_of_matches_owner(fc):
+    fc.runs_data = [{"name": "login_fix", "owner": "sam", "status": "done"},
+                    {"name": "login_fix", "owner": "chris", "status": "running"}]
+    assert cloud_hook._status_of(fc, "chris/login_fix") == "running"
+    assert cloud_hook._status_of(fc, "sam/login_fix") == "done"
+
+
+def test_dotted_entry_label_becomes_slash_ref(fc):
+    cloud_hook.route("/superlite-attach-chris.login_fix")
+    assert ("attach", "chris/login_fix") in fc.calls
+
+
+def test_runs_all_and_marks(fc):
+    seen = []
+    fc.runs = lambda all=False: seen.append(("runs", all)) or list(fc.runs_data)
+    fc.status = lambda: seen.append(("status",)) or {"notices": [
+        {"task": "login_fix", "text": "login_fix from pat", "seen": 0}]}
+    r = cloud_hook.route("/superlite:runs --all")
+    assert seen == [("status",), ("runs", True)]
+    assert "login_fix  running  claude  new \u00b7 given by pat" in r["reason"]
+    seen.clear()
+    cloud_hook.route("/superlite:runs")
+    assert ("runs", False) in seen
+
+
+def test_give_detaches_attached_run(fc, tmp_path):
+    attach_id(tmp_path, "gift", "t_1")
+    cloud_hook.route("/superlite:give gift pat@example.com")
+    assert not (tmp_path / "attach.json").exists()
+
+
+def test_lost_run_detaches_but_network_error_keeps(fc, tmp_path):
+    attach_id(tmp_path)
+
+    def gone(ref):
+        e = CloudError("t_9: not found")
+        e.status = 404
+        raise e
+    fc.task = gone
+    r = cloud_hook.route("hello")
+    assert r and "detached" in r["context"] and not (tmp_path / "attach.json").exists()
+    attach_id(tmp_path)
+    r = cloud_hook.route(">> hi")
+    assert r["block"] and "detached" in r["reason"] and not (tmp_path / "attach.json").exists()
+    attach_id(tmp_path)
+
+    def down(ref):
+        raise CloudError("cloud unreachable: " + URL)
+    fc.task = down
+    cloud_hook.route("hello")
+    assert (tmp_path / "attach.json").exists()
+
+
+def test_cursor_serialization(fc, tmp_path, monkeypatch, capsys):
+    cursor = {"hook_event_name": "beforeSubmitPrompt"}
+    out = json.loads(run_main(monkeypatch, capsys, json.dumps({"prompt": ">> hi", **cursor})))
+    assert out == {"continue": False, "user_message": "\u2192 login_fix"}
+    attach_state(tmp_path)
+    out = json.loads(run_main(monkeypatch, capsys, json.dumps({"prompt": "\\explain", **cursor})))
+    assert out["continue"] is True and out["additional_context"].endswith("explain")
+    assert "hookSpecificOutput" not in out
+    out = json.loads(run_main(monkeypatch, capsys, json.dumps({"prompt": "\\explain"})))
+    assert "hookSpecificOutput" in out

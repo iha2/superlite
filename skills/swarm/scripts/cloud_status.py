@@ -35,6 +35,25 @@ def _side(settings: Path) -> Path:
     return settings.with_name(_PREV_NAME)
 
 
+def _memory(side: Path) -> dict | None:
+    try:
+        mem = json.loads(side.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return mem if isinstance(mem, dict) else None
+
+
+def _is_ours(cur: dict, mem: dict, command: str) -> bool:
+    """The statusLine is one of our wrappers: the new command, or the one the first install wrote."""
+    if cur.get("command") == command:
+        return True
+    try:
+        written = json.loads(mem.get("written") or "")["statusLine"]
+    except (ValueError, KeyError, TypeError):
+        return False
+    return isinstance(written, dict) and written.get("command") == cur.get("command")
+
+
 def install(settings: Path, command: str) -> None:
     """Point statusLine at command, remembering what was there. Calling it twice keeps the first memory."""
     settings = Path(settings)
@@ -44,7 +63,17 @@ def install(settings: Path, command: str) -> None:
     if not isinstance(data, dict):
         raise ValueError("settings.json is not an object")
     cur = data.get("statusLine")
+    mem = _memory(side)
     if isinstance(cur, dict) and cur.get("command") == command and side.exists():
+        return
+    if isinstance(cur, dict) and mem is not None and _is_ours(cur, mem, command):
+        if cur.get("command") != command:  # a newer plugin install: keep the original memory, update the command
+            data["statusLine"] = {"type": "command", "command": command}
+            out = (json.dumps(data, indent=2) + "\n").encode("utf-8")
+            # byte-identical restore only while settings.json is still as the first install left it
+            mem["written"] = out.decode("utf-8") if raw.decode("utf-8") == mem.get("written") else ""
+            side.write_text(json.dumps(mem), encoding="utf-8")
+            settings.write_bytes(out)
         return
     memory = {"existed": raw is not None, "orig": raw.decode("utf-8") if raw is not None else None,
               "had": "statusLine" in data, "prev": cur}
@@ -93,7 +122,7 @@ def _attached_name(client) -> str | None:
     live = cloud_hook.refresh_attached(client)
     if not live:
         return None
-    if live.get("status") in cloud_hook.ENDED:
+    if live.get("lost") or live.get("status") in cloud_hook.ENDED:
         cloud_hook.clear_attach()
         return None
     return live["run"]
@@ -153,8 +182,9 @@ def _maybe_sync(client, now=time.time, status: dict | None = None) -> None:
     # /api/status, never /api/tasks: the server marks notices seen on a tasks call.
     st = status if isinstance(status, dict) else client.status()
     runs = [{"owner": me.get("handle", ""), **r} for r in (st.get("runs") or []) if isinstance(r, dict)]
-    cloud_entries.sync(runs, _claude_home() / "skills", me.get("handle", ""),
-                       me.get("role") == "admin")
+    if me.get("role") == "admin":
+        return  # /api/status lists only the caller's live runs: syncing it would drop the entries of others' runs
+    cloud_entries.sync(runs, _claude_home() / "skills", me.get("handle", ""), False)
 
 
 def _make_client():

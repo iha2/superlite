@@ -27,6 +27,11 @@ def _label(run, me, admin):
     return None
 
 
+def ref_of(label: str) -> str:
+    """The API reference for an entry label: `chris.login_fix` is `chris/login_fix`. Names never hold a dot."""
+    return label.replace(".", "/", 1)
+
+
 def _desc(run):
     parts = [str(run.get("status", "")), f"step {run.get('step', '?')}", str(run.get("agent", ""))]
     return " · ".join(" ".join(p.split()) for p in parts if p)
@@ -35,7 +40,7 @@ def _desc(run):
 def _body(kind, label):
     verb = "Attach to" if kind == "attach" else "Watch"
     return (f"{verb} the live cloud run `{label}`. Run "
-            f"`superlite-cli cloud {kind} {label}` and report its output.\n")
+            f"`superlite-cli cloud {kind} {ref_of(label)}` and report its output.\n")
 
 
 def _owned(skills_dir):
