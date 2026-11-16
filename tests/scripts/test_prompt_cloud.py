@@ -3,11 +3,15 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
 
+_GIT_BASH = r"C:\Program Files\Git\bin\bash.exe"
+# A bare "bash" on Windows finds System32\bash.exe (WSL) first, so ask Git Bash by path.
+BASH = _GIT_BASH if os.name == "nt" and os.path.exists(_GIT_BASH) else shutil.which("bash")
 ROOT = Path(__file__).resolve().parents[2]
 HOOK = ROOT / "hooks" / "prompt"
 
@@ -32,7 +36,7 @@ def env(tmp_path):
 def call(env, proj, prompt, **extra):
     e = dict(env, **extra)
     data = json.dumps({"prompt": prompt, "cwd": str(proj), "session_id": "s1"})
-    return subprocess.run(["bash", str(HOOK)], input=data, capture_output=True, text=True, env=e, cwd=proj, timeout=60)
+    return subprocess.run([BASH, str(HOOK)], input=data, capture_output=True, text=True, env=e, cwd=proj, timeout=60)
 
 
 def hook_calls(log):

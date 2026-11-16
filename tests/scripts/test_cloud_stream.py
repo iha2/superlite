@@ -185,3 +185,14 @@ def test_keepalive_only_after_done_ends_within_grace(fake):
     assert [e["id"] for e in out] == [1]
     assert len(calls) == 1
     assert t[0] < 12  # stopped reading once the grace expired, not after all 50 keepalives
+
+
+def test_settled_marks_terminal_status_and_late_result():
+    st = {"last": 0, "fails": 0, "ended": False, "result": False, "deadline": 0.0}
+    assert cs._settled("status", {"to": "running"}, st, lambda: 10.0, 5.0) is False
+    assert cs._settled("result", {}, st, lambda: 10.0, 5.0) is False  # a plan result is not the end
+    assert cs._settled("status", {"to": "done"}, st, lambda: 10.0, 5.0) is False
+    assert st["ended"] and st["deadline"] == 15.0 and not st["result"]
+    assert cs._settled("result", {}, st, lambda: 11.0, 5.0) is True and st["result"]
+    emb = {"last": 0, "fails": 0, "ended": False, "result": False, "deadline": 0.0}
+    assert cs._settled("status", {"to": "done", "result": "PR"}, emb, lambda: 0.0, 5.0) is True and emb["result"]

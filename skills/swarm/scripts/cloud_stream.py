@@ -71,6 +71,20 @@ def _decode(fr: dict, last: int):
     return eid, data
 
 
+def _settled(kind: str, data, st: dict, clock, grace: float) -> bool:
+    """Update `st` for one yielded event; True when nothing more is worth waiting for."""
+    if kind == "result" and st["ended"]:
+        st["result"] = True
+        return True
+    if kind == "status" and isinstance(data, dict) and data.get("to") in TERMINAL:
+        st["ended"] = True  # the server closes after this; wait only `grace` for a trailing result
+        st["deadline"] = clock() + grace
+        if data.get("result"):
+            st["result"] = True  # the result is embedded: nothing more to wait for
+            return True
+    return False
+
+
 def _read(url: str, token: str, ref: str, st: dict, clock=time.monotonic, grace: float = 5.0) -> Iterator[dict]:
     """Yield the new events of one connection, keeping `st` (last id, fails, ended) current.
 
@@ -88,15 +102,8 @@ def _read(url: str, token: str, ref: str, st: dict, clock=time.monotonic, grace:
             eid, data = got
             st["last"], st["fails"] = eid, 0
             yield {"id": eid, "kind": fr["event"], "data": data}
-            if fr["event"] == "result" and st["ended"]:
-                st["result"] = True
+            if _settled(fr["event"], data, st, clock, grace):
                 return
-            if fr["event"] == "status" and isinstance(data, dict) and data.get("to") in TERMINAL:
-                st["ended"] = True  # the server closes after this; wait only `grace` for a trailing result
-                st["deadline"] = clock() + grace
-                if data.get("result"):
-                    st["result"] = True  # the result is embedded: nothing more to wait for
-                    return
 
 
 def _http_failure(e: urllib.error.HTTPError, ref: str, token: str) -> None:

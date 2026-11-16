@@ -4,6 +4,7 @@ from __future__ import annotations
 import ast
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -13,6 +14,9 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import cloud_fake  # noqa: E402
 
+_GIT_BASH = r"C:\Program Files\Git\bin\bash.exe"
+# A bare "bash" on Windows finds System32\bash.exe (WSL) first, so ask Git Bash by path.
+BASH = _GIT_BASH if os.name == "nt" and os.path.exists(_GIT_BASH) else shutil.which("bash")
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "skills" / "swarm" / "scripts"
 CLI = SCRIPTS / "superlite-cli"
@@ -62,7 +66,7 @@ def world(tmp_path):
 
 
 def cli(env, proj, *args, stdin=None):
-    return subprocess.run(["bash", str(CLI), "cloud", *args], capture_output=True, text=True, env=env,
+    return subprocess.run([BASH, str(CLI), "cloud", *args], capture_output=True, text=True, env=env,
                           cwd=proj, timeout=30, input=stdin if stdin is not None else "")
 
 
@@ -74,7 +78,7 @@ def login(env, proj, url):
 
 def hook(env, proj, prompt):
     data = json.dumps({"prompt": prompt, "cwd": str(proj), "session_id": "s1"})
-    return subprocess.run(["bash", str(HOOK)], input=data, capture_output=True, text=True, env=env,
+    return subprocess.run([BASH, str(HOOK)], input=data, capture_output=True, text=True, env=env,
                           cwd=proj, timeout=30)
 
 

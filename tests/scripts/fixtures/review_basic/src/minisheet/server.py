@@ -24,9 +24,9 @@ def create_server(wb: Workbook, port: int = 0) -> HTTPServer:
             self.wfile.write(body)
 
         def do_POST(self):
+            raw = self.rfile.read(int(self.headers.get("Content-Length") or 0))  # always drain: an unread body RSTs on Windows
             if self.path == "/api/cells":
-                n = int(self.headers.get("Content-Length") or 0)
-                data = json.loads(self.rfile.read(n) or b"{}")
+                data = json.loads(raw or b"{}")
                 changed = wb.set(data["ref"], data["raw"])
                 self._send(200, {"cells": {r: wb.get(r) for r in changed}})
             else:
