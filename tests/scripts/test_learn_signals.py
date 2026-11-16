@@ -144,3 +144,29 @@ def test_outbox_run_is_opaque_and_stable():
     again = sig.outbox_row("model-mismatch", "/my/repo", "2026-11-13", "4.1.0", run=rid, requested="a", ran="b")
     assert again["run"] == row["run"] and len(row["run"]) == 16
     assert sig.outbox_row("hook-block", "/my/repo", "d", "v", run=rid + "-2")["run"] != row["run"]
+
+
+def test_row_fields_contains_outbox_fields():
+    assert set(sig.OUTBOX_FIELDS) <= set(sig.ROW_FIELDS)
+    assert {"v", "date", "repo", "superlite", "signal"} <= set(sig.ROW_FIELDS)
+
+
+def test_accept_row_accepts_outbox_row():
+    row = sig.outbox_row("hook-block", "/r", "2026-11-12", "4.1.0", run="r1", tool="Bash", count=2,
+                         requested="a", ran="b", id="x")
+    assert sig.accept_row(row) is row
+
+
+def test_accept_row_rejects_unlisted_fields():
+    import pytest
+    for bad in ({"file": "a.py"}, {"text": "secret"}):
+        with pytest.raises(ValueError, match="fields not allowed"):
+            sig.accept_row({"v": 1, **bad})
+    with pytest.raises(ValueError, match=r"\['file', 'text'\]"):
+        sig.accept_row({"file": "a", "text": "b"})
+
+
+def test_accept_row_rejects_non_dict():
+    import pytest
+    with pytest.raises(ValueError):
+        sig.accept_row(["v"])
