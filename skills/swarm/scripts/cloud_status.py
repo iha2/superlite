@@ -45,7 +45,7 @@ def _memory(side: Path) -> dict | None:
 
 def _is_ours(cur: dict, mem: dict, command: str) -> bool:
     """The statusLine is one of our wrappers: the new command, or the one the first install wrote."""
-    if cur.get("command") == command:
+    if cur.get("command") and cur.get("command") in (command, mem.get("command")):
         return True
     try:
         written = json.loads(mem.get("written") or "")["statusLine"]
@@ -72,6 +72,7 @@ def install(settings: Path, command: str) -> None:
             out = (json.dumps(data, indent=2) + "\n").encode("utf-8")
             # byte-identical restore only while settings.json is still as the first install left it
             mem["written"] = out.decode("utf-8") if raw.decode("utf-8") == mem.get("written") else ""
+            mem["command"] = command  # the wrapper now installed, whether or not the bytes can be restored
             side.write_text(json.dumps(mem), encoding="utf-8")
             settings.write_bytes(out)
         return
@@ -80,6 +81,7 @@ def install(settings: Path, command: str) -> None:
     data["statusLine"] = {"type": "command", "command": command}
     out = (json.dumps(data, indent=2) + "\n").encode("utf-8")
     memory["written"] = out.decode("utf-8")
+    memory["command"] = command
     side.parent.mkdir(parents=True, exist_ok=True)
     side.write_text(json.dumps(memory), encoding="utf-8")
     settings.write_bytes(out)

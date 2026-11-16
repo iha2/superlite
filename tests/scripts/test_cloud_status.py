@@ -238,3 +238,21 @@ def test_attached_ended_falls_back_and_detaches(env, monkeypatch, capsys):
     _attached_client(monkeypatch, {"id": "t_9", "name": "login_fix", "status": "failed"})
     assert _run_main(monkeypatch, capsys) == ""
     assert not (env / "sl" / "attach.json").exists()
+
+
+def test_upgrade_after_user_edit_then_upgrade_again_keeps_original_prev(env):
+    s = env / "ch" / "settings.json"
+    s.write_bytes(b'{"statusLine": {"type":"command","command":"echo hi"}}')
+    cmd_a, cmd_b, cmd_c = (f'bash "/{x}/superlite-cli" cloud statusline' for x in "abc")
+    cloud_status.install(s, cmd_a)
+    d = json.loads(s.read_text())
+    d["other"] = 2
+    s.write_text(json.dumps(d))
+    cloud_status.install(s, cmd_b)
+    cloud_status.install(s, cmd_c)
+    mem = json.loads((env / "ch" / "superlite-statusline-prev.json").read_text())
+    assert mem["prev"]["command"] == "echo hi"
+    assert json.loads(s.read_text())["statusLine"]["command"] == cmd_c
+    cloud_status.restore(s)
+    d = json.loads(s.read_text())
+    assert d["other"] == 2 and d["statusLine"]["command"] == "echo hi"
