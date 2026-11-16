@@ -121,7 +121,8 @@ def _give(args) -> int:
     except cloud_client.CloudError as e:
         _err(f"error: {e}", cfg["token"])
         return 1
-    print(f"gave {t.get('name', args.ref)} to {t.get('owner', args.email)}")
+    import cloud_hook
+    print(cloud_hook.give_line(t, args.ref, args.email))
     return 0
 
 

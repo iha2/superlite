@@ -72,3 +72,8 @@ def test_not_logged_in(capsys):
 def test_result_event_rendered():
     assert cloud_watch.render({"kind": "result", "data": {"text": "PR opened"}}) == "result: PR opened"
     assert cloud_watch.render({"kind": "result", "data": {}}) is None
+
+
+def test_nudge_renders_sender():
+    assert R({"kind": "nudge", "data": {"by": "chris", "text": "run the tests"}}) == "nudge from chris: run the tests"
+    assert R({"kind": "nudge", "data": {"text": "run the tests"}}) == "run the tests"

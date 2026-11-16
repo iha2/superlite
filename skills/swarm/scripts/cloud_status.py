@@ -87,20 +87,24 @@ def restore(settings: Path) -> None:
     side.unlink(missing_ok=True)
 
 
-def _attached() -> str | None:
-    try:
-        d = json.loads((_home() / "attach.json").read_text(encoding="utf-8"))
-        return d.get("run") or None
-    except (OSError, ValueError, AttributeError):
+def _attached_name(client) -> str | None:
+    """The attached run's current name, or None when nothing is attached or the run has ended (then detach)."""
+    import cloud_hook
+    live = cloud_hook.refresh_attached(client)
+    if not live:
         return None
+    if live.get("status") in cloud_hook.ENDED:
+        cloud_hook.clear_attach()
+        return None
+    return live["run"]
 
 
 def segment(status: dict, attached: str | None = None) -> str:
+    new = next((f"new: {n.get('text', '')}" for n in status.get("notices") or [] if not n.get("seen")), "")
     if attached:
-        return f"ATTACHED {attached}"
-    for n in status.get("notices") or []:
-        if not n.get("seen"):
-            return f"new: {n.get('text', '')}"
+        return f"ATTACHED {attached} · {new}" if new else f"ATTACHED {attached}"
+    if new:
+        return new
     runs = status.get("runs") or []
     for r in runs:
         ev = r.get("last_event") or {}
@@ -173,7 +177,7 @@ def main(argv: list[str] | None = None) -> int:
         client = _make_client()
         if client is not None:
             st = client.status()
-            seg = segment(st, _attached())
+            seg = segment(st, _attached_name(client))
             try:
                 _maybe_sync(client, status=st)
             except Exception:

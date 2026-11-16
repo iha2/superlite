@@ -54,7 +54,15 @@ class FakeClient:
 
     def give(self, ref, email):
         self.calls.append(("give", ref, email))
-        return {"id": "t_1", "name": ref, "owner": "pat", "status": "running"}
+        return {"id": "t_1", "name": ref, "owner": "pat", "status": "running",
+                "to_handle": "pat", "to_email": email}
+
+    def task(self, ref):
+        self.calls.append(("task", ref))
+        for r in self.runs_data:
+            if r.get("id") == ref:
+                return dict(r)
+        raise CloudError("not found")
 
 
 @pytest.fixture
@@ -199,3 +207,45 @@ def test_dead_cloud_attached_line_blocks(fc, tmp_path, monkeypatch):
     monkeypatch.setattr(fc, "runs", lambda all=False: (_ for _ in ()).throw(CloudError("cloud unreachable")))
     out = cloud_hook.route("yes")
     assert out and out["block"] and "unreachable" in out["reason"]
+
+
+def test_give_line(fc):
+    r = cloud_hook.route("/superlite:give gift pat@example.com")
+    assert r["reason"] == "gift given to pat (pat@example.com)"
+    assert cloud_hook.give_line({"name": "gift"}, "gift", "p@x.io") == "gift given to p@x.io"
+
+
+def attach_id(tmp_path, name="login_fix", id_="t_9"):
+    (tmp_path / "attach.json").write_text(json.dumps({"run": name, "id": id_}))
+
+
+def test_attached_routes_by_id_and_follows_rename(fc, tmp_path):
+    fc.runs_data = [{"id": "t_9", "name": "login_fix_2", "status": "running"},
+                    {"id": "t_1", "name": "login_fix", "status": "failed"}]
+    attach_id(tmp_path)
+    assert cloud_hook.route("yes")["reason"] == "\u2192 login_fix_2"
+    assert ("nudge", "t_9", "yes") in fc.calls
+    assert json.loads((tmp_path / "attach.json").read_text()) == {"run": "login_fix_2", "id": "t_9"}
+    assert cloud_hook.route(">> hi") == {"block": True, "reason": "\u2192 login_fix_2"}
+    assert ("nudge", "t_9", "hi") in fc.calls
+    cloud_hook.route("/approve")
+    assert ("respond", "t_9", "approve") in fc.calls
+    cloud_hook.route("/cancel")
+    assert ("cancel", "t_9") in fc.calls
+
+
+def test_attached_run_ended_detaches_and_passes(fc, tmp_path):
+    fc.runs_data = [{"id": "t_9", "name": "login_fix", "status": "failed"}]
+    attach_id(tmp_path)
+    r = cloud_hook.route("next thing")
+    assert r == {"context": "login_fix has ended; detached"}
+    assert not (tmp_path / "attach.json").exists()
+    assert cloud_hook.route("again") is None
+
+
+def test_main_ended_adds_context(fc, tmp_path, monkeypatch, capsys):
+    fc.runs_data = [{"id": "t_9", "name": "login_fix", "status": "done"}]
+    attach_id(tmp_path)
+    out = json.loads(run_main(monkeypatch, capsys, json.dumps({"prompt": "go on"})))
+    assert out["hookSpecificOutput"]["additionalContext"] == "login_fix has ended; detached"
+    assert "decision" not in out

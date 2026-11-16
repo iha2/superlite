@@ -33,7 +33,8 @@ class FakeClient:
 
     def give(self, ref, email):
         FakeClient.calls.append(("give", ref, email))
-        return {"id": "t_1", "name": ref, "owner": "pat", "status": "running"}
+        return {"id": "t_1", "name": ref, "owner": "m_a3374cec", "status": "running",
+                "to_handle": "pat", "to_email": email}
 
 
 @pytest.fixture(autouse=True)
@@ -132,7 +133,7 @@ def test_give(capsys):
     capsys.readouterr()
     assert cloud.main(["give", "login_fix", "pat@example.com"]) == 0
     assert ("give", "login_fix", "pat@example.com") in FakeClient.calls
-    assert "pat" in capsys.readouterr().out
+    assert capsys.readouterr().out.strip() == "login_fix given to pat (pat@example.com)"
 
 
 def test_not_logged_in(capsys):

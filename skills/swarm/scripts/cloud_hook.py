@@ -40,11 +40,60 @@ def _sh(cmd: list[str]):
     return subprocess.run(cmd, capture_output=True, text=True, timeout=10)
 
 
-def _attached() -> str | None:
+def _attach_state() -> dict:
     try:
-        return json.loads((_home() / "attach.json").read_text(encoding="utf-8")).get("run") or None
-    except (OSError, ValueError, AttributeError):
+        d = json.loads((_home() / "attach.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return d if isinstance(d, dict) and d.get("run") else {}
+
+
+def _attached() -> str | None:
+    return _attach_state().get("run") or None
+
+
+def clear_attach() -> None:
+    try:
+        (_home() / "attach.json").unlink()
+    except OSError:
+        pass
+
+
+def refresh_attached(client) -> dict | None:
+    """The attached run as {run, id, status}, its name refreshed from the server (a hand-back renames it).
+
+    Looks the run up by id with GET /api/tasks/{id}, which never marks notices seen. status is None when
+    there is no id or the lookup failed; the stored name is kept then.
+    """
+    st = _attach_state()
+    if not st:
         return None
+    out = {"run": st["run"], "id": st.get("id"), "status": None}
+    if not out["id"]:
+        return out
+    try:
+        t = client.task(out["id"])
+    except (CloudError, AttributeError):
+        return out
+    if isinstance(t, dict):
+        out["status"] = t.get("status")
+        name = t.get("name")
+        if name and name != out["run"]:
+            out["run"] = name
+            try:
+                (_home() / "attach.json").write_text(json.dumps({"run": name, "id": out["id"]}), encoding="utf-8")
+            except OSError:
+                pass
+    return out
+
+
+def give_line(out: dict, ref: str, email: str) -> str:
+    """"<name> given to <handle> (<email>)"; just the email when the server sent no to_handle."""
+    out = out if isinstance(out, dict) else {}
+    name = out.get("name") or ref
+    to = out.get("to_email") or email
+    handle = out.get("to_handle")
+    return f"{name} given to {handle} ({to})" if handle else f"{name} given to {to}"
 
 
 def _block(reason: str) -> dict:
@@ -59,14 +108,14 @@ def _newest_running(client) -> str | None:
     return max(enumerate(mine), key=lambda p: (p[1].get("started") or p[1].get("created") or 0, p[0]))[1]["name"]
 
 
-def _send(client, verb: str, ref: str, *args) -> dict:
+def _send(client, verb: str, ref: str, *args, label: str | None = None) -> dict:
     try:
         getattr(client, verb)(ref, *args)
     except CloudError as e:
         msg = str(e)
         tok = getattr(client, "_token", "")
         return _block(f"{verb} not sent: {msg.replace(tok, '***') if tok else msg}")
-    return _block(f"→ {ref}")
+    return _block(f"→ {label or ref}")
 
 
 def _status_of(client, ref: str) -> str | None:
@@ -97,24 +146,25 @@ def _split_ref(client, rest: str) -> tuple[str | None, str]:
     return None, rest
 
 
-def _nudge_prefix(client, rest: str, current: str | None) -> dict:
+def _nudge_prefix(client, rest: str, current: str | None, label: str | None = None) -> dict:
     ref, rest = _split_ref(client, rest)
     text = rest.strip()
-    ref = ref or current or _newest_running(client)
+    if ref is None and current:
+        ref = current
+    else:
+        label = None
+        ref = ref or _newest_running(client)
     if not ref:
         return _block("no run to nudge: attach one with /superlite:attach <run>")
     if not text:
         return _block("nothing to send: write the message after >>")
-    return _send(client, "nudge", ref, text)
+    return _send(client, "nudge", ref, text, label=label)
 
 
 def _slash(client, verb: str, arg: str) -> dict:
     arg = (arg or "").strip()
     if verb == "detach":
-        try:
-            (_home() / "attach.json").unlink()
-        except OSError:
-            pass
+        clear_attach()
         return _block("detached")
     if verb == "runs":
         runs = client.runs()
@@ -125,7 +175,7 @@ def _slash(client, verb: str, arg: str) -> dict:
         if not ref or not email.strip():
             return _block("usage: /superlite:give <run> <email>")
         out = client.give(ref, email.strip())
-        return _block(f"gave {out.get('name', ref)} to {out.get('owner', email.strip())}")
+        return _block(give_line(out, ref, email.strip()))
     if not arg:
         return _block(f"usage: /superlite:{verb} <run>")
     if verb == "watch":
@@ -175,23 +225,31 @@ def _route(client, prompt: str, current: str | None) -> dict | None:
     if m:
         verb, arg = m.group(1), m.group(2) or ""
         return _slash(client, verb, arg)
-    cur = current or attached
+    live = None  # the attached run, name refreshed; its id is the routing ref when known
+    if attached and (text.startswith(">>") or text and (not text.startswith("/") or text in ("/cancel", "/approve"))):
+        live = refresh_attached(client)
+        attached = live["run"] if live else attached
+    ref = (live or {}).get("id") or attached
+    cur = current or ref
     if text.startswith(">>"):
-        return _nudge_prefix(client, text[2:], cur)
+        return _nudge_prefix(client, text[2:], cur, attached if cur == ref else None)
     if not attached or not text or text.startswith("/") and text not in ("/cancel", "/approve"):
         return None
     if text == "/cancel":
         try:
-            client.cancel(attached)
+            client.cancel(ref)
         except CloudError as e:
             return _block(f"cancel not sent: {e}")
         return _block(f"cancelled {attached}")
     if text == "/approve":
-        return _send(client, "respond", attached, "approve")
-    status = _status_of(client, attached)
+        return _send(client, "respond", ref, "approve", label=attached)
+    status = live.get("status") if live else None
+    if status is None:
+        status = _status_of(client, attached)
     if status in ENDED:
-        return _block(f"{attached} has ended")
-    return _send(client, "nudge" if status == "running" else "respond", attached, text)
+        clear_attach()
+        return {"context": f"{attached} has ended; detached"}
+    return _send(client, "nudge" if status == "running" else "respond", ref, text, label=attached)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -202,6 +260,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if res.get("block"):
             print(json.dumps({"decision": "block", "reason": res["reason"]}))
+        elif "context" in res:
+            print(json.dumps({"hookSpecificOutput": {
+                "hookEventName": "UserPromptSubmit", "additionalContext": res["context"]}}))
         elif "pass" in res:
             print(json.dumps({"hookSpecificOutput": {
                 "hookEventName": "UserPromptSubmit",

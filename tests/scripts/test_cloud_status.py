@@ -133,3 +133,45 @@ def test_sync_uses_status_runs_not_tasks(env, monkeypatch, capsys):
     assert len(calls) == 1
     synced = calls[0][0]
     assert [r["name"] for r in synced] == ["login_fix"] and synced[0]["owner"] == "chris"
+
+
+def test_attached_shows_new_notice():
+    st = {"runs": [], "notices": [{"id": 3, "text": "gift from pat", "seen": 0}]}
+    assert cloud_status.segment(st, attached="login_fix") == "ATTACHED login_fix · new: gift from pat"
+    st["notices"][0]["seen"] = 1
+    assert cloud_status.segment(st, attached="login_fix") == "ATTACHED login_fix"
+
+
+def _attached_client(monkeypatch, task):
+    calls = _fake_client(monkeypatch, {"runs": [], "notices": []})
+    seen = []
+
+    class C:
+        def status(self):
+            return {"runs": [], "notices": []}
+
+        def me(self):
+            return {"handle": "chris", "role": "member"}
+
+        def task(self, ref):
+            seen.append(ref)
+            return task
+    monkeypatch.setattr(cloud_status, "_make_client", lambda: C())
+    return seen
+
+
+def test_attached_name_follows_rename(env, monkeypatch, capsys):
+    (env / "sl").mkdir()
+    (env / "sl" / "attach.json").write_text(json.dumps({"run": "login_fix", "id": "t_9"}))
+    seen = _attached_client(monkeypatch, {"id": "t_9", "name": "login_fix_2", "status": "running"})
+    assert _run_main(monkeypatch, capsys) == "ATTACHED login_fix_2"
+    assert seen == ["t_9"]
+    assert json.loads((env / "sl" / "attach.json").read_text())["run"] == "login_fix_2"
+
+
+def test_attached_ended_falls_back_and_detaches(env, monkeypatch, capsys):
+    (env / "sl").mkdir()
+    (env / "sl" / "attach.json").write_text(json.dumps({"run": "login_fix", "id": "t_9"}))
+    _attached_client(monkeypatch, {"id": "t_9", "name": "login_fix", "status": "failed"})
+    assert _run_main(monkeypatch, capsys) == ""
+    assert not (env / "sl" / "attach.json").exists()

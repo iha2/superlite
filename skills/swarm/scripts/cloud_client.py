@@ -79,5 +79,9 @@ class Client:
     def cancel(self, ref: str) -> None:
         self._call("POST", self._task(ref, "/cancel"), {}, ref)
 
+    def task(self, ref: str) -> dict:
+        """GET /api/tasks/{ref}: one run by name or id. Unlike the list call it does not mark notices seen."""
+        return self._call("GET", self._task(ref), None, ref)
+
     def attach(self, ref: str) -> dict:
         return self._call("GET", self._task(ref, "/attach", "runs"), None, ref)

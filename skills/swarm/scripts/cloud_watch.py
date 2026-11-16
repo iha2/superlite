@@ -38,7 +38,11 @@ def render(event: dict) -> str | None:
     d = d if isinstance(d, dict) else {}
     kind = event.get("kind")
     if kind == "nudge":
-        return clean(d.get("text")) or None
+        text = clean(d.get("text"))
+        if not text:
+            return None
+        by = clean(d.get("by")) if d.get("by") else ""
+        return f"nudge from {by}: {text}" if by else text
     if kind == "rename":
         return f"renamed {clean(d.get('from'))} to {clean(d.get('to'))}: {clean(d.get('why'))}"
     if kind == "given":
