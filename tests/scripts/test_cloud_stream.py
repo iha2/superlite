@@ -96,7 +96,6 @@ def test_stops_on_terminal(fake):
     fake[1].append(frame(1, data='{"to": "done"}') + frame(2))
     assert [e["id"] for e in run()] == [1, 2]  # rest of the open connection is drained
     assert len(fake[0]) == 1
-    assert len(fake[0]) == 1
 
 
 def test_404_raises(fake):
@@ -127,3 +126,62 @@ def test_terminal_without_result_does_not_reconnect(fake):
     queue.append(frame(1, data='{"run": "login_fix", "to": "failed"}'))
     assert len(run()) == 1
     assert len(calls) == 1
+
+
+def test_result_then_waiting_keeps_reading(fake):
+    calls, queue = fake
+    queue.append(frame(1) + frame(2, kind="result", data='{"text": "the plan"}')
+                 + frame(3, data='{"run": "login_fix", "to": "waiting"}')
+                 + frame(4, data='{"run": "login_fix", "to": "running"}')
+                 + frame(5, data='{"run": "login_fix", "to": "done"}'))
+    out = run()
+    assert [e["id"] for e in out] == [1, 2, 3, 4, 5]
+    assert len(calls) == 1
+
+
+def test_result_then_done_ends_after_done(fake):
+    calls, queue = fake
+    queue.append(frame(1, kind="result", data='{"text": "ok"}')
+                 + frame(2, data='{"run": "login_fix", "to": "done"}') + frame(3, kind="log"))
+    clock = iter([0, 99, 99])  # the grace has expired by the frame after done
+    out = run(clock=lambda: next(clock), grace=5)
+    assert [e["id"] for e in out] == [1, 2]
+    assert len(calls) == 1
+
+
+def test_embedded_result_ends_immediately(fake):
+    fake[1].append(frame(1, data='{"to": "done", "result": "PR"}') + frame(2, kind="result", data='{"text": "x"}'))
+    assert [e["id"] for e in run()] == [1]
+
+
+def test_done_then_result_within_grace(fake):
+    clock = iter([0, 1, 2, 3])
+    fake[1].append(frame(1, data='{"to": "done"}') + b": keepalive\n\n" + frame(2, kind="result", data='{"text": "late"}'))
+    out = run(clock=lambda: next(clock), grace=5)
+    assert [(e["id"], e["kind"]) for e in out] == [(1, "status"), (2, "result")]
+
+
+def test_disconnect_mid_run_reconnects(fake):
+    calls, q = fake
+    q.append(frame(1, kind="result", data='{"text": "plan"}') + frame(2, data='{"to": "waiting"}'))
+    q.append(urllib.error.URLError("drop"))
+    q.append(frame(3, data='{"to": "done"}'))
+    out = run()
+    assert [e["id"] for e in out] == [1, 2, 3]
+    assert len(calls) == 3
+    assert calls[2].get_header("Last-event-id") == "2"
+
+
+def test_keepalive_only_after_done_ends_within_grace(fake):
+    calls, q = fake
+    t = [0.0]
+
+    def clock():
+        t[0] += 1
+        return t[0]
+
+    q.append(frame(1, data='{"to": "done"}') + b": ka\n\n" * 50)
+    out = run(clock=clock, grace=5)
+    assert [e["id"] for e in out] == [1]
+    assert len(calls) == 1
+    assert t[0] < 12  # stopped reading once the grace expired, not after all 50 keepalives

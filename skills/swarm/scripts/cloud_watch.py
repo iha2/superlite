@@ -79,6 +79,20 @@ def _read_input(client, ref: str) -> None:
             print(clean(e), file=sys.stderr, flush=True)
 
 
+def _is_terminal(ev) -> bool:
+    d = ev.get("data") if isinstance(ev, dict) else None
+    return isinstance(d, dict) and ev.get("kind") == "status" and d.get("to") in TERMINAL
+
+
+def _finished(ev, terminal_seen: bool) -> bool:
+    """True when nothing more is worth waiting for: a terminal status that embeds its result, or a result after one.
+
+    A bare terminal status is not final: the stream (bounded by its grace period) may still deliver the result."""
+    if _is_terminal(ev):
+        return bool(ev["data"].get("result"))
+    return terminal_seen and isinstance(ev, dict) and ev.get("kind") == "result"
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="cloud watch")
     p.add_argument("ref")
@@ -90,15 +104,15 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     client = cloud_client.Client(cfg["url"], cfg["token"])
     threading.Thread(target=_read_input, args=(client, a.ref), daemon=True).start()
+    terminal = False
     try:
         for ev in cloud_stream.events(cfg["url"], cfg["token"], a.ref, after=a.after):
             line = render(ev)
             if line:
                 print(line, flush=True)
-            d = ev.get("data") if isinstance(ev, dict) else None
-            if isinstance(ev, dict) and ev.get("kind") == "status" and isinstance(d, dict) \
-                    and d.get("to") in TERMINAL:
+            if _finished(ev, terminal):
                 return 0
+            terminal = terminal or _is_terminal(ev)
     except cloud_client.CloudError as e:
         print(clean(str(e).replace(cfg["token"], "***")), file=sys.stderr)
         return 1

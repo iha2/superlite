@@ -77,3 +77,28 @@ def test_result_event_rendered():
 def test_nudge_renders_sender():
     assert R({"kind": "nudge", "data": {"by": "chris", "text": "run the tests"}}) == "nudge from chris: run the tests"
     assert R({"kind": "nudge", "data": {"text": "run the tests"}}) == "run the tests"
+
+
+def _ev(i, kind, **d):
+    return {"id": i, "kind": kind, "data": d}
+
+
+def test_result_then_waiting_keeps_watching(capsys):
+    rc, out = _run([_ev(1, "result", text="the plan"), _ev(2, "status", run="login_fix", to="waiting"),
+                    _ev(3, "nudge", by="chris", text="still here")], capsys)
+    assert rc == 0
+    assert "result: the plan" in out and "login_fix waiting" in out and "still here" in out
+
+
+def test_result_then_done_exits_after_done(capsys):
+    rc, out = _run([_ev(1, "result", text="ok"), _ev(2, "status", run="login_fix", to="done"),
+                    _ev(3, "nudge", text="shown while waiting for a late result")], capsys)
+    assert "result: ok" in out and "login_fix done" in out
+    assert "shown while waiting" in out  # bare terminal status: keep reading within the stream's grace
+
+
+def test_done_then_result_printed_then_exits(capsys):
+    rc, out = _run([_ev(1, "status", run="login_fix", to="done"), _ev(2, "result", text="late"),
+                    _ev(3, "nudge", text="never shown")], capsys)
+    assert rc == 0
+    assert "result: late" in out and "never shown" not in out

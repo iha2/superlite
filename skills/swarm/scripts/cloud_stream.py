@@ -19,7 +19,7 @@ TERMINAL = ("done", "failed", "cancelled")
 
 
 def _frames(lines) -> Iterator[dict]:
-    """Yield {"id", "event", "data"} per SSE frame; comment lines are keepalives."""
+    """Yield {"id", "event", "data"} per SSE frame; a comment line yields {"keepalive": True}."""
     fid, ev, data = None, "message", []
     for raw in lines:
         line = raw.decode("utf-8", "replace").rstrip("\r\n")
@@ -28,7 +28,7 @@ def _frames(lines) -> Iterator[dict]:
                 yield {"id": fid, "event": ev, "data": "\n".join(data)}
             fid, ev, data = None, "message", []
         elif line.startswith(":"):
-            continue
+            yield {"keepalive": True}
         else:
             name, _, val = line.partition(":")
             val = val[1:] if val.startswith(" ") else val
@@ -71,21 +71,32 @@ def _decode(fr: dict, last: int):
     return eid, data
 
 
-def _read(url: str, token: str, ref: str, st: dict) -> Iterator[dict]:
-    """Yield the new events of one connection, keeping `st` (last id, fails, ended) current; a result ends the run."""
+def _read(url: str, token: str, ref: str, st: dict, clock=time.monotonic, grace: float = 5.0) -> Iterator[dict]:
+    """Yield the new events of one connection, keeping `st` (last id, fails, ended) current.
+
+    A result is not the end of a run (a plan result precedes `waiting`, the final result precedes `done`);
+    only a terminal status ends it. After one, a late result is still yielded within `grace` seconds."""
     with _open(url, token, ref, st["last"]) as r:
         for fr in _frames(r):
+            if st["ended"] and clock() >= st["deadline"]:
+                return
+            if fr.get("keepalive"):
+                continue
             got = _decode(fr, st["last"])
             if got is None:
                 continue
             eid, data = got
             st["last"], st["fails"] = eid, 0
             yield {"id": eid, "kind": fr["event"], "data": data}
-            if fr["event"] == "result":
+            if fr["event"] == "result" and st["ended"]:
                 st["result"] = True
                 return
             if fr["event"] == "status" and isinstance(data, dict) and data.get("to") in TERMINAL:
-                st["ended"] = True  # keep draining this connection for a trailing result; never reconnect
+                st["ended"] = True  # the server closes after this; wait only `grace` for a trailing result
+                st["deadline"] = clock() + grace
+                if data.get("result"):
+                    st["result"] = True  # the result is embedded: nothing more to wait for
+                    return
 
 
 def _http_failure(e: urllib.error.HTTPError, ref: str, token: str) -> None:
@@ -96,11 +107,12 @@ def _http_failure(e: urllib.error.HTTPError, ref: str, token: str) -> None:
         raise CloudError(_scrub(f"{ref}: HTTP {e.code}", token)) from None
 
 
-def events(url: str, token: str, ref: str, after: int = 0, sleep=time.sleep, max_retries: int = 8) -> Iterator[dict]:
-    st = {"last": after, "fails": 0, "ended": False, "result": False}
+def events(url: str, token: str, ref: str, after: int = 0, sleep=time.sleep, max_retries: int = 8,
+           clock=time.monotonic, grace: float = 5.0) -> Iterator[dict]:
+    st = {"last": after, "fails": 0, "ended": False, "result": False, "deadline": 0.0}
     while True:
         try:
-            yield from _read(url, token, ref, st)
+            yield from _read(url, token, ref, st, clock, grace)
             if st["result"] or st["ended"]:
                 return
         except urllib.error.HTTPError as e:
