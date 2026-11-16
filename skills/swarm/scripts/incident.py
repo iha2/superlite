@@ -20,7 +20,7 @@ MAX_CONTEXT = 200
 if os.name == "nt":
     import msvcrt
 
-    def _lock(f):
+    def _lock(f, shared=False):  # msvcrt has no shared mode: readers lock exclusively too
         f.seek(0)
         while True:
             try:
@@ -35,8 +35,8 @@ if os.name == "nt":
 else:
     import fcntl
 
-    def _lock(f):
-        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+    def _lock(f, shared=False):
+        fcntl.flock(f.fileno(), fcntl.LOCK_SH if shared else fcntl.LOCK_EX)
 
     def _unlock(f):
         fcntl.flock(f.fileno(), fcntl.LOCK_UN)
@@ -155,23 +155,34 @@ def cmd_resolve(a):  # O(B) + one temp write, replace and fsync under the lock
     return 0
 
 
+def read_text(log):  # O(B), one shared lock: never sees a half-done append or in-place rewrite
+    """The log's text ("" when missing), read under the same interprocess lock every writer takes."""
+    try:
+        f = open(log, "rb")
+    except FileNotFoundError:
+        return ""
+    with f:
+        _lock(f, shared=True)
+        try:
+            data = f.read()
+        finally:
+            _unlock(f)
+    return data.decode("utf-8", errors="replace")
+
+
 def read_all(log):  # O(B)
     """Every JSON object row of the log, hook rows (no file/line) included."""
-    path = Path(log)
-    if not path.exists():
-        return []
     out = []
-    with open(path, encoding="utf-8") as f:
-        for ln in f:
-            ln = ln.strip()
-            if not ln:
-                continue
-            try:
-                e = json.loads(ln)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(e, dict):
-                out.append(e)
+    for ln in read_text(log).splitlines():
+        ln = ln.strip()
+        if not ln:
+            continue
+        try:
+            e = json.loads(ln)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(e, dict):
+            out.append(e)
     return out
 
 

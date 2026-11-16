@@ -81,3 +81,59 @@ def test_resolve_keeps_inode(tmp_path):
     assert resolve(log, "src/a.py", 5).returncode == 0
     assert log.stat().st_ino == before
     assert rows(log)[0]["resolution"] == "fixed"
+
+
+def test_readers_wait_for_the_writer_lock(tmp_path):
+    """read_all and review_packet.read_incidents take the lock every writer holds."""
+    import threading
+    import time
+    sys.path.insert(0, str(SCRIPT.parent))
+    import incident
+    import review_packet
+    log = tmp_path / "i.jsonl"
+    incident.append(str(log), [incident.make_entry("a.py", 1, "c")])
+    seen = {}
+    with open(log, "r+b") as f:
+        incident._lock(f)  # a writer mid in-place rewrite
+        try:
+            f.truncate(5)  # inconsistent on-disk state a lockless reader would parse
+            ts = [threading.Thread(target=lambda k=k, fn=fn: seen.__setitem__(k, fn(log)))
+                  for k, fn in (("all", incident.read_all), ("packet", review_packet.read_incidents))]
+            for t in ts:
+                t.start()
+            time.sleep(0.3)
+            assert seen == {}, "readers must block while a writer holds the lock"
+            f.seek(0)
+            f.write(b'{"file": "a.py", "line": 1, "context": "c"}\n')
+            f.truncate()
+            f.flush()
+        finally:
+            incident._unlock(f)
+    for t in ts:
+        t.join(5)
+    assert [len(seen["all"]), len(seen["packet"])] == [1, 1]
+    assert seen["all"][0]["file"] == "a.py"
+
+
+def test_probe_store_append_waits_for_the_lock(tmp_path):
+    import threading
+    import time
+    sys.path.insert(0, str(SCRIPT.parent))
+    sys.path.insert(0, str(SCRIPT.parents[1] / "probes"))
+    import incident
+    import probe_store
+    log = tmp_path / "i.jsonl"
+    incident.append(str(log), [incident.make_entry("a.py", 1, "c")])
+    with open(log, "r+b") as f:
+        incident._lock(f)
+        try:
+            t = threading.Thread(target=probe_store._append_incident,
+                                 args=(log, "b.py", 2, "ctx", "exception", None))
+            t.start()
+            time.sleep(0.3)
+            assert t.is_alive(), "fallback append must wait for incident's interprocess lock"
+        finally:
+            incident._unlock(f)
+    t.join(5)
+    assert not t.is_alive()
+    assert [r["file"] for r in probe_store.read_log(log)] == ["a.py", "b.py"]

@@ -34,7 +34,13 @@ def _on_origin(root, branch: str) -> bool:
 
 
 def cmd_rename(a: argparse.Namespace) -> int:
+    from session_ensure import guarded
+    return guarded("rename", lambda: _rename(a))
+
+
+def _rename(a: argparse.Namespace) -> int:
     import session_registry as R
+    from journal import Journal
     old = R.validate_slug(a.slug)
     new = R.validate_slug(a.to, "--to")
     root = R.hub_root(R.start_dir(a))
@@ -48,16 +54,23 @@ def cmd_rename(a: argparse.Namespace) -> int:
         if R.find_row(reg, new) is not None or (target != branch and (R.branch_exists(root, target) or _on_origin(root, target))) \
                 or R.store_path(root, new).exists():
             return _refuse(f"{new} is taken")
-        if target != branch:
-            R.git("branch", "-m", branch, target, cwd=root)
-        store = R.store_path(root, old)
-        if store.exists():
-            store.rename(R.store_path(root, new))
-        row["slug"] = new
-        if row.get("branch"):
-            row["branch"] = target
-        if reg.get("active") == old:
-            reg["active"] = new
-        R.write(root, reg)
+        with Journal() as j:  # a failure after the branch moved must not leave the registry on a branch that is gone
+            if target != branch:
+                j.step("rename branch")
+                R.git("branch", "-m", branch, target, cwd=root)
+                j.undo(lambda: R.git("branch", "-m", target, branch, cwd=root), "branch")
+            store = R.store_path(root, old)
+            if store.exists():
+                j.step("move store")
+                dest = R.store_path(root, new)
+                store.rename(dest)
+                j.undo(lambda: dest.rename(store), "store")
+            j.step("write registry")
+            row["slug"] = new
+            if row.get("branch"):
+                row["branch"] = target
+            if reg.get("active") == old:
+                reg["active"] = new
+            R.write(root, reg)
     print(f"session: renamed {old} to {new} (branch {target})")
     return 0

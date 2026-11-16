@@ -20,6 +20,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import base  # noqa: E402
+import incident  # noqa: E402
 import planfile  # noqa: E402
 import sandbox  # noqa: E402
 import state  # noqa: E402
@@ -54,7 +55,7 @@ def _incident(ln: str) -> dict | None:
 def read_incidents(path: Path) -> list[dict]:  # O(file size) total, single pass
     if not path.is_file():
         return []
-    lines = (ln.strip() for ln in path.read_text(encoding="utf-8", errors="replace").splitlines())
+    lines = (ln.strip() for ln in incident.read_text(path).splitlines())  # under the writers' shared lock
     return [e for e in map(_incident, (ln for ln in lines if ln)) if e is not None]
 
 

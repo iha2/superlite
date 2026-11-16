@@ -120,3 +120,27 @@ def test_rename_origin_branch_taken_refused(repo):
     r = run("rename", "--slug", "login-fix", "--to", "fresh", "--root", repo, cwd=repo)
     assert r.returncode == 2, r.err
     assert reg_of(repo) == before
+
+
+def test_rename_registry_write_failure_rolls_back(repo, monkeypatch, capsys):
+    started(repo)
+    sys.path.insert(0, str(SCRIPTS))
+    import argparse
+    import session_registry as R
+    import session_rename
+    store = R.store_path(repo, "login-fix")
+    store.mkdir(parents=True, exist_ok=True)
+    (store / "marker").write_text("x")
+    before = reg_of(repo)
+
+    def boom(root, reg):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(R, "write", boom)
+    rc = session_rename.cmd_rename(argparse.Namespace(slug="login-fix", to="login-fix-3", root=str(repo)))
+    assert rc == 1
+    assert "rolling back" in capsys.readouterr().err
+    assert git(repo, "branch", "--list", "superlite/sessions/login-fix").strip().lstrip("* ")
+    assert not git(repo, "branch", "--list", "superlite/sessions/login-fix-3").strip()
+    assert (store / "marker").exists() and not R.store_path(repo, "login-fix-3").exists()
+    assert reg_of(repo) == before

@@ -5,10 +5,21 @@ import json
 import pathlib
 import socket
 import sys
+import tempfile
 import threading
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-ADAPTER = ROOT / '.superlite/probes/adapter.py'
+sys.path.insert(0, str(ROOT / "skills/swarm/scripts"))
+import review_adapter  # noqa: E402
+
+# A clean checkout has no ignored .superlite/probes/adapter.py: build the adapter from the tracked template,
+# with a CLI entry that echoes stdin bytes, so the bytes-stdin path of run() is what this test exercises.
+_ECHO = "python -c \"import sys;sys.stdout.buffer.write(sys.stdin.buffer.read())\""
+ADAPTER = pathlib.Path(tempfile.mkdtemp(prefix="probe-adapter-")) / "adapter.py"
+ADAPTER.write_text(
+    (review_adapter._ADAPTER_HEAD + review_adapter._ADAPTER_RUN)
+    .replace("__REL_ROOT__", repr(str(ROOT))).replace("__KINDS__", "['run']")
+    .replace("__ENTRIES__", repr([{"package": "p", "run": _ECHO}])), encoding="utf-8")
 ENTRY = 'run'
 INPUT = ([], b'\xff\xfe\x00\x80\xc0\xaf')
 EXPECT = None

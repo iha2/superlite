@@ -18,6 +18,30 @@ from probe_common import CODE_EXT, HERE, SKIP_DIRS
 INCIDENT_SL = HERE.parent / "scripts" / "superlite-cli"
 _append_lock = threading.Lock()
 
+if os.name == "nt":
+    import msvcrt
+
+    def _flock(fd: int, shared: bool = False) -> None:  # same byte-0 lock as scripts/incident.py
+        os.lseek(fd, 0, os.SEEK_SET)
+        while True:
+            try:
+                msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
+                return
+            except OSError:
+                time.sleep(0.01)
+
+    def _funlock(fd: int) -> None:
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+else:
+    import fcntl
+
+    def _flock(fd: int, shared: bool = False) -> None:  # same flock as scripts/incident.py
+        fcntl.flock(fd, fcntl.LOCK_SH if shared else fcntl.LOCK_EX)
+
+    def _funlock(fd: int) -> None:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+
 
 def _append_incident(log: Path, file: str, line: int, context: str, kind: str,
                      resolution: str | None) -> None:
@@ -28,9 +52,13 @@ def _append_incident(log: Path, file: str, line: int, context: str, kind: str,
     log.parent.mkdir(parents=True, exist_ok=True)
     data = (json.dumps(entry, ensure_ascii=False) + "\n").encode("utf-8")
     with _append_lock:
-        fd = os.open(log, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+        fd = os.open(log, os.O_RDWR | os.O_APPEND | os.O_CREAT, 0o644)
         try:
-            os.write(fd, data)
+            _flock(fd)  # the interprocess lock incident.append and `incident resolve` hold
+            try:
+                os.write(fd, data)
+            finally:
+                _funlock(fd)
         finally:
             os.close(fd)
 
@@ -65,12 +93,25 @@ def _log_incident(log: Path, file: str, line: int, context: str, kind: str,
 
 def read_log(log: Path) -> list[dict]:  # O(log bytes) total
     out = []
-    if log.is_file():
-        for line in log.read_text(encoding="utf-8", errors="replace").splitlines():
-            try:
-                out.append(json.loads(line))
-            except ValueError:
-                pass
+    try:
+        fd = os.open(log, os.O_RDONLY)
+    except OSError:
+        return out
+    try:
+        _flock(fd, shared=True)  # a consistent snapshot, never a half-done in-place rewrite
+        try:
+            chunks = []
+            while chunk := os.read(fd, 1 << 20):
+                chunks.append(chunk)
+        finally:
+            _funlock(fd)
+    finally:
+        os.close(fd)
+    for line in b"".join(chunks).decode("utf-8", errors="replace").splitlines():
+        try:
+            out.append(json.loads(line))
+        except ValueError:
+            pass
     return out
 
 

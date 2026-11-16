@@ -52,3 +52,17 @@ def test_user_file_kept(tmp_path):
     assert mine.read_text(encoding="utf-8") == "# mine\n"
     assert (tmp_path / "tests/regression/probe_adapter_gen.py").read_text(encoding="utf-8") == ADAPTER
     assert "tests/regression/probe_adapter_gen.py" in (tmp_path / rel).read_text(encoding="utf-8")
+
+
+def test_generated_adapter_revisions_replaced(tmp_path):
+    """A copy that starts with review_adapter's header is ours: a third revision overwrites it, no OSError."""
+    sys.path.insert(0, str(PROBES.parent / "scripts"))
+    import review_adapter
+    cfg, ad = make(tmp_path)
+    head = review_adapter._ADAPTER_HEAD.replace("__REL_ROOT__", "'.'")
+    for rev in range(3):
+        src = head + f"\n# revision {rev}\n" + ADAPTER
+        ad.write_text(src, encoding="utf-8")
+        rel = probe_regress._copy_adapter(cfg, tmp_path / "tests/regression", tmp_path)
+        assert (tmp_path / rel).read_text(encoding="utf-8") == src
+    assert rel == "tests/regression/probe_adapter.py"
