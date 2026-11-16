@@ -2,6 +2,7 @@
 # UserPromptSubmit / beforeSubmitPrompt hook, one process per prompt, in order:
 #   1. _reply  record the human's reply while a human-orchestrator run waits for approval
 #   2. _nudge  the compact nudge when a session is due for compact
+#   2b. cloud  live cloud runs: `>>`, the cloud slash commands, or an attached run start `cloud hook`
 #   3. the session HUD line and the live cost line, added only when their text changed since the last
 #      prompt of this session (remembered in <run folder>/prompt-last), and always on the first prompt
 # One JSON object comes out: Claude Code gets hookSpecificOutput.additionalContext, or nothing; Cursor
@@ -27,6 +28,20 @@ fi
 
 record_reply
 compact_nudge
+
+# Live cloud runs: one bash prefix check per prompt; Python starts only for a cloud prefix or while attached.
+# The hook's own output (a block, or a backslash pass-through) is printed as is. Any failure lets the line through.
+jstr prompt; cloud_line="$REPLY"
+cloud_hit=0
+case "$cloud_line" in
+  ">>"*|"/superlite:attach"*|"/superlite:detach"*|"/superlite:runs"*|"/superlite:watch"*|"/superlite:give"*) cloud_hit=1 ;;
+  "/superlite-attach-"*|"/superlite-watch-"*) cloud_hit=1 ;;
+esac
+[ -f "${SUPERLITE_HOME:-$HOME/.superlite}/attach.json" ] && cloud_hit=1
+if [ "$cloud_hit" = 1 ] && [ -f "$root/skills/swarm/scripts/superlite-cli" ]; then
+  cloud_out="$(printf '%s' "$input" | bash "$root/skills/swarm/scripts/superlite-cli" cloud hook 2>/dev/null)" || cloud_out=""
+  if [ -n "$cloud_out" ]; then printf '%s\n' "$cloud_out"; exit 0; fi
+fi
 
 # The HUD and the cost line read the folder the host names (proj0), not the run found above it.
 hud=""

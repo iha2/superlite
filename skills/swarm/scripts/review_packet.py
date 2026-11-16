@@ -96,7 +96,7 @@ def incident_items(entries: list[dict]) -> list[Item]:  # O(K) total
         repeated = len(es) >= 2
         unresolved = any(str(e.get("resolution", "")).lower() not in RESOLVED for e in es)
         low = any(str(e.get("confidence", "")).lower() == "low" for e in es)
-        if not (repeated or unresolved or low):
+        if not unresolved and not low:
             continue
         why = [w for w, on in (("repeated", repeated), ("unresolved", unresolved), ("low confidence", low)) if on]
         tier = 0 if repeated else 1 if unresolved else 2
