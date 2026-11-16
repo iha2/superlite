@@ -57,7 +57,11 @@ def test_remove_all_count(tmp_path):
 
 
 def test_admin_entry_command_uses_slash_ref(tmp_path):
+    import re
     ce.sync([RUN], tmp_path, "sam", True)
-    body = (tmp_path / "superlite-attach-chris.login_fix/SKILL.md").read_text(encoding="utf-8")
-    assert "superlite-cli cloud attach chris/login_fix`" in body and "chris.login_fix`" in body
+    for kind in ce.KINDS:
+        body = (tmp_path / f"superlite-{kind}-chris.login_fix/SKILL.md").read_text(encoding="utf-8").split("---\n")[2]
+        cmds = re.findall(r"`superlite-cli cloud (\w+) ([^`\s]+)`", body)
+        assert cmds == [(kind, "chris/login_fix")]
+        assert re.findall(r"live cloud run `([^`]+)`", body) == ["chris.login_fix"]
     assert ce.ref_of("chris.login_fix") == "chris/login_fix" and ce.ref_of("login_fix") == "login_fix"
