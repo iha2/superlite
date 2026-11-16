@@ -74,7 +74,7 @@ def _fake_client(monkeypatch, status=None, fail=False):
             return {"handle": "chris", "role": "member"}
 
         def runs(self, all=False):
-            return []
+            raise AssertionError("status line must never call GET /api/tasks")
     monkeypatch.setattr(cloud_status, "_make_client", lambda: C())
     ents = types.SimpleNamespace(sync=lambda *a: calls.append(a) or [])
     monkeypatch.setitem(sys.modules, "cloud_entries", ents)
@@ -125,3 +125,11 @@ def test_entries_rate_limited(env, monkeypatch, capsys):
     os.utime(stamp, (1, 1))
     _run_main(monkeypatch, capsys)
     assert len(calls) == 2
+
+
+def test_sync_uses_status_runs_not_tasks(env, monkeypatch, capsys):
+    calls = _fake_client(monkeypatch, {"runs": [RUN], "notices": []})
+    _run_main(monkeypatch, capsys)
+    assert len(calls) == 1
+    synced = calls[0][0]
+    assert [r["name"] for r in synced] == ["login_fix"] and synced[0]["owner"] == "chris"

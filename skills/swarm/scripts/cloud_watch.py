@@ -38,13 +38,14 @@ def render(event: dict) -> str | None:
     d = d if isinstance(d, dict) else {}
     kind = event.get("kind")
     if kind == "nudge":
-        return f"nudge from {clean(d.get('by'))}: {clean(d.get('text'))}"
+        return clean(d.get("text")) or None
     if kind == "rename":
         return f"renamed {clean(d.get('from'))} to {clean(d.get('to'))}: {clean(d.get('why'))}"
     if kind == "given":
         line = f"{clean(d.get('name'))} given to {clean(d.get('to'))}"
-        if d.get("email"):
-            line += f" ({clean(d['email'])})"
+        email = d.get("to_email") or d.get("email")
+        if email:
+            line += f" ({clean(email)})"
         return line
     if kind == "status":
         return _status_line(d)

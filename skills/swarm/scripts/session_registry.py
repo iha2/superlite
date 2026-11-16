@@ -84,7 +84,9 @@ def default_base(root: Path) -> str:
 
 
 def is_dirty(cwd: Path) -> bool:  # O(tree)
-    return bool(git("status", "--porcelain", cwd=cwd, check=False).stdout.strip())
+    """True when the tree has changes; superlite's own `.superlite/` state never counts."""
+    return bool(git("status", "--porcelain", "--", ".", f":(exclude){state.DIR_NAME}", f":(exclude){state.DIR_NAME}/**",
+                    cwd=cwd, check=False).stdout.strip())
 
 
 def validate_slug(name: str, flag: str = "--slug") -> str:

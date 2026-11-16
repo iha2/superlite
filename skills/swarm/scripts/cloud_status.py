@@ -135,7 +135,7 @@ def _prev_output(stdin_text: str) -> str:
         return ""
 
 
-def _maybe_sync(client, now=time.time) -> None:
+def _maybe_sync(client, now=time.time, status: dict | None = None) -> None:
     stamp = _home() / "entries-sync"
     try:
         if now() - stamp.stat().st_mtime < SYNC_EVERY:
@@ -146,7 +146,10 @@ def _maybe_sync(client, now=time.time) -> None:
     stamp.write_text(str(now()), encoding="utf-8")
     import cloud_entries
     me = client.me()
-    cloud_entries.sync(client.runs(), _claude_home() / "skills", me.get("handle", ""),
+    # /api/status, never /api/tasks: the server marks notices seen on a tasks call.
+    st = status if isinstance(status, dict) else client.status()
+    runs = [{"owner": me.get("handle", ""), **r} for r in (st.get("runs") or []) if isinstance(r, dict)]
+    cloud_entries.sync(runs, _claude_home() / "skills", me.get("handle", ""),
                        me.get("role") == "admin")
 
 
@@ -169,9 +172,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         client = _make_client()
         if client is not None:
-            seg = segment(client.status(), _attached())
+            st = client.status()
+            seg = segment(st, _attached())
             try:
-                _maybe_sync(client)
+                _maybe_sync(client, status=st)
             except Exception:
                 pass
     except Exception:

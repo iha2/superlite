@@ -10,10 +10,10 @@ R = cloud_watch.render
 
 
 def test_render_examples():
-    assert R({"id": 4, "kind": "nudge", "data": {"by": "sam", "text": "run the tests first"}}) == "nudge from sam: run the tests first"
+    assert R({"id": 4, "kind": "nudge", "data": {"text": "nudge from chris", "run": "login_fix"}}) == "nudge from chris"
     assert R({"id": 9, "kind": "rename", "data": {"from": "login_fix", "to": "login_fix_3", "why": "branch taken on origin"}}) == "renamed login_fix to login_fix_3: branch taken on origin"
     assert R({"id": 12, "kind": "given", "data": {"from": "chris", "to": "pat", "name": "login_fix"}}) == "login_fix given to pat"
-    assert R({"kind": "given", "data": {"to": "pat", "name": "x", "email": "p@e.com"}}) == "x given to pat (p@e.com)"
+    assert R({"kind": "given", "data": {"to": "pat", "name": "x", "to_email": "p@e.com"}}) == "x given to pat (p@e.com)"
 
 
 def test_unknown_kind():
@@ -23,7 +23,7 @@ def test_unknown_kind():
 
 
 def test_control_chars():
-    out = R({"kind": "nudge", "data": {"by": "sa\x1bm", "text": "a\x1b[31mred\x07\x00\nb\x9b"}})
+    out = R({"kind": "nudge", "data": {"run": "sa\x1bm", "text": "a\x1b[31mred\x07\x00\nb\x9b"}})
     assert out is not None
     assert not any(ord(c) < 32 or 0x7F <= ord(c) < 0xA0 for c in out)
     assert "\x1b" not in out
