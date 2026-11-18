@@ -19,7 +19,7 @@ def _cfg(tmp_path, value):
 
 
 def test_default_limit(tmp_path):
-    assert compact_due.limit(str(tmp_path)) == 150000
+    assert compact_due.limit(str(tmp_path)) == 500000
 
 
 def test_config_limit(tmp_path):

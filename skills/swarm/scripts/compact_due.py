@@ -20,7 +20,7 @@ import state  # noqa: E402
 __all__ = ["is_due", "nudge_line", "limit", "token_nudge"]
 
 _DEFAULT_WINDOW_S = 1800.0  # 30 min
-_DEFAULT_TOKENS = 150000
+_DEFAULT_TOKENS = 500000
 
 
 def _positive(value, source: str) -> int:
@@ -36,7 +36,7 @@ def _positive(value, source: str) -> int:
 
 
 def limit(root: str) -> int:
-    """Token limit: env SUPERLITE_COMPACT_TOKENS, else superlite.json compact_tokens, else 150000."""
+    """Token limit: env SUPERLITE_COMPACT_TOKENS, else superlite.json compact_tokens, else 500000."""
     env = os.environ.get("SUPERLITE_COMPACT_TOKENS")
     if env is not None and env.strip():
         return _positive(env.strip(), "SUPERLITE_COMPACT_TOKENS")

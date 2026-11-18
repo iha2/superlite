@@ -29,7 +29,8 @@ def _prompt(tmp_path, transcript=None, cursor=False, env_extra=None, sid="s1"):
         payload["transcript_path"] = str(transcript)
     env = {k: v for k, v in os.environ.items() if not k.startswith(("CURSOR_", "SUPERLITE_"))}
     env.update({"CLAUDE_PROJECT_DIR": str(tmp_path), "SUPERLITE_NO_SESSION_HUD": "1",
-                "SUPERLITE_NO_COST_REPORT": "1", "CLAUDE_CODE": "1"})
+                "SUPERLITE_NO_COST_REPORT": "1", "CLAUDE_CODE": "1",
+                "SUPERLITE_COMPACT_TOKENS": "150000"})
     env.update(env_extra or {})
     r = subprocess.run([BASH, str(HOOK)], input=json.dumps(payload), capture_output=True, text=True, env=env)
     assert r.returncode == 0, r.stderr
