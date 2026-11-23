@@ -100,6 +100,8 @@
    /superlite:finish                Verify, then offer merge or PR options.
    /superlite:merged [slug|PR]      After the PR merges: update main, close
                                     the session, delete the local branch.
+   /superlite:close [slug|branch]   End a session without a merge; keep or
+                                    delete its local branch. Never pushes.
    /superlite:setup                 First-run check: toolchain, test command,
                                     model tiers, plugin conflicts.
 

@@ -13,6 +13,7 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 import base  # noqa: E402
+import exclusive  # noqa: E402
 import session_archive as A  # noqa: E402
 import run_archive  # noqa: E402
 import session_wip as W  # noqa: E402
@@ -96,6 +97,18 @@ def _save_wip(cwd: Path, slug: str, keep_untracked: bool, j: Journal) -> str | N
     return oid
 
 
+def _park(live: Path, store: Path, j: Journal) -> None:
+    """Restore the peers this checkout's run suspended (only `finish` did before), then park its run files.
+    Close already holds the registry lock; a failed close re-suspends the peers and puts the files back."""
+    if exclusive.suspended(live):
+        j.step("restore the suspended peer plugins")
+        print(exclusive.release(live, lock_held=True))
+        j.undo(lambda: exclusive.suspend(live), "peers")
+    j.step("park the run files")
+    park_run_state(live, store)
+    j.undo(lambda: restore_run_state(store, live), "run files")
+
+
 def _archive(root: Path, reg: dict, row: dict, slug: str, wip: str | None, j: Journal) -> None:
     """Manifest first (after the run files are parked into the same folder), then the row leaves the registry."""
     done = {k: v for k, v in row.items() if k not in ("stash_oid", "stash_message")}
@@ -131,9 +144,7 @@ def _close_host(root: Path, reg: dict, row: dict, slug: str, host: Path, a) -> i
         with Journal() as j:
             j.step("save the work")
             wip = _save_wip(host, slug, keep, j)
-            j.step("park the run files")
-            park_run_state(live, store)
-            j.undo(lambda: restore_run_state(store, live), "run files")
+            _park(live, store, j)
             if base and current_branch(host) != base:
                 j.step(f"switch {host.as_posix()} to {base}")
                 prev = current_branch(host)
@@ -183,9 +194,7 @@ def _close_owned(root: Path, reg: dict, row: dict, slug: str, a) -> int:
         with Journal() as j:
             j.step("save the work")
             wip = _save_wip(wt, slug, False, j)
-            j.step("park the run files")
-            park_run_state(live, store)
-            j.undo(lambda: restore_run_state(store, live), "run files")
+            _park(live, store, j)
             _archive(root, reg, row, slug, wip, j)
             j.step("write the registry")
             write(root, reg)
@@ -250,9 +259,7 @@ def _close_adopted(root: Path, reg: dict, row: dict, slug: str) -> int:
     seal = learn_sync(live)
     try:
         with Journal() as j:
-            j.step("park the run files")
-            park_run_state(live, store)
-            j.undo(lambda: restore_run_state(store, live), "run files")
+            _park(live, store, j)
             _archive(root, reg, row, slug, None, j)
             write(root, reg)
     except JournalError as e:
