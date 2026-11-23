@@ -68,8 +68,9 @@ def test_close_syncs(calls):
     assert calls[-1] == ("seal", (Path("live"),), {})
     for fn in (session_close._close_host, session_close._close_owned, session_close._close_adopted):
         src = inspect.getsource(fn)  # sealed only after the close transaction succeeded
-        assert src.index("learn_sync(live)") < src.index("park_run_state(") < src.index("except JournalError") \
+        assert src.index("learn_sync(live)") < src.index("_park(live, store, j)") < src.index("except JournalError") \
             < src.index("learn_seal(seal)")
+    assert "park_run_state(" in inspect.getsource(session_close._park)
 
 
 def test_sync_error_is_advisory(broken, tmp_path):

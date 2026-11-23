@@ -36,7 +36,7 @@ EXIT_REDIRECT = 3
 STASH_PREFIX = "superlite-session:"
 # Hub-level entries and real git checkouts: never parked, moved or wiped with run state.
 LEARN_FILES = ("lessons.json", "learn-state.json")  # repo-wide learning cache: shared by every session of the hub
-STATIONARY = {"worktrees", "sandboxes", "runs", STORE, FILE, FILE + ".lock", LOCK,
+STATIONARY = {"worktrees", "sandboxes", "runs", STORE, FILE, FILE + ".lock", LOCK, "peers.json", "peers.json.lock",
               *LEARN_FILES, *(f + ".lock" for f in LEARN_FILES)}
 
 
@@ -407,6 +407,9 @@ def restore_run_state(store: Path, live_sl: Path) -> None:  # O(S)
             shutil.copytree(p, target, symlinks=True)
         else:
             shutil.copy2(p, target, follow_symlinks=False)
+    legacy = store / "peers.json"  # parked by a version that moved it: put it back with its checkout
+    if legacy.is_file() and not (live_sl / "peers.json").exists():
+        shutil.copy2(legacy, live_sl / "peers.json")
     shutil.rmtree(store, ignore_errors=True)
 
 

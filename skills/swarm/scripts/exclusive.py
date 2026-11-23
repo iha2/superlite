@@ -181,7 +181,40 @@ def _linked_checkouts(sl: Path) -> list:  # O(N)
         reg = session_registry.read(state.hub_root(sl.parent))
     except base.GitError:
         return []
-    return [Path(s["worktree"]) for s in reg["sessions"] if s.get("worktree") and Path(s["worktree"]).is_dir()]
+    return _checkouts(state.hub_root(sl.parent), reg)
+
+
+def _checkouts(hub: Path, reg: dict) -> list:  # O(N + W)
+    """Every checkout that can hold a marker: the hub (a closed host session's, since peers.json is stationary),
+    the registered worktrees, and every git worktree (a closed Claude-created one stays on disk unregistered)."""
+    paths = [hub, *(Path(s["worktree"]) for s in reg["sessions"] if s.get("worktree"))]
+    try:
+        out = base.git("worktree", "list", "--porcelain", "-z", cwd=hub).stdout  # -z: paths unquoted
+        paths += [Path(f[len("worktree "):]) for f in out.split("\0") if f.startswith("worktree ")]
+    except base.GitError:
+        pass
+    seen, result = set(), []
+    for p in paths:
+        key = p.resolve().as_posix() if p.is_dir() else None
+        if key and key not in seen:
+            seen.add(key)
+            result.append(p)
+    return result
+
+
+def release_idle(hub: Path) -> str | None:  # O(N)
+    """After a session close (registry lock held, row already gone): once no run is open, restore every
+    checkout's deferred suspension. None when nothing was suspended anywhere."""
+    reg = session_registry.read(hub)
+    open_runs = [s["slug"] for s in reg["sessions"] if session_registry.is_open(s)]
+    marked = [state.run_dir(wt) for wt in _checkouts(hub, reg) if (state.run_dir(wt) / FILE).is_file()]
+    if not marked:
+        return None
+    if open_runs:
+        return f"{SUSPENDED} ({len(open_runs)} other run{'s' if len(open_runs) != 1 else ''} open: {', '.join(open_runs)})"
+    for run in dict.fromkeys(marked):
+        _release_here(run)
+    return CLEAR
 
 
 def status_line(plan_or_dir=None) -> str:  # O(file)
