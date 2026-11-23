@@ -189,8 +189,8 @@ def _checkouts(hub: Path, reg: dict) -> list:  # O(N + W)
     the registered worktrees, and every git worktree (a closed Claude-created one stays on disk unregistered)."""
     paths = [hub, *(Path(s["worktree"]) for s in reg["sessions"] if s.get("worktree"))]
     try:
-        out = base.git("worktree", "list", "--porcelain", cwd=hub).stdout
-        paths += [Path(line[len("worktree "):]) for line in out.splitlines() if line.startswith("worktree ")]
+        out = base.git("worktree", "list", "--porcelain", "-z", cwd=hub).stdout  # -z: paths unquoted
+        paths += [Path(f[len("worktree "):]) for f in out.split("\0") if f.startswith("worktree ")]
     except base.GitError:
         pass
     seen, result = set(), []

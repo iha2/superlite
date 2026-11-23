@@ -161,3 +161,13 @@ def test_reopen_brings_back_a_marker_parked_by_an_older_version(repo):
     cp = py(SESSION, "close", "--slug", "a", "--keep-branch", cwd=repo)
     assert cp.returncode == 0, cp.both
     assert not peer_disabled(settings)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows paths cannot hold a quote or newline")
+def test_checkouts_keep_worktree_paths_git_would_quote(repo):
+    sys.path.insert(0, str(SCRIPTS))
+    import exclusive
+    wt = repo / ".claude" / "worktrees" / 'h "q"\nx'
+    git(repo, "worktree", "add", "-q", "-b", "worktree-q", str(wt))
+    found = exclusive._checkouts(repo, {"sessions": []})
+    assert wt.resolve() in [p.resolve() for p in found]
