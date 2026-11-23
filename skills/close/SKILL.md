@@ -23,7 +23,8 @@ Collect, then ask at most once:
 
 - **Open run:** its row shows `run:open`. Closing it marks the run finished and archives its files; a build in progress stops.
 - **Work not on the base:** `git log --oneline <base>..<branch>` (count), and whether the branch has an upstream (`git rev-parse -q --verify <branch>@{upstream}`).
-- **Uncommitted work** in its checkout (`git status --short`): tracked edits are saved by close to `refs/superlite/wip/<slug>`; untracked files get superlite's own stash/keep question in step 3.
+- **Uncommitted work** in its checkout (`git status --short`). In the host checkout or a worktree superlite cut, close saves tracked edits to `refs/superlite/wip/<slug>`, and untracked files get superlite's own stash/keep question in step 3. A Claude-created worktree (`harness` in its `session status` row) is never saved by close: its edits exist only in that folder.
+- **Parked work:** the row shows `stash:yes`, or `git rev-parse -q --verify refs/superlite/wip/<slug>` finds a ref. Close carries it to that ref; it is not on the branch.
 
 With an open run, ask "Close it anyway" / "Keep it open"; on keep, stop. Otherwise just list the facts and go on.
 
@@ -32,14 +33,15 @@ With an open run, ask "Close it anyway" / "Keep it open"; on keep, stop. Otherwi
 - If this chat is inside the session's worktree, leave it first: `ExitWorktree` with `action: "keep"` under Claude Code, else `cd` to the main checkout.
 - From the main checkout: `bash <skill-dir>/../swarm/scripts/superlite-cli session close --slug <slug> --keep-branch`.
 - On an `ASK` line (exit 4, nothing changed), ask exactly what its `ask:` line says and do what the chosen `on ...:` line says. Exit 2: report its message and stop.
-- A Claude-created worktree is not removed by close: end it with `ExitWorktree` `remove`. If it lists uncommitted changes, ask before `discard_changes: true`.
+- A Claude-created worktree is not removed by close. Clean: end it with `ExitWorktree` `remove`. With uncommitted changes, ask "Keep the worktree" / "Discard the edits": on keep, leave it in place (its edits stay there, unsaved); only on discard use `discard_changes: true`.
+- Then check `session status --json` again. If the row is still listed, close kept the checkout (`--untracked keep` or the repo default `keep`): report where it is and stop. Step 4 would force-remove it.
 
 ## 4. Keep or delete the branch
 
-Ask once (one AskUserQuestion), showing the commit count from step 2 and whether it has an upstream:
+Ask once (one AskUserQuestion), showing the commit count from step 2, whether it has an upstream, and any parked work (`refs/superlite/wip/<slug>`, with `git show --stat` of it):
 
 - **Keep the branch (Recommended):** stop here. `superlite-cli session use --slug <slug>` reopens it later with its parked work.
-- **Delete local branch:** if it has commits not on the base and no upstream, say they will be lost. Then `bash <skill-dir>/../swarm/scripts/superlite-cli session discard --slug <slug>` (drops the archived store, the WIP ref and the branch, unless superlite adopted it). If `git rev-parse -q --verify refs/heads/<branch>` still finds it, `git branch -D <branch>`; `-D` is used only because the user chose delete.
+- **Delete local branch:** name what is lost: commits not on the base when there is no upstream, and the parked work on `refs/superlite/wip/<slug>`, which discard deletes too. Then `bash <skill-dir>/../swarm/scripts/superlite-cli session discard --slug <slug>` (drops the archived store, the WIP ref and the branch, unless superlite adopted it). If `git rev-parse -q --verify refs/heads/<branch>` still finds it, `git branch -D <branch>`; `-D` is used only because the user chose delete.
 
 ## 5. Report
 

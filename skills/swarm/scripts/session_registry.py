@@ -36,7 +36,7 @@ EXIT_REDIRECT = 3
 STASH_PREFIX = "superlite-session:"
 # Hub-level entries and real git checkouts: never parked, moved or wiped with run state.
 LEARN_FILES = ("lessons.json", "learn-state.json")  # repo-wide learning cache: shared by every session of the hub
-STATIONARY = {"worktrees", "sandboxes", "runs", STORE, FILE, FILE + ".lock", LOCK,
+STATIONARY = {"worktrees", "sandboxes", "runs", STORE, FILE, FILE + ".lock", LOCK, "peers.json", "peers.json.lock",
               *LEARN_FILES, *(f + ".lock" for f in LEARN_FILES)}
 
 

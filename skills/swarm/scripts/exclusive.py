@@ -181,7 +181,25 @@ def _linked_checkouts(sl: Path) -> list:  # O(N)
         reg = session_registry.read(state.hub_root(sl.parent))
     except base.GitError:
         return []
-    return [Path(s["worktree"]) for s in reg["sessions"] if s.get("worktree") and Path(s["worktree"]).is_dir()]
+    hub = state.hub_root(sl.parent)
+    rows = [Path(s["worktree"]) for s in reg["sessions"] if s.get("worktree") and Path(s["worktree"]).is_dir()]
+    return [hub, *rows]  # the hub keeps a closed host session's marker (peers.json is stationary)
+
+
+def release_idle(hub: Path) -> str | None:  # O(N)
+    """After a session close (registry lock held, row already gone): once no run is open, restore every
+    checkout's deferred suspension. None when nothing was suspended anywhere."""
+    reg = session_registry.read(hub)
+    open_runs = [s["slug"] for s in reg["sessions"] if session_registry.is_open(s)]
+    marked = [state.run_dir(wt) for wt in [hub, *(Path(s["worktree"]) for s in reg["sessions"]
+              if s.get("worktree") and Path(s["worktree"]).is_dir())] if (state.run_dir(wt) / FILE).is_file()]
+    if not marked:
+        return None
+    if open_runs:
+        return f"{SUSPENDED} ({len(open_runs)} other run{'s' if len(open_runs) != 1 else ''} open: {', '.join(open_runs)})"
+    for run in dict.fromkeys(marked):
+        _release_here(run)
+    return CLEAR
 
 
 def status_line(plan_or_dir=None) -> str:  # O(file)

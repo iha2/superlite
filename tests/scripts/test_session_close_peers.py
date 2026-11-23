@@ -105,15 +105,43 @@ def test_close_owned_with_open_run_restores_its_peers(repo):
     assert py(EX, "on", cwd=wt, claude=True).returncode == 0
     cp = py(SESSION, "close", "--slug", "b", "--keep-branch", cwd=repo)
     assert cp.returncode == 0, cp.both
-    assert "peers: clear" in cp.stdout
     assert not wt.exists()
 
 
-def test_close_keeps_peers_off_while_another_run_is_open(repo):
-    assert py(SESSION, "ensure", "--slug", "a", cwd=repo).returncode == 0
+def test_host_peers_wait_for_the_last_close(repo):
+    """Host a suspended, parallel b never suspended: closing a defers, closing b (no marker) restores the hub."""
+    settings = suspended_host(repo)
     assert py(SESSION, "create", "--slug", "b", "--worktree", cwd=repo).returncode == 0
-    wt = repo / ".claude" / "worktrees" / "sessions-b"
+    first = py(SESSION, "close", "--slug", "a", "--keep-branch", cwd=repo)
+    assert first.returncode == 0, first.both
+    assert "1 other run open: b" in first.stdout and peer_disabled(settings)
+    assert (repo / ".superlite" / "peers.json").is_file()  # stationary: not parked with a's run files
+    last = py(SESSION, "close", "--slug", "b", "--keep-branch", cwd=repo)
+    assert last.returncode == 0, last.both
+    assert "peers: clear" in last.stdout and not peer_disabled(settings)
+
+
+def test_move_leaves_the_marker_with_the_hub(repo):
+    """ensure --move used to carry peers.json into the new worktree and strand the hub's settings."""
+    settings = suspended_host(repo)
+    assert py(SESSION, "ensure", "--slug", "b", "--move", "yes", cwd=repo).returncode == 0
+    assert (repo / ".superlite" / "peers.json").is_file()
+    for slug in ("a", "b"):
+        cp = py(SESSION, "close", "--slug", slug, "--keep-branch", cwd=repo)
+        assert cp.returncode == 0, cp.both
+    assert not peer_disabled(settings)
+
+
+def test_close_adopted_worktree_restores_its_own_peers(repo):
+    """A harness worktree stays after close and leaves the registry: its marker must not be stranded."""
+    wt = repo / ".claude" / "worktrees" / "h"
+    git(repo, "worktree", "add", "-q", "-b", "worktree-h", str(wt))
+    assert py(SESSION, "ensure", "--slug", "h", cwd=wt, claude=True).returncode == 0
+    assert py(SESSION, "create", "--slug", "other", "--worktree", cwd=repo).returncode == 0  # keeps a run open
     assert py(EX, "on", cwd=wt, claude=True).returncode == 0
-    cp = py(SESSION, "close", "--slug", "b", "--keep-branch", cwd=repo)
+    settings = wt / ".claude" / "settings.local.json"
+    assert peer_disabled(settings)
+    cp = py(SESSION, "close", "--slug", "h", "--keep-branch", cwd=repo)
     assert cp.returncode == 0, cp.both
-    assert "1 other run open: a" in cp.stdout  # same rule as finish: the last open run restores them
+    assert wt.exists() and "harness worktree" in cp.stdout
+    assert not peer_disabled(settings) and not (wt / ".superlite" / "peers.json").exists()

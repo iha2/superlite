@@ -48,7 +48,19 @@ def cmd_close(a) -> int:  # O(tree)
     root = hub_root(start_dir(a))
     from session_ensure import guarded  # lazy: session_ensure re-exports this module's cmd_close
     with registry_lock(root):
-        return guarded("close", lambda: _close(root, slug, a))
+        return guarded("close", lambda: _released(root, _close(root, slug, a)))
+
+
+def _released(root: Path, rc: int) -> int:  # O(N) advisory, after the close committed
+    """Like finish: once no run is open, restore the peer plugins every checkout suspended (none before)."""
+    if rc == 0:
+        try:
+            line = exclusive.release_idle(root)
+            if line:
+                print(line)
+        except base.advisory_errors():
+            pass
+    return rc
 
 
 def _close(root: Path, slug: str, a) -> int:
@@ -98,12 +110,7 @@ def _save_wip(cwd: Path, slug: str, keep_untracked: bool, j: Journal) -> str | N
 
 
 def _park(live: Path, store: Path, j: Journal) -> None:
-    """Restore the peers this checkout's run suspended (only `finish` did before), then park its run files.
-    Close already holds the registry lock; a failed close re-suspends the peers and puts the files back."""
-    if exclusive.suspended(live):
-        j.step("restore the suspended peer plugins")
-        print(exclusive.release(live, lock_held=True))
-        j.undo(lambda: exclusive.suspend(live), "peers")
+    """Park the run files; a failed close puts them back. peers.json is stationary and stays with its checkout."""
     j.step("park the run files")
     park_run_state(live, store)
     j.undo(lambda: restore_run_state(store, live), "run files")
@@ -268,6 +275,10 @@ def _close_adopted(root: Path, reg: dict, row: dict, slug: str) -> int:
         print(f"session: could not close {slug}: {e}; nothing changed", file=sys.stderr)
         return 2
     learn_seal(seal)
+    try:  # the worktree stays but leaves the registry, so the last close would never find its marker
+        exclusive._release_here(live)
+    except base.advisory_errors():
+        pass
     print(f"session: closed {slug}; archived to {store.as_posix()}")
     print(f"session: {slug} lives in a harness worktree; leave it with ExitWorktree")
     return 0
