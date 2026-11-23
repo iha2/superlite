@@ -181,9 +181,25 @@ def _linked_checkouts(sl: Path) -> list:  # O(N)
         reg = session_registry.read(state.hub_root(sl.parent))
     except base.GitError:
         return []
-    hub = state.hub_root(sl.parent)
-    rows = [Path(s["worktree"]) for s in reg["sessions"] if s.get("worktree") and Path(s["worktree"]).is_dir()]
-    return [hub, *rows]  # the hub keeps a closed host session's marker (peers.json is stationary)
+    return _checkouts(state.hub_root(sl.parent), reg)
+
+
+def _checkouts(hub: Path, reg: dict) -> list:  # O(N + W)
+    """Every checkout that can hold a marker: the hub (a closed host session's, since peers.json is stationary),
+    the registered worktrees, and every git worktree (a closed Claude-created one stays on disk unregistered)."""
+    paths = [hub, *(Path(s["worktree"]) for s in reg["sessions"] if s.get("worktree"))]
+    try:
+        out = base.git("worktree", "list", "--porcelain", cwd=hub).stdout
+        paths += [Path(line[len("worktree "):]) for line in out.splitlines() if line.startswith("worktree ")]
+    except base.GitError:
+        pass
+    seen, result = set(), []
+    for p in paths:
+        key = p.resolve().as_posix() if p.is_dir() else None
+        if key and key not in seen:
+            seen.add(key)
+            result.append(p)
+    return result
 
 
 def release_idle(hub: Path) -> str | None:  # O(N)
@@ -191,8 +207,7 @@ def release_idle(hub: Path) -> str | None:  # O(N)
     checkout's deferred suspension. None when nothing was suspended anywhere."""
     reg = session_registry.read(hub)
     open_runs = [s["slug"] for s in reg["sessions"] if session_registry.is_open(s)]
-    marked = [state.run_dir(wt) for wt in [hub, *(Path(s["worktree"]) for s in reg["sessions"]
-              if s.get("worktree") and Path(s["worktree"]).is_dir())] if (state.run_dir(wt) / FILE).is_file()]
+    marked = [state.run_dir(wt) for wt in _checkouts(hub, reg) if (state.run_dir(wt) / FILE).is_file()]
     if not marked:
         return None
     if open_runs:

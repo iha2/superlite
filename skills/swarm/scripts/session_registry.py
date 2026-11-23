@@ -407,6 +407,9 @@ def restore_run_state(store: Path, live_sl: Path) -> None:  # O(S)
             shutil.copytree(p, target, symlinks=True)
         else:
             shutil.copy2(p, target, follow_symlinks=False)
+    legacy = store / "peers.json"  # parked by a version that moved it: put it back with its checkout
+    if legacy.is_file() and not (live_sl / "peers.json").exists():
+        shutil.copy2(legacy, live_sl / "peers.json")
     shutil.rmtree(store, ignore_errors=True)
 
 

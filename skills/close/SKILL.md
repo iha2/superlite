@@ -24,9 +24,10 @@ Collect, then ask at most once:
 - **Open run:** its row shows `run:open`. Closing it marks the run finished and archives its files; a build in progress stops.
 - **Work not on the base:** `git log --oneline <base>..<branch>` (count), and whether the branch has an upstream (`git rev-parse -q --verify <branch>@{upstream}`).
 - **Uncommitted work** in its checkout (`git status --short`). In the host checkout or a worktree superlite cut, close saves tracked edits to `refs/superlite/wip/<slug>`, and untracked files get superlite's own stash/keep question in step 3. A Claude-created worktree (`harness` in its `session status` row) is never saved by close: its edits exist only in that folder.
+- **Prototype sandbox:** a `sandbox <topic> <state> <path>` line under its row in `session status`. Close deletes that folder (only its run files are archived); its code is on neither the branch nor the WIP ref.
 - **Parked work:** the row shows `stash:yes`, or `git rev-parse -q --verify refs/superlite/wip/<slug>` finds a ref. Close carries it to that ref; it is not on the branch.
 
-With an open run, ask "Close it anyway" / "Keep it open"; on keep, stop. Otherwise just list the facts and go on.
+With an open run or an open sandbox, ask "Close it anyway" / "Keep it open", naming the sandbox path as deleted; on keep, stop. Otherwise just list the facts and go on.
 
 ## 3. Close
 
@@ -38,7 +39,9 @@ With an open run, ask "Close it anyway" / "Keep it open"; on keep, stop. Otherwi
 
 ## 4. Keep or delete the branch
 
-Ask once (one AskUserQuestion), showing the commit count from step 2, whether it has an upstream, and any parked work (`refs/superlite/wip/<slug>`, with `git show --stat` of it):
+If `git worktree list --porcelain` still shows the branch checked out (a kept Claude-created worktree), it cannot be deleted: report where it is checked out, keep everything, and go to step 5.
+
+Otherwise ask once (one AskUserQuestion), showing the commit count from step 2, whether it has an upstream, and any parked work (`refs/superlite/wip/<slug>`, with `git show --stat` of it):
 
 - **Keep the branch (Recommended):** stop here. `superlite-cli session use --slug <slug>` reopens it later with its parked work.
 - **Delete local branch:** name what is lost: commits not on the base when there is no upstream, and the parked work on `refs/superlite/wip/<slug>`, which discard deletes too. Then `bash <skill-dir>/../swarm/scripts/superlite-cli session discard --slug <slug>` (drops the archived store, the WIP ref and the branch, unless superlite adopted it). If `git rev-parse -q --verify refs/heads/<branch>` still finds it, `git branch -D <branch>`; `-D` is used only because the user chose delete.

@@ -275,10 +275,6 @@ def _close_adopted(root: Path, reg: dict, row: dict, slug: str) -> int:
         print(f"session: could not close {slug}: {e}; nothing changed", file=sys.stderr)
         return 2
     learn_seal(seal)
-    try:  # the worktree stays but leaves the registry, so the last close would never find its marker
-        exclusive._release_here(live)
-    except base.advisory_errors():
-        pass
     print(f"session: closed {slug}; archived to {store.as_posix()}")
     print(f"session: {slug} lives in a harness worktree; leave it with ExitWorktree")
     return 0

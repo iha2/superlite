@@ -132,16 +132,32 @@ def test_move_leaves_the_marker_with_the_hub(repo):
     assert not peer_disabled(settings)
 
 
-def test_close_adopted_worktree_restores_its_own_peers(repo):
-    """A harness worktree stays after close and leaves the registry: its marker must not be stranded."""
+def test_close_adopted_worktree_waits_for_the_last_run(repo):
+    """A harness worktree stays after close and leaves the registry: its marker is found by the last close."""
     wt = repo / ".claude" / "worktrees" / "h"
     git(repo, "worktree", "add", "-q", "-b", "worktree-h", str(wt))
     assert py(SESSION, "ensure", "--slug", "h", cwd=wt, claude=True).returncode == 0
     assert py(SESSION, "create", "--slug", "other", "--worktree", cwd=repo).returncode == 0  # keeps a run open
     assert py(EX, "on", cwd=wt, claude=True).returncode == 0
     settings = wt / ".claude" / "settings.local.json"
-    assert peer_disabled(settings)
     cp = py(SESSION, "close", "--slug", "h", "--keep-branch", cwd=repo)
     assert cp.returncode == 0, cp.both
     assert wt.exists() and "harness worktree" in cp.stdout
+    assert peer_disabled(settings) and (wt / ".superlite" / "peers.json").exists()  # other is still open
+    last = py(SESSION, "close", "--slug", "other", "--keep-branch", cwd=repo)
+    assert last.returncode == 0, last.both
     assert not peer_disabled(settings) and not (wt / ".superlite" / "peers.json").exists()
+
+
+def test_reopen_brings_back_a_marker_parked_by_an_older_version(repo):
+    settings = suspended_host(repo)
+    marker = repo / ".superlite" / "peers.json"
+    saved = marker.read_text()
+    marker.unlink()  # an older close parked it with the run files
+    assert py(SESSION, "close", "--slug", "a", "--keep-branch", cwd=repo).returncode == 0
+    (repo / ".superlite" / "session-store" / "a" / "peers.json").write_text(saved)
+    assert py(SESSION, "use", "--slug", "a", cwd=repo).returncode == 0
+    assert marker.is_file() and peer_disabled(settings)
+    cp = py(SESSION, "close", "--slug", "a", "--keep-branch", cwd=repo)
+    assert cp.returncode == 0, cp.both
+    assert not peer_disabled(settings)
