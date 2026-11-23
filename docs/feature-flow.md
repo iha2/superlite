@@ -85,7 +85,7 @@ The goal: the smallest thing that stands up and shows the feature working, insid
 
 ### Step 6: the integration build
 
-A second build on a **dedicated** integration worktree and branch for this feature only (`superlite/<topic>` under `.superlite/worktrees/<topic>`, or equivalent). Never layer integration onto another open feature's checkout or a shared dirty `main` — one feature per worktree so several features can proceed in parallel (AGENTS.md). The prototype sandbox (`.superlite/sandboxes/<session>/<topic>/`) stays separate.
+A second build on a **dedicated** worktree and branch for this feature only. When the flow already runs in the worktree named by the flow's first `SESSION` line (from `session ensure`; not the main checkout, branch not the base), that worktree is dedicated: the integration runs there in place, with no second session or worktree. Otherwise it cuts one with `superlite-cli session create --slug <topic>-int --worktree` (`.claude/worktrees/`, branch `superlite/...`). Never layer integration onto another open feature's checkout or a shared dirty `main` — one feature per worktree so several features can proceed in parallel (AGENTS.md). The prototype sandbox (`.superlite/sandboxes/<session>/<topic>/`) stays separate.
 
 Then, in that worktree:
 
@@ -94,7 +94,7 @@ Then, in that worktree:
 - seam checks between the new and the existing code, and every existing test must still pass;
 - the normal review, final review, tiered fixes and finish report. The report shows the prototype and the integration as two parts, each with time and cost, projected against actual.
 
-The prototype sandbox is removed at finish with `superlite-cli proto discard`, which first saves the prototype's report headline into `feature.json`, then deletes the sandbox folder and archives its run files into `.superlite/runs/`. `session close` discards an open sandbox too. The integration worktree (`.superlite/worktrees/<topic>`) is removed in the same finish, from the main checkout, once the branch is merged or pushed, or on keep when that tree is clean. A keep with uncommitted work leaves the worktree. The flow does not leave a worktree it created. `superlite-cli proto status [--json]` shows the state at any time.
+The prototype sandbox is removed at finish with `superlite-cli proto discard`, which first saves the prototype's report headline into `feature.json`, then deletes the sandbox folder and archives its run files into `.superlite/runs/`. `session close` discards an open sandbox too. A separate integration worktree is removed in the same finish (in place, `session close` of the flow's one session removes its worktree), from the main checkout, once the branch is merged or pushed, or on keep when that tree is clean. A keep with uncommitted work leaves the worktree. The flow does not leave a worktree it created. `superlite-cli proto status [--json]` shows the state at any time.
 
 **The report.** When `.superlite/feature.json` exists, `superlite-cli report` adds a feature-flow part: the prototype and the integration on two lines, each with wall-clock and agent cost, projected and actual, and the prototype's cost as a share of the integration against the 25% cap. The prototype numbers come from its own build report (`report.json` in the run folder), saved into `feature.json` at try-out and discard so they outlive the sandbox.
 
