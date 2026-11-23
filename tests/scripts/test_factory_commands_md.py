@@ -1,0 +1,63 @@
+"""commands/send.md and commands/factory.md run `superlite-cli factory ...`; marketplace lists superlite-warp;
+help, intro, tools and README mention the factory commands."""
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+SCRIPTS = ROOT / "skills" / "swarm" / "scripts"
+
+
+def read(rel: str) -> str:
+    return (ROOT / rel).read_text(encoding="utf-8")
+
+
+def spans(cmd: str) -> list[list[str]]:
+    body = read(f"commands/{cmd}.md").split("\n---\n", 1)[1]
+    return [s.split() for s in re.findall(r"`([^`]+)`", body)]
+
+
+def test_send_and_factory_commands():
+    for cmd in ("send", "factory"):
+        m = re.match(r"---\n(.*?)\n---\n", read(f"commands/{cmd}.md"), re.S)
+        keys = dict(ln.split(": ", 1) for ln in m.group(1).splitlines() if ": " in ln)
+        assert keys.keys() >= {"description", "argument-hint"} and keys["description"].strip()
+    assert ["superlite-cli", "factory", "send", "$ARGUMENTS"] in spans("send")
+    assert ["superlite-cli", "factory", "$ARGUMENTS"] in spans("factory")
+    assert "--plan" in read("commands/send.md") and "--superlite" in read("commands/send.md")
+    for verb in ("list", "add", "use", "login", "logout", "mcp"):
+        assert f"`{verb}" in read("commands/factory.md")
+
+
+def test_run_commands_mention_factory_addresses():
+    for cmd in ("attach", "runs", "watch", "give", "detach"):
+        text = read(f"commands/{cmd}.md")
+        assert ["superlite-cli", "cloud", cmd, "$ARGUMENTS"] in spans(cmd)
+        if cmd != "runs":
+            assert "<factory>:<ref>" in text or cmd == "detach"
+        assert "factory" in text
+
+
+def test_factory_subcommands_exist():
+    for sub in ("send", "list", "mcp"):
+        r = subprocess.run([sys.executable, str(SCRIPTS / "factory.py"), sub, "--help"], capture_output=True,
+                           text=True, timeout=30)
+        assert r.returncode == 0, r.stderr
+
+
+def test_marketplace_lists_warp():
+    plugins = {p["name"]: p for p in json.loads(read(".claude-plugin/marketplace.json"))["plugins"]}
+    assert plugins["superlite-warp"]["source"] == {"source": "github", "repo": "iha2/superlite-warp"}
+    assert plugins["claude-agent-map"]["source"]["source"] == "github"
+    assert "superlite" in plugins
+
+
+def test_help_mentions_factory():
+    assert "/superlite:send" in read("assets/help.txt") and "/superlite:factory" in read("assets/help.txt")
+    assert "/superlite:factory" in read("assets/intro.txt")
+    assert "superlite-cli factory" in read("docs/tools.md")
+    assert "/superlite:factory" in read("README.md") and "superlite-warp" in read("README.md")
+    assert max(len(ln) for ln in read("assets/help.txt").splitlines()) <= 80
+    assert max(len(ln) for ln in read("assets/intro.txt").splitlines()) <= 80

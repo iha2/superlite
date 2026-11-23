@@ -54,6 +54,8 @@ Each run starts its own session automatically (`superlite-cli session ensure`): 
 | `/superlite:human`, `/superlite:ai`, `/superlite:approve` | Choose who orchestrates; approve the review plan |
 | `/superlite:status`, `/superlite:stop`, `/superlite:resume` | Watch, stop or resume a build |
 | `/superlite:agents`, `/superlite:tail` | Watch a run: the agent map pane, or the same run as a terminal feed without the mod |
+| `/superlite:send <text>`, `/superlite:factory <verb>` | Send a run to the active factory (`--plan FILE`, `--superlite`) and manage factories: `list`, `add`, `use`, `login`, `logout`, `mcp`. superlite-cloud is built in; plugin kinds such as `superlite-warp` install separately (`/plugin install superlite-warp@superlite-dev`) |
+| `/superlite:runs`, `/superlite:watch`, `/superlite:attach`, `/superlite:give`, `/superlite:detach` | Work with runs on a factory; `<factory>:<ref>` (for example `warp:1a2b3c4d`) names a run on that factory, a bare ref uses the active one |
 | `/superlite:review`, `/superlite:report`, `/superlite:finish` | Review a branch, read build reports, finish the branch |
 | `/superlite:merged [slug\|branch\|PR]` | After the PR merges: confirm it with `gh`, update local main, close the session, delete the local branch |
 | `/superlite:setup`, `/superlite:intro`, `/superlite:help [section]` | First-run check, the intro screen, the detailed help |

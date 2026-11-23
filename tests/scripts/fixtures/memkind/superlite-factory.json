@@ -1,0 +1,1 @@
+{"api": 1, "kind": "mem", "label": "Memory factory (tests)", "module": "factory/memkind.py", "entry": "create", "token_env": "MEM_API_KEY", "mcp": {"name": "mem-factory", "url": "http://127.0.0.1:9/mcp", "auth": "oauth"}}

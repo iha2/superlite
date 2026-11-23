@@ -22,6 +22,15 @@
       "author": {
         "name": "Iheatu Chris Wogu"
       }
+    },
+    {
+      "name": "superlite-warp",
+      "description": "Warp factory kind for superlite: send and follow runs on Warp with /superlite:send",
+      "version": "0.1.0",
+      "source": {"source": "github", "repo": "iha2/superlite-warp"},
+      "author": {
+        "name": "Iheatu Chris Wogu"
+      }
     }
   ]
 }
