@@ -14,6 +14,12 @@ import factory_api  # noqa: E402
 import factory_watch  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _stream_inline(monkeypatch):
+    """These tests run watch under pytest, which may sit inside an agent harness: let it stream."""
+    monkeypatch.setenv("SUPERLITE_WATCH_INLINE", "1")
+
+
 def _memkind(name="lab"):
     p = ROOT / "tests" / "scripts" / "fixtures" / "memkind" / "factory" / "memkind.py"
     spec = importlib.util.spec_from_file_location("memkind_t2", p)
@@ -130,3 +136,37 @@ def test_run_plugin_exception_scrubbed(capsys, monkeypatch):
     assert factory_watch.run(P(), "r1") == 1
     err = capsys.readouterr().err
     assert "tok-xyz" not in err and "RuntimeError" in err
+
+
+class _Tty(io.StringIO):
+    def isatty(self):
+        return True
+
+
+def _agent(monkeypatch, stdout, **env):
+    monkeypatch.delenv("SUPERLITE_WATCH_INLINE", raising=False)
+    monkeypatch.setenv("CLAUDECODE", "1")
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+    monkeypatch.setattr(sys, "stdout", stdout)
+
+
+_DONE = [{"id": 1, "kind": "status", "data": {"to": "done"}}]
+
+
+def test_agent_without_tty_gets_the_handoff_and_no_stream(monkeypatch):
+    out = io.StringIO()
+    _agent(monkeypatch, out)
+    prov = FakeProv(_DONE)
+    prov.name = "lab"
+    assert factory_watch.run(prov, "r1") == 0
+    assert "factory watch lab:r1" in out.getvalue() and "status: done" not in out.getvalue()
+
+
+def test_follow_inline_env_and_tty_stream(monkeypatch):
+    for kw, env, out in [({"follow": True}, {}, io.StringIO()), ({}, {"SUPERLITE_WATCH_INLINE": "1"}, io.StringIO()),
+                         ({}, {}, _Tty())]:
+        _agent(monkeypatch, out, **env)
+        assert factory_watch.run(FakeProv(_DONE), "r1", **kw) == 0
+        assert out.getvalue() == "status: done\n"

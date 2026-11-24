@@ -365,9 +365,9 @@ def cmd_watch(a) -> int:
     name, ref = _route(address) if a.ref else (_attached_factory(), address)
     if name == CLOUD:
         import cloud_watch
-        return int(cloud_watch.main([ref]) or 0)
+        return int(cloud_watch.main([ref, *(["--follow"] if a.follow else [])]) or 0)
     import factory_watch
-    return int(factory_watch.run(_provider(name), ref) or 0)
+    return int(factory_watch.run(_provider(name), ref, follow=a.follow) or 0)
 
 
 def cmd_nudge(a) -> int:
@@ -432,6 +432,7 @@ def _parser() -> argparse.ArgumentParser:
     sub.add_parser("detach")
     s = sub.add_parser("watch")
     s.add_argument("ref", nargs="?")
+    s.add_argument("--follow", action="store_true")
     s = sub.add_parser("nudge")
     s.add_argument("ref")
     s.add_argument("text", nargs="+")

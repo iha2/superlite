@@ -11,6 +11,7 @@ if _HERE not in sys.path:
 
 import cloud_client  # noqa: E402
 import cloud_watch  # noqa: E402
+import factory_api  # noqa: E402
 import factory_registry  # noqa: E402
 
 TERMINAL = ("done", "failed", "cancelled")
@@ -60,7 +61,12 @@ def _scrub(provider, msg) -> str:
     return cloud_watch.clean(s)
 
 
-def run(provider, ref: str, after: int = 0) -> int:
+def run(provider, ref: str, after: int = 0, follow: bool = False) -> int:
+    if not follow and factory_api.agent_without_tty():
+        name = getattr(provider, "name", None)
+        address = f"{name}:{ref}" if name else ref
+        print(factory_api.watch_handoff(factory_api.watch_command("factory", [address]), address))
+        return 0
     threading.Thread(target=_read_input, args=(provider, ref), daemon=True).start()
     try:
         for ev in provider.events(ref, after):

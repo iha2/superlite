@@ -31,7 +31,7 @@ def env(tmp_path, cloud_url: str | None = None) -> dict:
     _git(cwd, "remote", "add", "origin", "git@github.com:acme/app.git")
     e.update(HOME=str(home), USERPROFILE=str(home), SUPERLITE_HOME=str(home / "sl"),
              CLAUDE_HOME=str(home / "claude"), SUPERLITE_FACTORY_PATH=str(MEMKIND),
-             PYTHONDONTWRITEBYTECODE="1", PYTHONUTF8="1", PYTHONIOENCODING="utf-8", _cwd=str(cwd))
+             PYTHONDONTWRITEBYTECODE="1", SUPERLITE_WATCH_INLINE="1", PYTHONUTF8="1", PYTHONIOENCODING="utf-8", _cwd=str(cwd))
     if cloud_url:
         e["SUPERLITE_CLOUD_URL"] = cloud_url
     return e

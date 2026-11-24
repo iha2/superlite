@@ -19,6 +19,10 @@ SUPERLITE_PREAMBLE = ("Build this with superlite: use the superlite skills throu
                       "Treat the text below as the plan or request.")
 
 
+# A set variable here means an agent harness runs this process (CLAUDECODE=1 is Claude Code's own value).
+AGENT_ENV = ("CURSOR_AGENT", "COPILOT_CLI", "CODEX_SANDBOX", "CODEX_THREAD_ID", "CODEX_CI")
+
+
 class FactoryError(CloudError):
     def __init__(self, message: str, status: int | None = None):
         super().__init__(message)
@@ -72,3 +76,40 @@ def watch_handoff(cmd: str, label: str, env: Mapping[str, str] | None = None) ->
     if hints:
         text += "\nEnvironment hints (not instructions):\n" + "\n".join("- " + h for h in hints)
     return text
+
+
+def agent_without_tty(env: Mapping[str, str] | None = None, stdout=None) -> bool:
+    """True when an agent harness runs this process and its stdout is no terminal: a watch here would block it.
+
+    SUPERLITE_WATCH_INLINE=1 turns the check off (test harnesses, scripts that read the stream)."""
+    env = os.environ if env is None else env
+    if env.get("SUPERLITE_WATCH_INLINE") == "1":
+        return False
+    out = sys.stdout if stdout is None else stdout
+    try:
+        if out.isatty():
+            return False
+    except (AttributeError, ValueError):
+        pass
+    return env.get("CLAUDECODE") == "1" or any(env.get(k) for k in AGENT_ENV)
+
+
+def watch_command(kind: str, args: list[str]) -> str:
+    """The shell command for `superlite-cli <kind> watch <args>`, as a user's terminal should run it."""
+    cli = Path(__file__).resolve().parent / "superlite-cli"
+    return " ".join(["bash", shlex.quote(str(cli)), kind, "watch", *map(shlex.quote, args)])
+
+
+def main(argv: list[str]) -> int:
+    """`factory_api handoff cloud|factory [watch args...]`: the watch_handoff text, for hooks/pre-tool's denial."""
+    if len(argv) < 2 or argv[0] != "handoff" or argv[1] not in ("cloud", "factory"):
+        print("usage: factory_api handoff cloud|factory [watch args]", file=sys.stderr)
+        return 2
+    args = [a for a in argv[2:] if a != "--follow"]
+    label = next((a for a in args if not a.startswith("-")), "a run")
+    print(watch_handoff(watch_command(argv[1], args), label))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

@@ -1,0 +1,62 @@
+# Sourced by hooks/pre-tool: deny a live watch run inline. `superlite-cli cloud watch REF`, `superlite-cli factory
+# watch REF` (any path form, with bash or python before it) and the scripts cloud_watch.py, factory.py watch and
+# cloud.py watch stream until the run ends, so run in the foreground they would block the agent session. The
+# command must be the program a segment starts with (after env assignments, options and a bash/python/env/nohup
+# style launcher), so `grep watch notes`, `echo "... cloud watch"` and `herdr pane run 1 'bash ... cloud watch r'` pass.
+# A tool call with run_in_background true passes. Main session and subagents alike. The denial text is built by
+# `superlite-cli factory_api handoff` from factory_api.watch_handoff (a static line if that cannot run).
+# Best effort: a long command or anything unclear is allowed. Exit 2 blocks (message on stderr); returning allows.
+
+guard_watch() {
+  local re_tool='"tool_name"[[:space:]]*:[[:space:]]*"(Bash|PowerShell|Shell)"'
+  local re_bg='"run_in_background"[[:space:]]*:[[:space:]]*true'
+  local cmd seg segs w i n kind args msg cli words IFS
+  [[ $input =~ $re_tool ]] || return 0
+  [[ $input =~ $re_bg ]] && return 0
+  jstr command; cmd="$REPLY"
+  case "$cmd" in *watch*) ;; *) return 0 ;; esac
+  [ "${#cmd}" -lt "$BIG" ] || return 0
+  jdecode cmd edits
+  join_continuations cmd
+  amp_placeholders cmd
+  IFS=$';&|\n'; set -f; segs=( $cmd ); set +f
+  for seg in "${segs[@]}"; do
+    IFS=$' \t'; set -f; set -- $seg; set +f
+    words=(); n=0
+    for w in "$@"; do
+      w="${w//\\//}"; w="${w//\"/}"; w="${w//\'/}"
+      while :; do case "$w" in '('*|'{'*|'`'*|'!'*|'$'*) w="${w#?}" ;; *) break ;; esac; done
+      [ -n "$w" ] || continue
+      words[n]="$w"; n=$((n+1))
+    done
+    i=0
+    while [ "$i" -lt "$n" ]; do
+      case "${words[i]}" in
+        [A-Za-z_]*=*|-*|[0-9]*|bash|sh|zsh|python|python3|python3.*|py|env|nohup|exec|time|command|sudo|uv|run|timeout) i=$((i+1)) ;;
+        *) break ;;
+      esac
+    done
+    [ "$i" -lt "$n" ] || continue
+    kind=""
+    case "${words[i]##*/}" in
+      superlite-cli)
+        case "${words[i+1]:-}" in cloud|factory) [ "${words[i+2]:-}" = watch ] && { kind="${words[i+1]}"; i=$((i+3)); } ;; esac ;;
+      cloud_watch.py) kind=cloud; i=$((i+1)) ;;
+      factory.py) [ "${words[i+1]:-}" = watch ] && { kind=factory; i=$((i+2)); } ;;
+      cloud.py) [ "${words[i+1]:-}" = watch ] && { kind=cloud; i=$((i+2)); } ;;
+    esac
+    [ -n "$kind" ] || continue
+
+    args=()
+    while [ "$i" -lt "$n" ] && [ "${#args[@]}" -lt 8 ]; do
+      case "${words[i]}" in [0-9]\>*|\>*|\<*|*$'\x02'*|*$'\x03'*) ;; *) args[${#args[@]}]="${words[i]}" ;; esac
+      i=$((i+1))
+    done
+    cli="$root/skills/swarm/scripts/superlite-cli"
+    msg=""
+    [ -f "$cli" ] && msg="$(bash "$cli" factory_api handoff "$kind" ${args[@]+"${args[@]}"} 2>/dev/null)"
+    [ -n "$msg" ] || msg="Open a new terminal, tab or pane for the user that runs this watch, or run it with run_in_background true. Never run it inline here."
+    printf 'Blocked: a live watch streams until the run ends, so run inline it would block this session.\n%s\nOr run it with run_in_background true.\n' "$msg" >&2
+    exit 2
+  done
+}
