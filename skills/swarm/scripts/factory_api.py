@@ -97,7 +97,7 @@ def agent_without_tty(env: Mapping[str, str] | None = None, stdout=None) -> bool
 def watch_command(kind: str, args: list[str]) -> str:
     """The shell command for `superlite-cli <kind> watch <args>`, as a user's terminal should run it."""
     cli = Path(__file__).resolve().parent / "superlite-cli"
-    return " ".join(["bash", shlex.quote(str(cli)), kind, "watch", *map(shlex.quote, args)])
+    return " ".join(["bash", shlex.quote(cli.as_posix()), kind, "watch", *map(shlex.quote, args)])
 
 
 def main(argv: list[str]) -> int:

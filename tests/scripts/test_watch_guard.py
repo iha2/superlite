@@ -1,6 +1,7 @@
 """hooks/pre-tool denies a live watch run inline; a background run, a terminal handoff and other commands pass."""
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -48,8 +49,8 @@ def test_foreground_watch_is_denied_with_the_handoff(cmd):
 
 
 def test_handoff_names_the_kind_and_run():
-    assert "superlite-cli cloud watch login_fix`" in run(WATCHES[0]).stderr
-    assert "superlite-cli factory watch lab:r1`" in run(WATCHES[3]).stderr
+    for cmd, tail in ((WATCHES[0], "cloud watch login_fix"), (WATCHES[3], "factory watch lab:r1")):
+        assert re.search(r"`bash \S*superlite-cli'? " + re.escape(tail) + "`", run(cmd).stderr)
 
 
 @pytest.mark.parametrize("cmd", WATCHES)
