@@ -36,6 +36,11 @@ def _api():
     return factory_api
 
 
+def _hook():
+    import cloud_hook
+    return cloud_hook
+
+
 def _attach_state() -> dict:
     try:
         d = json.loads((_home() / "attach.json").read_text(encoding="utf-8"))
@@ -189,18 +194,33 @@ def cmd_login(a) -> int:
     if not token:
         raise api.FactoryError(f"{a.name}: no token: pass --token, set the manifest token_env, or copy it to the clipboard")
     _CTX["secrets"].append(token)  # a failed login rolls the token back out of the store; keep it redacted
+    previous = inst.get("token")
     inst["token"] = token
     reg.save_store(store)
+    valid = False
     try:
         _provider(a.name).me()
-    except api.FactoryError:
-        store = reg.load_store()
-        store["factories"][a.name].pop("token", None)
-        reg.save_store(store)
-        raise
+        valid = True
+    finally:  # any failure, a plugin's own exception or an interrupt included, leaves the old credential in place
+        if not valid:
+            _restore_token(a.name, previous)
     _wrapper(True)
     print(f"{a.name}: logged in")
     return 0
+
+
+def _restore_token(name: str, previous: str | None) -> None:
+    """Put a factory's stored credential back as it was before a login attempt."""
+    reg = _reg()
+    store = reg.load_store()
+    inst = (store.get("factories") or {}).get(name)
+    if inst is None:
+        return
+    if previous:
+        inst["token"] = previous
+    else:
+        inst.pop("token", None)
+    reg.save_store(store)
 
 
 def cmd_logout(a) -> int:
@@ -303,7 +323,9 @@ def cmd_runs(a) -> int:
     name = _reg().active()
     if name == CLOUD:
         return _cloud_main(["runs"] + (["--all"] if a.all else []))
-    runs = _provider(name).runs(all=a.all)
+    p = _provider(name)
+    _api().require(p, "runs")
+    runs = p.runs(all=a.all)
     if not runs:
         print("no runs")
     for r in runs:
@@ -344,7 +366,11 @@ def cmd_attach(a) -> int:
     name, ref = _route(a.ref)
     if name == CLOUD:
         return _cloud_attach(ref)
-    info = _provider(name).attach(ref)
+    p = _provider(name)
+    _api().require(p, "attach")
+    info = p.attach(ref)
+    if info.get("status") in _hook().ENDED:  # no dead attachment: the cloud hook refuses the same way
+        raise _api().FactoryError(f"{info.get('run') or ref} has ended")
     h = _home()
     h.mkdir(parents=True, exist_ok=True)
     (h / "attach.json").write_text(
@@ -367,7 +393,9 @@ def cmd_watch(a) -> int:
         import cloud_watch
         return int(cloud_watch.main([ref, *(["--follow"] if a.follow else [])]) or 0)
     import factory_watch
-    return int(factory_watch.run(_provider(name), ref, follow=a.follow) or 0)
+    p = _provider(name)
+    _api().require(p, "events")
+    return int(factory_watch.run(p, ref, follow=a.follow) or 0)
 
 
 def cmd_nudge(a) -> int:

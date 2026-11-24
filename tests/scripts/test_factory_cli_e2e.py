@@ -276,6 +276,10 @@ import sys
 from factory_api import FactoryError
 
 
+class OwnError(Exception):
+    pass
+
+
 class P:
     caps = frozenset({"me", "runs", "cancel"})
     nudge_word = "nudge"
@@ -286,6 +290,8 @@ class P:
     def me(self):
         if self.t.startswith("bad-"):
             raise FactoryError("rejected " + self.t)
+        if self.t.startswith("boom-"):
+            raise OwnError("boom with " + self.t)
         return {"handle": "h", "role": "member"}
 
     def resolve_target(self, q):
@@ -418,3 +424,45 @@ def test_cloud_attach_known_run(tmp_path):
         assert json.loads((Path(env["SUPERLITE_HOME"]) / "attach.json").read_text())["id"] == "t1"
     finally:
         stop()
+
+
+def test_failed_relogin_keeps_the_previous_credential(tmp_path):
+    env = _leaky_env(tmp_path)
+    assert e2e.cli(["login", "lk", "--token", "good-1"], env).returncode == 0
+    r = e2e.cli(["login", "lk", "--token", "bad-2"], env)
+    assert r.returncode == 1 and "bad-2" not in r.stdout + r.stderr
+    assert _lk_token(env) == "good-1"
+    r = e2e.cli(["login", "lk", "--token", "boom-3"], env)  # a plugin's own exception, not a FactoryError
+    assert (r.returncode, r.stderr.strip()) == (1, "lk: OwnError")
+    assert _lk_token(env) == "good-1"
+
+
+def _lk_token(env):
+    store = json.loads((Path(env["SUPERLITE_HOME"]) / "factories.json").read_text())
+    return store["factories"]["lk"].get("token")
+
+
+_BARE = _LEAKY.replace('caps = frozenset({"me", "runs", "cancel"})', 'caps = frozenset({"me"})')
+
+
+def test_plugin_runs_attach_watch_need_their_caps(tmp_path):
+    env = _leaky_env(tmp_path)
+    (tmp_path / "leakykind" / "factory" / "leaky.py").write_text(_BARE)
+    assert e2e.cli(["login", "lk", "--token", "t-1"], env).returncode == 0
+    assert e2e.cli(["use", "lk"], env).returncode == 0
+    env["SUPERLITE_WATCH_INLINE"] = "0"  # an agent without a tty would get a watch handoff
+    env["CLAUDECODE"] = "1"
+    for verb in ("runs", "attach r1", "watch r1"):
+        r = e2e.cli(verb.split(), env, input="")
+        assert (r.returncode, r.stderr.strip()) == (2, f"lk: {verb.split()[0].replace('watch', 'events')} "
+                                                       "is not supported"), verb
+        assert r.stdout == ""
+
+
+def test_attach_refuses_an_ended_run(tmp_path):
+    env = _lab(tmp_path)
+    name = e2e.cli(["send", "x"], env).stdout.split()[0]
+    assert e2e.cli(["cancel", name], env).returncode == 0
+    r = e2e.cli(["attach", "lab:" + name], env)
+    assert (r.returncode, r.stderr.strip()) == (1, f"lab: {name} has ended")
+    assert not (Path(env["SUPERLITE_HOME"]) / "attach.json").exists()

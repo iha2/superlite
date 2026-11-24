@@ -138,6 +138,24 @@ def test_notice_once(tmp_path):
     assert e2e.status_line(env) == ""
 
 
+def test_notice_keeps_its_label_with_several_factories(tmp_path):
+    env = e2e.env(tmp_path)
+    kind = tmp_path / "nk"
+    (kind / "factory").mkdir(parents=True)
+    (kind / "superlite-factory.json").write_text(json.dumps(
+        {"api": 1, "kind": "nmem", "label": "Notice mem", "module": "factory/k.py", "entry": "create"}))
+    (kind / "factory" / "k.py").write_text(NOTICE_KIND)
+    env["MEMKIND_PY"] = str(e2e.MEMKIND / "factory" / "memkind.py")
+    env["SUPERLITE_FACTORY_PATH"] = os.pathsep.join([env["SUPERLITE_FACTORY_PATH"], str(kind)])
+    _login(env, kind="nmem")
+    _state(env, "done")
+    stop = _cloud(env)
+    try:
+        assert e2e.status_line(env).endswith(" · lab(nmem) new: 1a2b3c4d done")
+    finally:
+        stop()
+
+
 def test_ended_detaches(tmp_path):
     env = e2e.env(tmp_path)
     _login(env)

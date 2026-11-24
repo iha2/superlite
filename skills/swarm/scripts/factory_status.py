@@ -22,6 +22,7 @@ import state  # noqa: E402
 CLOUD = "superlite-cloud"
 MARKER = f"{state.DIR_NAME}-factory-entry"
 PLUGIN_ERRORS = factory_registry.PLUGIN_ERRORS
+CORE_ERRORS = factory_registry.CORE_ERRORS
 KINDS = ("attach", "watch")
 SAFE = re.compile(r"^[A-Za-z0-9_-]+$")
 ENDED = ("done", "failed", "cancelled")
@@ -50,7 +51,7 @@ def _attached_factory() -> str | None:
     try:
         import factory_hook
         return factory_hook.attached_factory()
-    except PLUGIN_ERRORS:
+    except CORE_ERRORS:
         st = _attach_state()
         return (st.get("factory") or CLOUD) if st else None
 
@@ -60,7 +61,7 @@ def _plugin_names() -> tuple[list[str], int]:
     try:
         logged = factory_registry.logged_in()
         return [n for n in logged if n != CLOUD], len(logged)
-    except PLUGIN_ERRORS:
+    except CORE_ERRORS:
         return [], 0
 
 
@@ -71,7 +72,7 @@ def _provider(name: str):
 def _kind(name: str) -> str:
     try:
         return factory_registry.kind_of(name)
-    except PLUGIN_ERRORS:
+    except CORE_ERRORS:
         return ""
 
 
@@ -112,7 +113,7 @@ def _plugin_part(name: str, attached: bool, many: bool) -> tuple[str, dict]:
     if ref:
         return " · ".join(x for x in (f"ATTACHED {label} {ref}" if many else f"ATTACHED {ref}", new) if x), st
     if new:
-        return new, st
+        return (f"{label} {new}" if many else new), st
     for r in runs:
         if r.get("status") == "running":
             return (f"{label} {r.get('name')} running" if many else f"{r.get('name')} running"), st
@@ -134,7 +135,7 @@ def _compute() -> tuple[str, dict, dict | None]:
     try:
         seg, cloud_st = _cloud_part(att == CLOUD)
         parts.append(seg)
-    except PLUGIN_ERRORS:
+    except CORE_ERRORS:
         pass
     for n in plugins:
         try:
@@ -211,14 +212,14 @@ def _sync_cloud(cloud_st: dict) -> None:
         client = cloud_status._make_client()
         if client is not None:
             cloud_status._maybe_sync(client, status=cloud_st)
-    except PLUGIN_ERRORS:
+    except CORE_ERRORS:
         pass
 
 
 def _sync_plugin_entries(statuses: dict) -> None:
     try:
         _write_entries(statuses, cloud_status._claude_home() / "skills")
-    except PLUGIN_ERRORS:
+    except CORE_ERRORS:
         pass
 
 

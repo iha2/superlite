@@ -245,3 +245,22 @@ def test_readd_with_another_kind_drops_the_credential(tmp_path, monkeypatch):
     fr.save_store(store)
     fr.add("lab", "kindb", target="t1")
     assert fr.load_store()["factories"]["lab"]["token"] == "secret-b"
+
+
+def test_plugin_defined_exception_subclass_is_reported_by_type(tmp_path, monkeypatch):
+    r = make_plugin(tmp_path / "plug" / "ownerr", kind="ownerr", module_src=(
+        "class ProviderError(Exception):\n    pass\n"
+        "def create(c):\n    raise ProviderError('bad token ' + str(c.get('token')))\n"))
+    bad = make_plugin(tmp_path / "plug" / "badimp", kind="badimp", module_src=(
+        "class Boom(Exception):\n    pass\nraise Boom('import with sekret-tok')\n"))
+    monkeypatch.setenv("SUPERLITE_FACTORY_PATH", os.pathsep.join([str(r), str(bad)]))
+    s = fr.load_store()
+    for n in ("o1", "b1"):
+        fr.add(n, "ownerr" if n == "o1" else "badimp")
+    s = fr.load_store()
+    s["factories"]["o1"]["token"] = s["factories"]["b1"]["token"] = "sekret-tok"
+    fr.save_store(s)
+    for name, typ in (("o1", "ProviderError"), ("b1", "Boom")):
+        with pytest.raises(FactoryError) as ei:
+            fr.provider(name)
+        assert typ in str(ei.value) and "sekret-tok" not in str(ei.value)

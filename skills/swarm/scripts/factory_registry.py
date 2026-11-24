@@ -15,10 +15,12 @@ if _HERE_DIR not in sys.path:
 import state  # noqa: E402
 from factory_api import CloudError, FactoryError  # noqa: E402
 
-# What a plugin (or a store it left behind) can raise: callers catch these, never everything.
-# Errors are reported by type name only, never the message or a traceback: they may carry a token.
-PLUGIN_ERRORS = (CloudError, ArithmeticError, AssertionError, AttributeError, EOFError, ImportError, LookupError,
-                 NameError, OSError, RuntimeError, SyntaxError, TypeError, ValueError, SystemExit)
+# Anything a plugin's own code can raise, including its own Exception subclasses and sys.exit().
+# Use it only around a call into plugin code, and report by type name: the message may carry a token.
+PLUGIN_ERRORS = (Exception, SystemExit)
+# What core code reading its own files and stores can raise; a real programming error elsewhere still surfaces.
+CORE_ERRORS = (CloudError, ArithmeticError, AssertionError, AttributeError, EOFError, ImportError, LookupError,
+               NameError, OSError, RuntimeError, SyntaxError, TypeError, ValueError, SystemExit)
 
 BUILTIN = "superlite-cloud"
 BUILTIN_SUPERLITE_KEY = "builtin_superlite"  # top-level, so the factories table stays plugin-only
@@ -108,7 +110,7 @@ def discover(cwd: str | None = None) -> list[dict]:
     for root in _roots(cwd):
         try:
             row = _row(root)
-        except PLUGIN_ERRORS as e:  # isolation: one broken plugin never breaks another
+        except CORE_ERRORS as e:  # isolation: one broken plugin never breaks another
             row = {"kind": root.name, "path": str(root), "error": f"manifest: {type(e).__name__}"}
         if row is None or (row["kind"] in seen):
             continue
@@ -263,7 +265,7 @@ def logged_in() -> list[str]:
         cfg = cloud_config.load()
         if cfg and cfg.get("token"):
             out.append(BUILTIN)
-    except PLUGIN_ERRORS:
+    except CORE_ERRORS:
         pass
     store = load_store()
     envs = {r["kind"]: (r.get("manifest") or {}).get("token_env") for r in discover()}
