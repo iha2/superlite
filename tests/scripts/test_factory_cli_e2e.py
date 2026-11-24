@@ -271,6 +271,8 @@ def test_imports_standalone():
 # ---- review fixes: redaction, env-only logins, attachments, status-line wrapper --------------------------
 
 _LEAKY = '''
+import sys
+
 from factory_api import FactoryError
 
 
@@ -293,6 +295,8 @@ class P:
         raise FactoryError("runs failed with " + self.t)
 
     def cancel(self, ref):
+        if ref == "quit":
+            sys.exit("cancel quit with " + self.t)
         raise RuntimeError("cancel failed with " + self.t)
 
 
@@ -323,6 +327,9 @@ def test_env_only_login_works_and_is_redacted(tmp_path):
     assert r.returncode == 1 and "env-secret-77" not in r.stdout + r.stderr and r.stderr.startswith("lk:")
     r = e2e.cli(["cancel", "zzz"], env)  # a plugin's ordinary exception: the type only, never a traceback
     assert (r.returncode, r.stderr.strip()) == (1, "lk: RuntimeError")
+    r = e2e.cli(["cancel", "quit"], env)  # sys.exit(<message>) from a plugin: the type only, the message never printed
+    assert (r.returncode, r.stderr.strip()) == (1, "lk: SystemExit")
+    assert "env-secret-77" not in r.stdout + r.stderr
 
 
 def test_failed_clipboard_login_never_prints_the_token(tmp_path):
@@ -331,9 +338,10 @@ def test_failed_clipboard_login_never_prints_the_token(tmp_path):
     env = _leaky_env(tmp_path)
     bindir = tmp_path / "fakebin"
     bindir.mkdir()
-    clip = bindir / "xclip"
-    clip.write_text("#!/bin/sh\nprintf 'bad-clip-token'\n")
-    clip.chmod(0o755)
+    for tool in ("pbpaste", "wl-paste", "xclip"):  # the first one found wins, so shadow all of them
+        clip = bindir / tool
+        clip.write_text("#!/bin/sh\nprintf 'bad-clip-token'\n")
+        clip.chmod(0o755)
     env["PATH"] = str(bindir) + os.pathsep + env["PATH"]
     r = e2e.cli(["login", "lk"], env)
     assert r.returncode == 1 and r.stderr.strip() == "lk: rejected ***"
@@ -359,6 +367,20 @@ def test_plugin_login_installs_wrapper_and_logout_restores(tmp_path):
     assert e2e.cli(["logout", "lab"], env).returncode == 0
     assert not _settings(env).exists()
     assert not (Path(env["SUPERLITE_HOME"]) / "attach.json").exists()
+
+
+def test_last_logout_removes_generated_entries_with_the_wrapper(tmp_path):
+    env = _lab(tmp_path)
+    skills = Path(env["CLAUDE_HOME"]) / "skills"
+    mine = skills / "superlite-attach-lab-run1"
+    theirs = skills / "superlite-attach-mine"
+    for d in (mine, theirs):
+        d.mkdir(parents=True)
+        (d / "SKILL.md").write_text("x")
+    (mine / ".superlite-factory-entry").write_text("")
+    assert e2e.cli(["logout", "lab"], env).returncode == 0
+    assert not _settings(env).exists()
+    assert not mine.exists() and theirs.exists()
 
 
 def test_cloud_logout_keeps_plugin_attachment_and_wrapper(tmp_path):

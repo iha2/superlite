@@ -192,6 +192,10 @@ def _write_entries(statuses: dict, skills_dir: Path) -> list[str]:
     return [f for f in want if (skills_dir / f / MARKER).exists()]
 
 
+def clear_entries(skills_dir: Path) -> None:
+    _write_entries({}, Path(skills_dir))
+
+
 def sync_entries(skills_dir: str) -> list[str]:
     statuses = {}
     for n in _plugin_names()[0]:

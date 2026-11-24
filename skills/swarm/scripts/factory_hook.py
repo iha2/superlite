@@ -197,9 +197,11 @@ def _route_multi(reg, prompt: str, af: str | None, multi: bool) -> dict | None:
         return None
     fac = (direct or target)[0]
     try:
+        if fac != CLOUD and fac not in reg.logged_in():
+            raise reg.FactoryError(f"{fac}: not logged in")
         prov = reg.provider(fac)
     except PLUGIN_ERRORS as e:  # a broken or logged-out factory blocks addressed input; it never reaches the model
-        if direct or verb or af == fac:  # the type only: a plugin's own message may carry its token
+        if direct or verb or af == fac or text.startswith(">>"):  # the type only: a plugin's own message may carry its token
             return _block(f"{fac}: unavailable ({type(e).__name__})")
         return None
     kind = _kind(reg, fac)
@@ -254,14 +256,31 @@ def _verify_attach(reg, prompt: str, res: dict | None) -> dict | None:
     return res
 
 
+def _names_plugin(reg, text: str) -> bool:
+    """True when the input's first address token could name a registered plugin (a false positive only routes wider)."""
+    plugins = _names(reg) - {CLOUD}
+    m = cloud_hook._SLASH.match(text)
+    if m:
+        if m.group(1) not in _ADDR_VERBS + ("runs",):
+            return False
+        tok = (m.group(2) or "").strip().partition(" ")[0]
+    elif text.startswith(">>"):
+        tok = text[2:].lstrip().partition(" ")[0]
+    else:
+        return False
+    return tok.partition(":")[0] in plugins or any(tok.startswith(n + "-") for n in plugins)
+
+
 def route(prompt: str) -> dict | None:
     try:
         reg = _reg()
         logged = reg.logged_in()
         af = attached_factory()
+        cloud_only = (set(logged) <= {CLOUD} and af in (None, CLOUD) and reg.active() == CLOUD
+                      and not _names_plugin(reg, prompt.strip()))
     except PLUGIN_ERRORS:
         return cloud_hook.route_main(prompt)
-    if set(logged) <= {CLOUD} and af in (None, CLOUD):
+    if cloud_only:
         if CLOUD in logged and _explicit_cloud(prompt.strip()):  # the address names the run, not the literal text
             return _route_multi(reg, prompt, af, False)
         res = cloud_hook.route_main(prompt)

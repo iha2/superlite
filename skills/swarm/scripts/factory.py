@@ -217,9 +217,19 @@ def cmd_logout(a) -> int:
         if _attached_factory() == a.name:
             _cloud_main(["detach"])
         if not reg.logged_in():
+            _clear_entries(reg)  # before the wrapper goes: nothing else runs factory_status to clean them
             _wrapper(False)
     print(f"{a.name}: logged out")
     return 0
+
+
+def _clear_entries(reg) -> None:
+    """Remove the generated attach/watch entries of plugin runs."""
+    try:
+        import factory_status
+        factory_status.clear_entries(reg._claude_home() / "skills")
+    except (OSError, ImportError):
+        pass
 
 
 def _cloud_logout(reg) -> int:
@@ -451,11 +461,11 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     try:
         return _HANDLERS[a.cmd](a)
-    except Exception as e:
+    except (Exception, SystemExit) as e:  # a plugin may sys.exit(<message with its token>)
         return _fail(e, a)
 
 
-def _fail(e: Exception, a) -> int:
+def _fail(e: BaseException, a) -> int:
     """One error line, never a traceback and never a token: only a CloudError's message is shown (scrubbed)."""
     try:
         api = _api()

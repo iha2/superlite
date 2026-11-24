@@ -31,7 +31,7 @@ def env(tmp_path, cloud_url: str | None = None) -> dict:
     _git(cwd, "remote", "add", "origin", "git@github.com:acme/app.git")
     e.update(HOME=str(home), USERPROFILE=str(home), SUPERLITE_HOME=str(home / "sl"),
              CLAUDE_HOME=str(home / "claude"), SUPERLITE_FACTORY_PATH=str(MEMKIND),
-             PYTHONDONTWRITEBYTECODE="1", _cwd=str(cwd))
+             PYTHONDONTWRITEBYTECODE="1", PYTHONUTF8="1", PYTHONIOENCODING="utf-8", _cwd=str(cwd))
     if cloud_url:
         e["SUPERLITE_CLOUD_URL"] = cloud_url
     return e
@@ -40,7 +40,7 @@ def env(tmp_path, cloud_url: str | None = None) -> dict:
 def _run(args, env, input=None, timeout=20):
     e = {k: v for k, v in env.items() if k != "_cwd"}
     return subprocess.run([BASH, str(CLI), *args], input=input, env=e, cwd=env.get("_cwd"),
-                          capture_output=True, text=True, timeout=timeout)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout)
 
 
 def cli(args: list, env: dict, input: str | None = None, timeout: float = 20):
@@ -55,7 +55,7 @@ def hook(prompt: str, env: dict, via: str = "factory"):
 
 def status_line(env: dict, via: str = "factory") -> str:
     args = ["cloud", "statusline"] if via == "cloud" else ["factory_status"]
-    return _run(args, env).stdout.strip()
+    return _run(args, env).stdout.replace("\r", "").strip()
 
 
 def cloud_login(env: dict, url: str, token: str = "slc_test_tok") -> None:

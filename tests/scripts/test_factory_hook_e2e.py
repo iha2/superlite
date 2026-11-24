@@ -211,6 +211,20 @@ def test_broken_attached_factory_blocks_not_passes(world):
     assert LAB["token"] not in r.stdout + r.stderr
 
 
+def test_active_logged_out_plugin_does_not_fall_back_to_cloud(world):
+    w = world(routes={("GET", "/api/runs"): {"runs": []}})
+    s = json.loads((w.home / "factories.json").read_text())
+    s["active"] = "lab"
+    del s["factories"]["lab"]["token"]
+    (w.home / "factories.json").write_text(json.dumps(s), encoding="utf-8")
+    for line in ("/superlite:runs", ">> hello", "/superlite:attach lab:x", "/superlite:attach lab-x"):
+        out = e2e.hook(line, w.env)
+        assert out and "lab: unavailable" in json.dumps(out), line
+    s["active"] = "superlite-cloud"  # the cloud stays the target when it is the active factory
+    (w.home / "factories.json").write_text(json.dumps(s), encoding="utf-8")
+    assert "lab: unavailable" not in json.dumps(e2e.hook("/superlite:runs", w.env))
+
+
 LEAK = "leaky-secret-token-value"
 
 
