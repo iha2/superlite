@@ -161,3 +161,11 @@ def test_a_terminal_streams_even_under_an_agent(monkeypatch):
 def test_no_marker_streams_without_a_tty(monkeypatch):
     rc, out, streamed = _main(monkeypatch, ["login_fix"])
     assert rc == 0 and streamed and out == "login_fix done: PR opened\n"
+
+
+def test_handoff_keeps_the_after_cursor(monkeypatch):
+    rc, out, streamed = _main(monkeypatch, ["login_fix", "--after", "50"], CLAUDECODE="1")
+    assert rc == 0 and not streamed
+    assert "cloud watch login_fix --after 50" in out
+    _rc, plain, _s = _main(monkeypatch, ["login_fix"], CLAUDECODE="1")
+    assert "--after" not in plain

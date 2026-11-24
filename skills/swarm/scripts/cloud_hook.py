@@ -99,10 +99,13 @@ def refresh_attached(client) -> dict | None:
     return out
 
 
-def detach_if_given(ref: str, given: dict | None) -> None:
-    """Clear the attachment when it is the run just given away (by id, else by name)."""
+def detach_if_given(ref: str, given: dict | None, factory: str | None = None) -> None:
+    """Clear the attachment when it is the run just given away (by id, else by name), on the same factory.
+
+    `factory` is the one the give went to (None: superlite-cloud); an attachment on another factory is never cleared,
+    even when both services return the same run id or name."""
     st = _attach_state()
-    if not st:
+    if not st or (st.get("factory") or "superlite-cloud") != (factory or "superlite-cloud"):
         return
     gid = given.get("id") if isinstance(given, dict) else None
     if st.get("id") and gid:
@@ -195,7 +198,7 @@ def _nudge_prefix(client, rest: str, current: str | None, label: str | None = No
     return _send(client, "nudge", ref, text, label=label)
 
 
-def _slash(client, verb: str, arg: str) -> dict:
+def _slash(client, verb: str, arg: str, factory: str | None = None) -> dict:
     arg = (arg or "").strip()
     if verb == "detach":
         clear_attach()
@@ -218,7 +221,7 @@ def _slash(client, verb: str, arg: str) -> dict:
         if not ref or not email.strip():
             return _block("usage: /superlite:give <run> <email>")
         out = client.give(ref, email.strip())
-        detach_if_given(ref, out)
+        detach_if_given(ref, out, factory)
         return _block(give_line(out, ref, email.strip()))
     if not arg:
         return _block(f"usage: /superlite:{verb} <run>")
@@ -258,7 +261,7 @@ def route_main(prompt: str, current: str | None = None) -> dict | None:
 route = route_main
 
 
-def _route(client, prompt: str, current: str | None) -> dict | None:
+def _route(client, prompt: str, current: str | None, factory: str | None = None) -> dict | None:
     text = prompt.strip()
     attached = _attached()
     if text.startswith("\\") and attached:
@@ -266,7 +269,7 @@ def _route(client, prompt: str, current: str | None) -> dict | None:
     m = _SLASH.match(text)
     if m:
         verb, arg = m.group(1), m.group(2) or ""
-        return _slash(client, verb, arg)
+        return _slash(client, verb, arg, factory)
     live = None  # the attached run, name refreshed; its id is the routing ref when known
     if attached and (text.startswith(">>") or text and (not text.startswith("/") or text in ("/cancel", "/approve"))):
         live = refresh_attached(client)

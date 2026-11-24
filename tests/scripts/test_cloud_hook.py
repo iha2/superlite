@@ -104,6 +104,7 @@ def test_prefixes_no_client_call(fc, tmp_path):
 
 
 def test_watch_hands_off_without_spawning(fc, monkeypatch):
+    """Intended: /superlite:watch no longer blocks the prompt or opens a pane itself; it hands off to the agent."""
     import subprocess
     monkeypatch.setenv("HERDR_ENV", "1")
 
@@ -352,3 +353,11 @@ def test_cursor_serialization(fc, tmp_path, monkeypatch, capsys):
     assert "hookSpecificOutput" not in out
     out = json.loads(run_main(monkeypatch, capsys, json.dumps({"prompt": "\\explain"})))
     assert "hookSpecificOutput" in out
+
+
+def test_give_on_another_factory_keeps_an_attachment_with_the_same_id(fc, tmp_path):
+    (tmp_path / "attach.json").write_text(json.dumps({"run": "gift", "id": "t_1", "factory": "lab"}), encoding="utf-8")
+    cloud_hook.detach_if_given("gift", {"id": "t_1"}, "other")
+    assert (tmp_path / "attach.json").exists()
+    cloud_hook.detach_if_given("gift", {"id": "t_1"}, "lab")
+    assert not (tmp_path / "attach.json").exists()

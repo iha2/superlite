@@ -331,11 +331,22 @@ def test_uncaught_plugin_error_blocks_attached_line(world, tmp_path):
     _fault_plugin(w, tmp_path, "raise StopIteration")
     put_att(w, run=R8, id=RID, factory="lab")
     out = e2e.hook("also add a test", w.env)
-    assert out["decision"] == "block" and "did not reach the run" in out["reason"]
+    assert out["decision"] == "block" and "pass" not in out and "StopIteration" in out["reason"]
+    assert LAB["token"] not in out["reason"]
     assert w.cstop.requests == []
     out = e2e.hook(">> hi there", w.env)
-    assert out["decision"] == "block"
+    assert out["decision"] == "block" and "StopIteration" in out["reason"]
     assert e2e.hook("/some-other-command", w.env) is None  # unrelated: fails open, not a run line
+
+
+def test_keyboard_interrupt_in_plugin_reaches_the_outer_guard(world, tmp_path):
+    """Not a PLUGIN_ERRORS member: only _guarded_main catches it, and the line is still blocked."""
+    w = world()
+    _fault_plugin(w, tmp_path, "raise KeyboardInterrupt")
+    put_att(w, run=R8, id=RID, factory="lab")
+    out = e2e.hook("hello", w.env)
+    assert out["decision"] == "block" and "KeyboardInterrupt" in out["reason"]
+    assert LAB["token"] not in out["reason"] and w.cstop.requests == []
 
 
 def test_hung_plugin_blocks_attached_line(world, tmp_path):
@@ -373,3 +384,18 @@ def test_gone_factory_blocks_attached_line(world):
     assert out["decision"] == "block" and "vanished" in out["reason"]
     assert w.cstop.requests == []
     assert e2e.hook("/superlite:detach", w.env)["reason"] == "detached"
+
+
+def test_plugin_watch_without_a_run_shows_usage(world):
+    w = world()
+    put_att(w, run=R8, id=RID, factory="lab")
+    out = e2e.hook("/superlite:watch", w.env)
+    assert out["decision"] == "block" and "usage: /superlite:watch <run>" in out["reason"]
+
+
+def test_cloud_give_keeps_an_attachment_on_another_factory(world):
+    w = world(routes={("POST", "/api/runs/chris/gift/give"): {"id": RID, "name": "gift"}})
+    put_att(w, run=R8, id=RID, factory="lab")
+    out = e2e.hook("/superlite:give superlite-cloud:chris/gift a@b.co", w.env)
+    assert "gift given to" in out["reason"]
+    assert att(w) == {"run": R8, "id": RID, "factory": "lab"}

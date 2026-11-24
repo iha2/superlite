@@ -45,7 +45,13 @@ def test_foreground_watch_is_denied_with_the_handoff(cmd):
     r = run(cmd)
     assert r.returncode == 2 and r.stdout == "", (r.returncode, r.stdout, r.stderr)
     assert "run_in_background" in r.stderr and "terminal, tab or pane" in r.stderr
-    assert " watch " in r.stderr and "--follow" not in r.stderr
+    assert " watch " in r.stderr
+    assert "`" in r.stderr and "--follow" not in re.search(r"`[^`]*`", r.stderr).group(0)  # the command never streams-forces
+
+
+def test_denial_tells_a_background_run_to_pass_follow():
+    # a background run keeps the agent marker and has no TTY, so without --follow it would only print the hand-off
+    assert "run_in_background true and --follow" in run(WATCHES[0]).stderr
 
 
 def test_handoff_names_the_kind_and_run():
@@ -90,6 +96,10 @@ def test_subagent_calls_are_denied_too(extra):
     "pytest tests/scripts/test_cloud_watch.py",
     "watch -n 5 ls",
     "ls /tmp # superlite-cli",
+    "echo 'example; superlite-cli cloud watch run1'",
+    'echo "a && superlite-cli cloud watch run1" | cat',
+    "printf '%s\\n' 'x | bash superlite-cli factory watch lab:r1'",
+    "bash -lc 'echo \"a; superlite-cli cloud watch r1\"'",
 ])
 def test_other_commands_are_untouched(cmd):
     r = run(cmd)
@@ -100,3 +110,13 @@ def test_other_tools_are_untouched():
     raw = json.dumps({"tool_name": "Read", "tool_input": {"file_path": f"{CLI} cloud watch r1"}})
     r = subprocess.run([BASH, str(HOOK)], input=raw, capture_output=True, text=True)
     assert (r.returncode, r.stdout, r.stderr) == (0, "", "")
+
+
+@pytest.mark.parametrize("cmd", [
+    "bash -lc 'cd /tmp; superlite-cli cloud watch r1'",
+    "echo 'a; b'; superlite-cli cloud watch r1",
+    "echo \"a|b\" && bash superlite-cli factory watch lab:r1",
+    "bash -c \"echo hi && superlite-cli cloud watch r1\"",
+])
+def test_quote_aware_split_still_finds_a_real_watch(cmd):
+    assert run(cmd).returncode == 2

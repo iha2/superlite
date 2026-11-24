@@ -5,12 +5,54 @@
 # style launcher), so `grep watch notes`, `echo "... cloud watch"` and `herdr pane run 1 'bash ... cloud watch r'` pass.
 # A tool call with run_in_background true passes. Main session and subagents alike. The denial text is built by
 # `superlite-cli factory_api handoff` from factory_api.watch_handoff (a static line if that cannot run).
+# Separators inside quotes do not split (`echo 'a; superlite-cli cloud watch r'` is an echo), but `bash -c '...'` is
+# split again inside its quotes. A background run needs --follow to stream; the denial text says so.
 # Best effort: a long command or anything unclear is allowed. Exit 2 blocks (message on stderr); returning allows.
+
+# mask_quoted VAR: in VAR, a ; & | or newline inside single or double quotes becomes \x04 \x05 \x06 \x07, so the
+# split on separators leaves quoted text whole. An unclosed quote masks the rest (the command is then allowed).
+mask_quoted() {
+  local s="${!1}" out="" c q="" i=0 n
+  n=${#s}
+  while [ "$i" -lt "$n" ]; do
+    c="${s:i:1}"
+    if [ -z "$q" ]; then
+      case "$c" in
+        "'"|'"') q="$c" ;;
+        '\\') case "${s:i+1:1}" in "'"|'"') out="$out$c"; i=$((i+1)); c="${s:i:1}" ;; esac ;;
+      esac
+    elif [ "$c" = "$q" ]; then q=""
+    elif [ "$q" = '"' ] && [ "$c" = '\\' ] && [ "${s:i+1:1}" = '"' ]; then out="$out$c"; i=$((i+1)); c='"'
+    else
+      case "$c" in ';') c=$'\x04' ;; '&') c=$'\x05' ;; '|') c=$'\x06' ;; "$nl") c=$'\x07' ;; esac
+    fi
+    out="$out$c"; i=$((i+1))
+  done
+  printf -v "$1" '%s' "$out"
+}
+
+# split_segments STR [DEPTH]: append the shell segments of STR (quote-aware) to WSEGS. A segment that is
+# `bash -c 'script'` also adds the script's own segments (once; deeper nesting is left alone).
+split_segments() {
+  local str="$1" seg inner IFS found
+  local re_sh='^[[:space:]]*([A-Za-z_][A-Za-z_0-9]*=[^[:space:]]*[[:space:]]+)*([^[:space:]]*/)?(bash|sh|zsh)[[:space:]]+-[A-Za-z]*c[[:space:]]+(.*)$'
+  mask_quoted str
+  IFS=$';&|\n'; set -f; found=( $str ); set +f
+  for seg in "${found[@]}"; do
+    WSEGS[${#WSEGS[@]}]="$seg"
+    if [ "${2:-0}" = 0 ] && [[ $seg =~ $re_sh ]]; then
+      inner="${BASH_REMATCH[4]}"
+      inner="${inner//$'\x04'/;}"; inner="${inner//$'\x05'/"&"}"; inner="${inner//$'\x06'/|}"; inner="${inner//$'\x07'/$nl}"
+      case "$inner" in "'"*"'"|'"'*'"') inner="${inner#?}"; inner="${inner%?}" ;; esac
+      split_segments "$inner" 1
+    fi
+  done
+}
 
 guard_watch() {
   local re_tool='"tool_name"[[:space:]]*:[[:space:]]*"(Bash|PowerShell|Shell)"'
   local re_bg='"run_in_background"[[:space:]]*:[[:space:]]*true'
-  local cmd seg segs w i n kind args msg cli words IFS
+  local cmd seg w i n kind args msg cli words IFS WSEGS=()
   [[ $input =~ $re_tool ]] || return 0
   [[ $input =~ $re_bg ]] && return 0
   jstr command; cmd="$REPLY"
@@ -19,8 +61,8 @@ guard_watch() {
   jdecode cmd edits
   join_continuations cmd
   amp_placeholders cmd
-  IFS=$';&|\n'; set -f; segs=( $cmd ); set +f
-  for seg in "${segs[@]}"; do
+  split_segments "$cmd"
+  for seg in "${WSEGS[@]}"; do
     IFS=$' \t'; set -f; set -- $seg; set +f
     words=(); n=0
     for w in "$@"; do
@@ -49,14 +91,14 @@ guard_watch() {
 
     args=()
     while [ "$i" -lt "$n" ] && [ "${#args[@]}" -lt 8 ]; do
-      case "${words[i]}" in [0-9]\>*|\>*|\<*|*$'\x02'*|*$'\x03'*) ;; *) args[${#args[@]}]="${words[i]}" ;; esac
+      case "${words[i]}" in [0-9]\>*|\>*|\<*|*$'\x02'*|*$'\x03'*|*$'\x04'*|*$'\x05'*|*$'\x06'*|*$'\x07'*) ;; *) args[${#args[@]}]="${words[i]}" ;; esac
       i=$((i+1))
     done
     cli="$root/skills/swarm/scripts/superlite-cli"
     msg=""
     [ -f "$cli" ] && msg="$(bash "$cli" factory_api handoff "$kind" ${args[@]+"${args[@]}"} 2>/dev/null)"
-    [ -n "$msg" ] || msg="Open a new terminal, tab or pane for the user that runs this watch, or run it with run_in_background true. Never run it inline here."
-    printf 'Blocked: a live watch streams until the run ends, so run inline it would block this session.\n%s\nOr run it with run_in_background true.\n' "$msg" >&2
+    [ -n "$msg" ] || msg="Open a new terminal, tab or pane for the user that runs this watch, or run it with run_in_background true and --follow. Never run it inline here."
+    printf 'Blocked: a live watch streams until the run ends, so run inline it would block this session.\n%s\nOr run it with run_in_background true and --follow (a background watch without --follow only prints this hand-off).\n' "$msg" >&2
     exit 2
   done
 }

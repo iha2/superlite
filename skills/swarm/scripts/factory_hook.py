@@ -238,11 +238,14 @@ def _route_multi(reg, prompt: str, af: str | None, multi: bool) -> dict | None:
             from factory_api import require
             require(prov, "give")
         if verb == "watch" and fac != CLOUD:
-            return _watch(reg, fac, target[1].split(" ", 1)[1].strip())
-        res = cloud_hook._route(prov, target[1], None)
+            ref = target[1].partition(" ")[2].strip()
+            return _watch(reg, fac, ref) if ref else _block("usage: /superlite:watch <run>")
+        res = cloud_hook._route(prov, target[1], None, fac)
     except CloudError as e:
         return _block(_scrub(str(e), prov))
     except PLUGIN_ERRORS as e:
+        if not isinstance(e, reg.FactoryError):  # a plugin's own exception: the type only, its message may carry a token
+            return _block(f"not sent: {fac}: {type(e).__name__}")
         return _block("not sent: " + _scrub(str(e), prov))
     finally:
         _keep_factory(af)
