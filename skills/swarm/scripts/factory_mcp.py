@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -15,6 +16,27 @@ from factory_api import FactoryError  # noqa: E402
 BUILTIN = factory_registry.BUILTIN
 
 
+_ENV_VAR = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _key(name: str) -> str:
+    """The .mcp.json server key: needs no login, URL or credentials."""
+    kind = factory_registry.kind_of(name)
+    if kind == BUILTIN:
+        return BUILTIN
+    return _server(name)[0]
+
+
+def _plugin_entry(mcp: dict) -> dict:
+    entry = {"type": "http", "url": mcp["url"]}
+    auth = mcp.get("auth")
+    if isinstance(auth, str) and auth.startswith("bearer-env:"):
+        var = auth[len("bearer-env:"):]
+        if _ENV_VAR.match(var):
+            entry["headers"] = {"Authorization": "Bearer ${" + var + "}"}
+    return entry
+
+
 def _server(name: str) -> tuple[str, dict]:
     kind = factory_registry.kind_of(name)
     if kind == BUILTIN:
@@ -26,10 +48,9 @@ def _server(name: str) -> tuple[str, dict]:
         return BUILTIN, {"type": "http", "url": url + "/mcp",
                          "headers": {"Authorization": "Bearer ${SUPERLITE_CLOUD_TOKEN}"}}
     for row in factory_registry.discover():
-        if row["kind"] == kind and not row["error"]:
-            mcp = (row.get("manifest") or {}).get("mcp")
-            if isinstance(mcp, dict) and mcp.get("name") and mcp.get("url"):
-                return mcp["name"], {"type": "http", "url": mcp["url"]}
+        mcp = (row.get("manifest") or {}).get("mcp") if row["kind"] == kind and not row["error"] else None
+        if isinstance(mcp, dict) and mcp.get("name") and mcp.get("url"):
+            return mcp["name"], _plugin_entry(mcp)
     raise FactoryError(f"{name}: no MCP server")
 
 
@@ -62,7 +83,7 @@ def on(name: str, project: str) -> str:
 
 
 def off(name: str, project: str) -> str:
-    key, _ = _server(name)
+    key = _key(name)
     path = Path(project) / ".mcp.json"
     d = _load(path)
     if d and isinstance(d.get("mcpServers"), dict) and key in d["mcpServers"]:

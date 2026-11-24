@@ -137,4 +137,4 @@ def test_harness_env_and_cloud_login(tmp_path):
     factory_e2e.cloud_login(e, "http://127.0.0.1:1")
     p = Path(e["SUPERLITE_HOME"]) / "cloud.json"
     assert json.loads(p.read_text()) == {"url": "http://127.0.0.1:1", "token": "slc_test_tok"}
-    assert (p.stat().st_mode & 0o777) == 0o600
+    assert os.name == "nt" or (p.stat().st_mode & 0o777) == 0o600

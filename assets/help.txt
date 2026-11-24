@@ -97,7 +97,8 @@
                                     (--plan FILE, --superlite).
    /superlite:factory <verb>        Factories: list, add, use, login,
                                     logout, mcp. superlite-cloud is built in;
-                                    plugin kinds (warp) install separately.
+                                    superlite-warp is optional (only
+                                    for Warp Factories).
    /superlite:runs, :watch, :attach, :give, :detach
                                     Run commands; <factory>:<ref> names a
                                     run on any factory, a bare ref uses the

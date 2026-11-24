@@ -54,12 +54,19 @@ def _attached_factory() -> str | None:
 _SOFT = (ImportError, OSError, LookupError, AttributeError, TypeError, ValueError)  # a broken store or registry
 
 
+_CTX = {"name": "", "secrets": []}  # secrets: tokens resolved for this command (a rolled-back login's too)
+
+
 def _secrets() -> list[str]:
-    out = []
+    out = list(_CTX["secrets"])
     try:
         for f in (_reg().load_store().get("factories") or {}).values():
             if f.get("token"):
                 out.append(f["token"])
+        for d in _reg().discover():  # an env-only login: the manifest's token_env value
+            env = (d.get("manifest") or {}).get("token_env")
+            if env and os.environ.get(env):
+                out.append(os.environ[env])
     except _SOFT:
         pass
     return out
@@ -70,9 +77,6 @@ def _scrub(msg: str, extra: list[str]) -> str:
         if s:
             msg = msg.replace(s, "***")
     return msg
-
-
-_CTX = {"name": ""}
 
 
 def _provider(name: str):
@@ -92,6 +96,19 @@ def _route(address: str) -> tuple[str, str]:
 def _cloud_main(argv: list[str]) -> int:
     import cloud
     return int(cloud.main(argv) or 0)
+
+
+def _wrapper(on: bool) -> None:
+    """Install (or restore) the status-line wrapper that shows factory runs; a broken settings.json is not fatal."""
+    import cloud_status
+    settings = _reg()._claude_home() / "settings.json"
+    try:
+        if on:
+            cloud_status.install(settings, f'bash "{Path(_HERE_DIR) / "superlite-cli"}" cloud statusline')
+        else:
+            cloud_status.restore(settings)
+    except (OSError, ValueError):
+        pass
 
 
 def _enabled(name: str) -> bool:
@@ -171,6 +188,7 @@ def cmd_login(a) -> int:
     token = _token_for(a.name, inst["kind"], a.token)
     if not token:
         raise api.FactoryError(f"{a.name}: no token: pass --token, set the manifest token_env, or copy it to the clipboard")
+    _CTX["secrets"].append(token)  # a failed login rolls the token back out of the store; keep it redacted
     inst["token"] = token
     reg.save_store(store)
     try:
@@ -180,6 +198,7 @@ def cmd_login(a) -> int:
         store["factories"][a.name].pop("token", None)
         reg.save_store(store)
         raise
+    _wrapper(True)
     print(f"{a.name}: logged in")
     return 0
 
@@ -187,15 +206,33 @@ def cmd_login(a) -> int:
 def cmd_logout(a) -> int:
     reg = _reg()
     if a.name == CLOUD:
-        return _cloud_main(["logout"])
+        return _cloud_logout(reg)
     store = reg.load_store()
     inst = (store.get("factories") or {}).get(a.name)
     if inst is None:
         raise _api().FactoryError(f"{a.name}: unknown factory")
     inst.pop("token", None)
     reg.save_store(store)
+    if a.name not in reg.logged_in():  # still logged in through the manifest's token_env: keep everything
+        if _attached_factory() == a.name:
+            _cloud_main(["detach"])
+        if not reg.logged_in():
+            _wrapper(False)
     print(f"{a.name}: logged out")
     return 0
+
+
+def _cloud_logout(reg) -> int:
+    """Cloud logout restores the status line and drops the attachment; neither may take a plugin's with it."""
+    plugin_attach = _attached_factory() not in (None, CLOUD)
+    path = _home() / "attach.json"
+    kept = path.read_bytes() if plugin_attach and path.exists() else None
+    rc = _cloud_main(["logout"])
+    if kept is not None:
+        path.write_bytes(kept)
+    if any(n != CLOUD for n in reg.logged_in()):
+        _wrapper(True)
+    return rc
 
 
 def cmd_use(a) -> int:
@@ -208,9 +245,7 @@ def cmd_use(a) -> int:
     target = None
     tname = None
     if a.target:
-        store = reg.load_store()
-        inst = (store.get("factories") or {}).get(a.name)
-        if not inst or not inst.get("token"):
+        if a.name not in reg.logged_in():  # a token in the store or in the manifest's token_env
             raise api.FactoryError(f"{a.name}: not logged in")
         t = _provider(a.name).resolve_target(a.target)
         target, tname = t["uid"], t["name"]
@@ -276,10 +311,29 @@ def cmd_give(a) -> int:
     return 0
 
 
+def _cloud_attach(ref: str) -> int:
+    """Attach to a cloud run, then check the server knows it: no dead attachment (same check as the hook)."""
+    import contextlib
+    import io
+    import cloud_hook
+    import factory_hook
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = _cloud_main(["attach", ref])
+    if rc == 0:
+        bad = factory_hook._unverified(_reg().provider(CLOUD), cloud_hook._api_ref(ref))
+        if bad:
+            cloud_hook.clear_attach()
+            print(f"{CLOUD}: {bad}", file=sys.stderr)
+            return 1
+    sys.stdout.write(buf.getvalue())
+    return rc
+
+
 def cmd_attach(a) -> int:
     name, ref = _route(a.ref)
     if name == CLOUD:
-        return _cloud_main(["attach", ref])
+        return _cloud_attach(ref)
     info = _provider(name).attach(ref)
     h = _home()
     h.mkdir(parents=True, exist_ok=True)
@@ -398,20 +452,25 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return _HANDLERS[a.cmd](a)
     except Exception as e:
-        try:
-            api = _api()
-        except Exception:
-            raise e
-        extra = [getattr(a, "token", None) or ""]
+        return _fail(e, a)
+
+
+def _fail(e: Exception, a) -> int:
+    """One error line, never a traceback and never a token: only a CloudError's message is shown (scrubbed)."""
+    try:
+        api = _api()
+    except _SOFT:
+        api = None
+    who = _CTX["name"] or getattr(a, "name", None) or _active_name()
+    if api is not None and isinstance(e, (api.Unsupported, api.CloudError)):
+        msg = _scrub(str(e), [getattr(a, "token", None) or ""])
         if isinstance(e, api.Unsupported):
-            print(_scrub(str(e), extra), file=sys.stderr)
+            print(msg, file=sys.stderr)
             return 2
-        if isinstance(e, api.CloudError):  # FactoryError is a subclass
-            msg = _scrub(str(e), extra)
-            who = _CTX["name"] or getattr(a, "name", None) or _active_name()
-            print(msg if msg.startswith(f"{who}:") else f"{who}: {msg}", file=sys.stderr)
-            return 1
-        raise
+        print(msg if msg.startswith(f"{who}:") else f"{who}: {msg}", file=sys.stderr)
+        return 1
+    print(f"{who}: {type(e).__name__}", file=sys.stderr)  # a plugin's message may carry a credential
+    return 1
 
 
 def _active_name() -> str:

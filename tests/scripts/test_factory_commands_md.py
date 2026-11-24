@@ -19,10 +19,40 @@ def spans(cmd: str) -> list[list[str]]:
     return [s.split() for s in re.findall(r"`([^`]+)`", body)]
 
 
+def frontmatter(cmd: str) -> dict:
+    """Strict-enough YAML-ish parse: a plain scalar may not contain ': ' or ' #'; quoted ones must be JSON."""
+    m = re.match(r"---\n(.*?)\n---\n", read(f"commands/{cmd}.md"), re.S)
+    keys = {}
+    for ln in m.group(1).splitlines():
+        key, sep, val = ln.partition(": ")
+        assert sep and re.fullmatch(r"[A-Za-z][\w-]*", key), f"{cmd}: bad frontmatter line {ln!r}"
+        val = val.strip()
+        if val[:1] in ('"', "'"):
+            assert val[-1] == val[0] and len(val) > 1, f"{cmd}: unterminated quote in {ln!r}"
+            if val[0] == '"':
+                val = json.loads(val)
+            else:
+                val = val[1:-1]
+        else:
+            assert ": " not in val and " #" not in val, f"{cmd}: unquoted ': ' in {ln!r}"
+        keys[key] = val
+    return keys
+
+
+def test_frontmatter_parser_rejects_unquoted_colon(tmp_path):
+    for cmd in ("send", "factory", "attach", "runs", "watch", "give", "detach"):
+        assert frontmatter(cmd)["description"]
+
+
+def test_warp_is_optional_in_docs():
+    for rel in ("README.md", "docs/tools.md", "commands/factory.md"):
+        t = read(rel)
+        assert "optional" in t and "superlite-warp" in t and "built in" in t, rel
+
+
 def test_send_and_factory_commands():
     for cmd in ("send", "factory"):
-        m = re.match(r"---\n(.*?)\n---\n", read(f"commands/{cmd}.md"), re.S)
-        keys = dict(ln.split(": ", 1) for ln in m.group(1).splitlines() if ": " in ln)
+        keys = frontmatter(cmd)
         assert keys.keys() >= {"description", "argument-hint"} and keys["description"].strip()
     assert ["superlite-cli", "factory", "send", "$ARGUMENTS"] in spans("send")
     assert ["superlite-cli", "factory", "$ARGUMENTS"] in spans("factory")

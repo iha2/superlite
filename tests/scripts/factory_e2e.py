@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -10,6 +11,8 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 CLI = ROOT / "skills" / "swarm" / "scripts" / "superlite-cli"
 MEMKIND = HERE / "fixtures" / "memkind"
+_GIT_BASH = r"C:\Program Files\Git\bin\bash.exe"
+BASH = _GIT_BASH if os.name == "nt" and os.path.exists(_GIT_BASH) else shutil.which("bash")
 
 
 def _git(cwd, *a):
@@ -36,7 +39,7 @@ def env(tmp_path, cloud_url: str | None = None) -> dict:
 
 def _run(args, env, input=None, timeout=20):
     e = {k: v for k, v in env.items() if k != "_cwd"}
-    return subprocess.run(["bash", str(CLI), *args], input=input, env=e, cwd=env.get("_cwd"),
+    return subprocess.run([BASH, str(CLI), *args], input=input, env=e, cwd=env.get("_cwd"),
                           capture_output=True, text=True, timeout=timeout)
 
 

@@ -138,8 +138,31 @@ def _unverified(prov, ref: str) -> str | None:
     return None
 
 
+def _local_escape(text: str, af: str | None) -> tuple[bool, dict | None]:
+    """(handled, reply) for the lines that never need a provider: a leading backslash and `/superlite:detach`."""
+    if text.startswith("\\"):
+        return True, ({"pass": text[1:]} if af else None)
+    m = cloud_hook._SLASH.match(text)
+    if m and m.group(1) == "detach":
+        cloud_hook.clear_attach()
+        return True, _block("detached")
+    return False, None
+
+
+def _explicit_cloud(text: str) -> bool:
+    """True for `/superlite:<attach|watch|give> superlite-cloud:<ref>` and `>> superlite-cloud:<ref> ...`."""
+    prefix = CLOUD + ":"
+    m = cloud_hook._SLASH.match(text)
+    if m:
+        return m.group(1) in _ADDR_VERBS and (m.group(2) or "").strip().startswith(prefix)
+    return text.startswith(">>") and text[2:].lstrip().startswith(prefix)
+
+
 def _route_multi(reg, prompt: str, af: str | None, multi: bool) -> dict | None:
     text = prompt.strip()
+    done, reply = _local_escape(text, af)
+    if done:
+        return reply
     dashed = text.startswith("/superlite-")
     target = None  # (factory, rewritten prompt) for _route
     direct = None  # (factory, ref, message) for an explicit `>> fac:ref text`
@@ -168,7 +191,7 @@ def _route_multi(reg, prompt: str, af: str | None, multi: bool) -> dict | None:
                 direct = (fac, ref, tail.strip())
         if direct is None:
             target = (af or reg.active(), text)
-    elif text.startswith("\\") or (af and text and (not text.startswith("/") or text in ("/cancel", "/approve"))):
+    elif af and text and (not text.startswith("/") or text in ("/cancel", "/approve")):
         target = (af or reg.active(), text)
     else:
         return None
@@ -176,8 +199,8 @@ def _route_multi(reg, prompt: str, af: str | None, multi: bool) -> dict | None:
     try:
         prov = reg.provider(fac)
     except PLUGIN_ERRORS as e:  # a broken or logged-out factory blocks addressed input; it never reaches the model
-        if direct or verb or af == fac:
-            return _block(f"{fac}: unavailable ({str(e)[:120]})")
+        if direct or verb or af == fac:  # the type only: a plugin's own message may carry its token
+            return _block(f"{fac}: unavailable ({type(e).__name__})")
         return None
     kind = _kind(reg, fac)
     try:
@@ -239,6 +262,8 @@ def route(prompt: str) -> dict | None:
     except PLUGIN_ERRORS:
         return cloud_hook.route_main(prompt)
     if set(logged) <= {CLOUD} and af in (None, CLOUD):
+        if CLOUD in logged and _explicit_cloud(prompt.strip()):  # the address names the run, not the literal text
+            return _route_multi(reg, prompt, af, False)
         res = cloud_hook.route_main(prompt)
         return _verify_attach(reg, prompt, res)
     return _route_multi(reg, prompt, af, len(logged) >= 2)

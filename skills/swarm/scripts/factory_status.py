@@ -116,6 +116,9 @@ def _plugin_part(name: str, attached: bool, many: bool) -> tuple[str, dict]:
     for r in runs:
         if r.get("status") == "running":
             return (f"{label} {r.get('name')} running" if many else f"{r.get('name')} running"), st
+    if runs:
+        text = f"{runs[0].get('name')} {runs[0].get('status', '')}".strip()
+        return (f"{label} {text}" if many else text), st
     return "", st
 
 
@@ -170,7 +173,8 @@ def _write_entries(statuses: dict, skills_dir: Path) -> list[str]:
                 continue
             for kind in KINDS:
                 want[f"superlite-{kind}-{fname}-{rname}"] = (kind, fname, rname, r)
-    skills_dir.mkdir(parents=True, exist_ok=True)
+    if want:
+        skills_dir.mkdir(parents=True, exist_ok=True)
     for d in _owned(skills_dir):
         if d.name not in want:
             shutil.rmtree(d, ignore_errors=True)
@@ -180,7 +184,7 @@ def _write_entries(statuses: dict, skills_dir: Path) -> list[str]:
             continue
         d.mkdir(exist_ok=True)
         (d / MARKER).write_text("", encoding="utf-8")
-        desc = " ".join(f"{r.get('status', '')} {r.get('title', '')}".split())
+        desc = json.dumps(" ".join(f"{r.get('status', '')} {r.get('title', '')}".split()))
         (d / "SKILL.md").write_text(
             f"---\nname: superlite:{kind}-{fname}-{rname}\ndescription: {desc}\n"
             f"disable-model-invocation: true\n---\n\n{_entry_body(kind, f'{fname}:{rname}', f'{fname}:{rname}')}",
@@ -228,8 +232,7 @@ def main(argv: list[str] | None = None) -> int:
         seg, statuses, cloud_st = _compute()
         if cloud_st is not None:
             _sync_cloud(cloud_st)
-        if statuses:
-            _sync_plugin_entries(statuses)
+        _sync_plugin_entries(statuses)
     except Exception:
         seg = ""
     print(" · ".join(x for x in (prev, seg) if x))

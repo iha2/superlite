@@ -69,9 +69,9 @@ def test_discover_memkind(monkeypatch):
 def test_store_mode_0600(plug):
     fr.save_store({"active": "superlite-cloud", "factories": {}})
     p = os.path.join(os.environ["SUPERLITE_HOME"], "factories.json")
-    assert stat.S_IMODE(os.stat(p).st_mode) == 0o600
+    assert os.name == "nt" or stat.S_IMODE(os.stat(p).st_mode) == 0o600
     fr.add("web", "fake")
-    assert stat.S_IMODE(os.stat(p).st_mode) == 0o600
+    assert os.name == "nt" or stat.S_IMODE(os.stat(p).st_mode) == 0o600
 
 
 def test_load_store_default(plug):
@@ -225,3 +225,23 @@ def test_create_failure_never_echoes_token(tmp_path, monkeypatch):
     with pytest.raises(FactoryError) as ei:
         fr.provider("b1")
     assert "sekret-tok" not in str(ei.value) and "RuntimeError" in str(ei.value)
+
+
+def test_readd_with_another_kind_drops_the_credential(tmp_path, monkeypatch):
+    a = make_plugin(tmp_path / "plug" / "kinda", kind="kinda")
+    b = make_plugin(tmp_path / "plug" / "kindb", kind="kindb")
+    monkeypatch.setenv("SUPERLITE_FACTORY_PATH", os.pathsep.join([str(a), str(b)]))
+    fr.add("lab", "kinda", target="t1")
+    store = fr.load_store()
+    store["factories"]["lab"].update(token="secret-a", target_name="T One")
+    fr.save_store(store)
+    fr.add("lab", "kindb", target="t1")
+    inst = fr.load_store()["factories"]["lab"]
+    assert inst["kind"] == "kindb" and inst["token"] is None and inst["target_name"] is None
+    assert fr.provider("lab").cfg["token"] is None
+    fr.add("lab", "kindb", target="t1")  # the same kind keeps what it has
+    store = fr.load_store()
+    store["factories"]["lab"]["token"] = "secret-b"
+    fr.save_store(store)
+    fr.add("lab", "kindb", target="t1")
+    assert fr.load_store()["factories"]["lab"]["token"] == "secret-b"

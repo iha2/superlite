@@ -56,7 +56,7 @@ def test_login_use(tmp_path):
     assert "* lab  mem  t1  logged in" in r.stdout
     assert KEY not in r.stdout + r.stderr
     store = Path(env["SUPERLITE_HOME"]) / "factories.json"
-    assert oct(store.stat().st_mode & 0o777) == "0o600"
+    assert os.name == "nt" or os.name == "nt" or oct(store.stat().st_mode & 0o777) == "0o600"
     assert json.loads(store.read_text())["factories"]["lab"]["target"] == "t1"
     assert e2e.cli(["logout", "lab"], env).stdout.strip() == "lab: logged out"
     r = e2e.cli(["login", "lab", "--token", KEY], env)
@@ -266,3 +266,133 @@ def test_imports_standalone():
     r = subprocess.run([sys.executable, "-I", "-c", code], cwd=str(ROOT), capture_output=True, text=True,
                        timeout=30)
     assert r.returncode == 0 and r.stdout.strip() == "ok", r.stderr
+
+
+# ---- review fixes: redaction, env-only logins, attachments, status-line wrapper --------------------------
+
+_LEAKY = '''
+from factory_api import FactoryError
+
+
+class P:
+    caps = frozenset({"me", "runs", "cancel"})
+    nudge_word = "nudge"
+
+    def __init__(self, c):
+        self.name, self.t = c["name"], c.get("token") or ""
+
+    def me(self):
+        if self.t.startswith("bad-"):
+            raise FactoryError("rejected " + self.t)
+        return {"handle": "h", "role": "member"}
+
+    def resolve_target(self, q):
+        return {"uid": q, "name": q}
+
+    def runs(self, all=False):
+        raise FactoryError("runs failed with " + self.t)
+
+    def cancel(self, ref):
+        raise RuntimeError("cancel failed with " + self.t)
+
+
+def create(c):
+    return P(c)
+'''
+
+
+def _leaky_env(tmp_path):
+    root = tmp_path / "leakykind"
+    (root / "factory").mkdir(parents=True)
+    (root / "superlite-factory.json").write_text(json.dumps(
+        {"api": 1, "kind": "leaky", "module": "factory/leaky.py", "entry": "create", "token_env": "LEAKY_KEY"}))
+    (root / "factory" / "leaky.py").write_text(_LEAKY)
+    env = e2e.env(tmp_path)
+    env["SUPERLITE_FACTORY_PATH"] += os.pathsep + str(root)
+    assert e2e.cli(["add", "lk", "--kind", "leaky"], env).returncode == 0
+    return env
+
+
+def test_env_only_login_works_and_is_redacted(tmp_path):
+    env = _leaky_env(tmp_path)
+    env["LEAKY_KEY"] = "env-secret-77"
+    assert "lk  leaky  -  logged in" in e2e.cli(["list"], env).stdout
+    r = e2e.cli(["use", "lk", "--target", "t1"], env)
+    assert (r.returncode, r.stdout.strip()) == (0, "lk: t1 (t1)"), r.stderr
+    r = e2e.cli(["runs"], env)
+    assert r.returncode == 1 and "env-secret-77" not in r.stdout + r.stderr and r.stderr.startswith("lk:")
+    r = e2e.cli(["cancel", "zzz"], env)  # a plugin's ordinary exception: the type only, never a traceback
+    assert (r.returncode, r.stderr.strip()) == (1, "lk: RuntimeError")
+
+
+def test_failed_clipboard_login_never_prints_the_token(tmp_path):
+    if os.name == "nt":
+        return
+    env = _leaky_env(tmp_path)
+    bindir = tmp_path / "fakebin"
+    bindir.mkdir()
+    clip = bindir / "xclip"
+    clip.write_text("#!/bin/sh\nprintf 'bad-clip-token'\n")
+    clip.chmod(0o755)
+    env["PATH"] = str(bindir) + os.pathsep + env["PATH"]
+    r = e2e.cli(["login", "lk"], env)
+    assert r.returncode == 1 and r.stderr.strip() == "lk: rejected ***"
+    assert "bad-clip-token" not in r.stdout + r.stderr
+    assert not json.loads((Path(env["SUPERLITE_HOME"]) / "factories.json").read_text())["factories"]["lk"].get("token")
+
+
+def test_missing_plan_file_is_an_error_line(tmp_path):
+    env = _lab(tmp_path)
+    r = e2e.cli(["send", "--plan", str(tmp_path / "nope.md")], env)
+    assert (r.returncode, r.stderr.strip()) == (1, "lab: FileNotFoundError")
+
+
+def _settings(env):
+    return Path(env["CLAUDE_HOME"]) / "settings.json"
+
+
+def test_plugin_login_installs_wrapper_and_logout_restores(tmp_path):
+    env = _lab(tmp_path)
+    assert "cloud statusline" in _settings(env).read_text()
+    name = e2e.cli(["send", "x"], env).stdout.split()[0]
+    assert e2e.cli(["attach", "lab:" + name], env).returncode == 0
+    assert e2e.cli(["logout", "lab"], env).returncode == 0
+    assert not _settings(env).exists()
+    assert not (Path(env["SUPERLITE_HOME"]) / "attach.json").exists()
+
+
+def test_cloud_logout_keeps_plugin_attachment_and_wrapper(tmp_path):
+    env = _lab(tmp_path)
+    name = e2e.cli(["send", "x"], env).stdout.split()[0]
+    assert e2e.cli(["attach", "lab:" + name], env).returncode == 0
+    e2e.cloud_login(env, "http://127.0.0.1:9")
+    r = e2e.cli(["logout", "superlite-cloud"], env)
+    assert r.returncode == 0, r.stderr
+    att = json.loads((Path(env["SUPERLITE_HOME"]) / "attach.json").read_text())
+    assert att["run"] == name and att["factory"] == "lab"
+    assert "cloud statusline" in _settings(env).read_text()
+
+
+def test_cloud_attach_missing_run_leaves_nothing(tmp_path):
+    url, stop = cloud_fake.serve({("GET", "/api/me"): {"handle": "chris", "email": "c@x.io", "role": "member"},
+                                  ("GET", "/api/runs/sl_run/attach"): {}})
+    try:
+        env = _cloud_env(tmp_path, url)
+        r = e2e.cli(["attach", "superlite-cloud:sl_run"], env)
+        assert r.returncode == 1 and "not attached: sl_run: not found" in r.stderr
+        assert "attached sl_run" not in r.stdout
+        assert not (Path(env["SUPERLITE_HOME"]) / "attach.json").exists()
+    finally:
+        stop()
+
+
+def test_cloud_attach_known_run(tmp_path):
+    url, stop = cloud_fake.serve({("GET", "/api/runs/login_fix/attach"):
+                                  {"run": "login_fix", "id": "t1", "status": "running"}})
+    try:
+        env = _cloud_env(tmp_path, url)
+        r = e2e.cli(["attach", "superlite-cloud:login_fix"], env)
+        assert (r.returncode, r.stdout.strip()) == (0, "attached login_fix"), r.stderr
+        assert json.loads((Path(env["SUPERLITE_HOME"]) / "attach.json").read_text())["id"] == "t1"
+    finally:
+        stop()

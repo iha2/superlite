@@ -209,3 +209,57 @@ def test_broken_attached_factory_blocks_not_passes(world):
     r = e2e._run(["factory_hook"], w.env, json.dumps({"prompt": "hello there"}))
     assert r.returncode == 0 and '"block"' in r.stdout and "lab: unavailable" in r.stdout
     assert LAB["token"] not in r.stdout + r.stderr
+
+
+LEAK = "leaky-secret-token-value"
+
+
+def leaky_world(world, tmp_path, **kw):
+    """A world whose attached factory `bad` (kind `leaky`) raises a FactoryError carrying its token from create()."""
+    root = tmp_path / "plugins" / "leaky"
+    (root / "factory").mkdir(parents=True)
+    (root / "superlite-factory.json").write_text(json.dumps(
+        {"api": 1, "kind": "leaky", "label": "Leaky", "module": "factory/leaky.py", "entry": "create"}), encoding="utf-8")
+    (root / "factory" / "leaky.py").write_text(
+        "from factory_api import FactoryError\n\n\ndef create(config):\n"
+        "    raise FactoryError('create failed for ' + config['token'])\n", encoding="utf-8")
+    w = world(**kw)
+    w.env["SUPERLITE_FACTORY_PATH"] += os.pathsep + str(root)
+    write_store(w.env, {"lab": LAB, "bad": dict(LAB, kind="leaky", token=LEAK)})
+    put_att(w, run="x", id=RID, factory="bad")
+    return w
+
+
+def test_provider_creation_error_shows_type_not_token(world, tmp_path):
+    w = leaky_world(world, tmp_path)
+    r = e2e._run(["factory_hook"], w.env, json.dumps({"prompt": "hello there"}))
+    out = json.loads(r.stdout)
+    assert out["decision"] == "block" and "bad: unavailable (FactoryError)" in out["reason"]
+    assert LEAK not in r.stdout + r.stderr
+
+
+def test_local_escapes_work_with_broken_attached_provider(world, tmp_path):
+    w = leaky_world(world, tmp_path)
+    out = e2e.hook("\\add a test myself", w.env)
+    assert out["hookSpecificOutput"]["additionalContext"].endswith("add a test myself")
+    assert att(w)["factory"] == "bad"
+    out = e2e.hook("/superlite:detach", w.env)
+    assert out["reason"] == "detached" and att(w) is None
+
+
+def test_cloud_only_explicit_address_attach(world):
+    w = world(store=False, routes={("GET", "/api/runs/run1/attach"): {"run": "run1", "id": "id1"}})
+    out = e2e.hook("/superlite:attach superlite-cloud:run1", w.env)
+    assert out["reason"] == "attached run1"
+    assert att(w) == {"run": "run1", "id": "id1"}
+    assert ("GET", "/api/runs/run1/attach", None) in w.cstop.requests
+
+
+def test_cloud_only_explicit_address_nudge(world):
+    w = world(store=False, routes={("GET", "/api/tasks/run1"): {"status": "running", "name": "run1"},
+                                   ("POST", "/api/runs/run2/nudge"): (202, {})})
+    put_att(w, run="run1", id="run1")
+    out = e2e.hook(">> superlite-cloud:run2 hello", w.env)
+    assert out["reason"] == "→ run2"
+    assert w.cstop.requests[-1] == ("POST", "/api/runs/run2/nudge", {"text": "hello"})
+    assert att(w) == {"run": "run1", "id": "run1"}

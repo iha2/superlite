@@ -159,6 +159,8 @@ def add(name: str, kind: str, target: str | None = None, superlite: bool = False
     _kind_row(kind)
     store = load_store()
     old = store["factories"].get(name, {})
+    if old.get("kind", kind) != kind:  # another kind is another service: its credential and target never carry over
+        old = {}
     inst = {"kind": kind, "token": old.get("token"), "target": target,
             "target_name": old.get("target_name") if target == old.get("target") else None,
             "superlite": bool(superlite)}

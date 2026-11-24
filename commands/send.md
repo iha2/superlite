@@ -1,5 +1,5 @@
 ---
-description: Send a run to the active factory (superlite-cloud or a plugin factory such as warp) and print its name, status and link.
+description: Send a run to the active factory (superlite-cloud or an optional plugin factory such as warp) and print its name, status and link.
 argument-hint: "<text> | --plan FILE [--superlite] [--title T] [--repo R] [--base B]"
 ---
 

@@ -91,7 +91,7 @@ def test_cloud_hook_delegates(tmp_path):
     try:
         assert e2e.hook("hello there", env, via="cloud") is None
         assert e2e.hook("hello there", env, via="cloud") == e2e.hook("hello there", env)
-        r = subprocess.run(["bash", str(e2e.CLI), "cloud", "hook"], input=json.dumps({"prompt": "x"}),
+        r = subprocess.run([e2e.BASH, str(e2e.CLI), "cloud", "hook"], input=json.dumps({"prompt": "x"}),
                            text=True, capture_output=True, cwd=env["_cwd"], timeout=20,
                            env={k: v for k, v in env.items() if k != "_cwd"})
         assert r.returncode == 0 and "Traceback" not in r.stderr
@@ -177,3 +177,32 @@ def test_cloud_entries_untouched(tmp_path):
     e2e.status_line(env)
     assert (cloud_dir / "SKILL.md").read_text() == "cloud"
     assert (cloud_dir / cloud_entries.MARKER).exists()
+
+
+def test_queued_run_shows_in_segment(tmp_path):
+    env = e2e.env(tmp_path)
+    _login(env)
+    _state(env, "queued")
+    assert e2e.status_line(env) == "1a2b3c4d queued"
+
+
+def test_entry_description_is_valid_yaml(tmp_path):
+    env = e2e.env(tmp_path)
+    _login(env)
+    (Path(env["SUPERLITE_HOME"]) / "memkind-lab.json").write_text(
+        json.dumps({"runs": [{"id": RID, "status": "running", "title": "Fix: flaky test"}]}))
+    e2e.status_line(env)
+    text = (_skills(env) / "superlite-attach-lab-1a2b3c4d" / "SKILL.md").read_text()
+    assert 'description: "running Fix: flaky test"' in text
+
+
+def test_entries_removed_after_last_plugin_logout(tmp_path):
+    env = e2e.env(tmp_path)
+    _login(env)
+    _state(env)
+    e2e.status_line(env)
+    assert (_skills(env) / "superlite-attach-lab-1a2b3c4d" / MARK).exists()
+    (Path(env["SUPERLITE_HOME"]) / "factories.json").unlink()
+    e2e.status_line(env)
+    assert not (_skills(env) / "superlite-attach-lab-1a2b3c4d").exists()
+    assert not (_skills(env) / "superlite-watch-lab-1a2b3c4d").exists()

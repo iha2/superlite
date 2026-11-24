@@ -111,3 +111,24 @@ def test_no_mcp_kind(world, tmp_path, monkeypatch):
         factory_mcp.on("nm", str(world))
     with pytest.raises(FactoryError, match="nm: no MCP server"):
         factory_mcp.off("nm", str(world))
+
+
+def test_off_after_logout(world):
+    factory_mcp.on("superlite-cloud", str(world))
+    cloud_config.clear()
+    assert factory_mcp.off("superlite-cloud", str(world)) == "superlite-cloud: MCP off"
+    assert not (world / ".mcp.json").exists()
+
+
+def test_bearer_env_auth_header(world, tmp_path, monkeypatch):
+    p = tmp_path / "bk" / "bk"
+    (p / "factory").mkdir(parents=True)
+    (p / "factory" / "m.py").write_text("def create(c):\n    return None\n")
+    (p / "superlite-factory.json").write_text(json.dumps(
+        {"api": 1, "kind": "bk", "module": "factory/m.py", "entry": "create",
+         "mcp": {"name": "bk-mcp", "url": "http://h/mcp", "auth": "bearer-env:MY_FACTORY_TOKEN"}}))
+    monkeypatch.setenv("SUPERLITE_FACTORY_PATH", os.pathsep.join([str(MEMKIND), str(p)]))
+    factory_registry.add("b", "bk")
+    factory_mcp.on("b", str(world))
+    assert read(world)["mcpServers"]["bk-mcp"] == {
+        "type": "http", "url": "http://h/mcp", "headers": {"Authorization": "Bearer ${MY_FACTORY_TOKEN}"}}
