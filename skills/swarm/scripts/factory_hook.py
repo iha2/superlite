@@ -1,14 +1,17 @@
 """Prompt hook across factories: `<factory>:<ref>` addresses, attach.json `factory` key, labelled replies.
 
 Wraps cloud_hook._route(provider, prompt, current); with only superlite-cloud in play it is
-cloud_hook.route_main. Fails open: main prints nothing and exits 0 on any exception. Tokens are scrubbed.
+cloud_hook.route_main. Lines meant for a run (attached plain line, `>>`, addressed verbs) are blocked when the
+hook raises or times out; any other line fails open (prints nothing, exit 0). Tokens are scrubbed.
 """
 from __future__ import annotations
 
 import json
 import re
+import os
 import shlex
 import sys
+import threading
 from pathlib import Path
 
 _HERE = str(Path(__file__).resolve().parent)
@@ -59,6 +62,14 @@ def _set_factory(fac: str | None) -> None:
         pass
 
 
+def _keep_factory(af: str | None) -> None:
+    """refresh_attached rewrites attach.json without the factory key; a failed send must not leave it unkeyed
+    (the next line would go to superlite-cloud)."""
+    st = cloud_hook._attach_state()
+    if af and af != CLOUD and st and not st.get("factory"):
+        _set_factory(af)
+
+
 def _names(reg) -> set[str]:
     names = {CLOUD, *reg.logged_in()}
     try:
@@ -68,16 +79,33 @@ def _names(reg) -> set[str]:
     return names
 
 
-def _addr(reg, tok: str, af: str | None, dashed: bool) -> tuple[str, str, bool]:
-    """(factory, ref, explicit) for a token; explicit when it named a known factory."""
+def _cloud_entry(verb: str | None, tok: str) -> bool:
+    """True when the generated entry folder for `/superlite-<verb>-<tok>` is a cloud entry (cloud marker only)."""
+    if not verb:
+        return False
+    import cloud_entries
+    import factory_status
+    d = factory_registry._claude_home() / "skills" / f"superlite-{verb}-{tok}"
+    return (d / cloud_entries.MARKER).exists() and not (d / factory_status.MARKER).exists()
+
+
+def _addr(reg, tok: str, af: str | None, dashed: bool, verb: str | None = None) -> tuple[str, str, bool]:
+    """(factory, ref, explicit) for a token; explicit when it named a known factory.
+
+    A dashed entry always names its factory (plugin entries) or is a cloud entry (never prefixed): a cloud
+    run `lab-fix` must not reach a factory `lab`, and a bare cloud entry must not follow the attached factory.
+    """
     names = _names(reg)
     head, sep, rest = tok.partition(":")
     if sep and rest and head in names:
         return head, rest, True
     if dashed:
+        if _cloud_entry(verb, tok):
+            return CLOUD, tok, True
         for n in sorted(names, key=len, reverse=True):
             if tok.startswith(n + "-") and len(tok) > len(n) + 1:
                 return n, tok[len(n) + 1:], True
+        return CLOUD, tok, True
     fac, ref = reg.resolve(tok, af)
     return fac, ref, False
 
@@ -166,7 +194,7 @@ def _route_multi(reg, prompt: str, af: str | None, multi: bool) -> dict | None:
         verb, arg = m.group(1), (m.group(2) or "").strip()
         if verb in _ADDR_VERBS and arg:
             tok, _, tail = arg.partition(" ")
-            fac, ref, _x = _addr(reg, tok, af, dashed)
+            fac, ref, _x = _addr(reg, tok, af, dashed, verb)
             target = (fac, f"/superlite:{verb} {ref}" + (f" {tail}" if tail.strip() else ""))
         elif verb == "runs":
             tok, _, tail = arg.partition(" ")
@@ -216,6 +244,8 @@ def _route_multi(reg, prompt: str, af: str | None, multi: bool) -> dict | None:
         return _block(_scrub(str(e), prov))
     except PLUGIN_ERRORS as e:
         return _block("not sent: " + _scrub(str(e), prov))
+    finally:
+        _keep_factory(af)
     if res:
         if verb == "attach" and str(res.get("reason", "")).startswith("attached "):
             bad = _unverified(prov, target[1].split(" ", 1)[1].strip())
@@ -278,19 +308,67 @@ def route(prompt: str) -> dict | None:
         if CLOUD in logged and _explicit_cloud(prompt.strip()):  # the address names the run, not the literal text
             return _route_multi(reg, prompt, af, False)
         res = cloud_hook.route_main(prompt)
+        if res is None and af and CLOUD not in logged and run_meant(prompt):  # no client: it never reaches the run
+            return _block("not sent: not logged in: run superlite-cli cloud login")
         return _verify_attach(reg, prompt, res)
     return _route_multi(reg, prompt, af, len(logged) >= 2)
+
+
+def run_meant(prompt: str) -> bool:
+    """True for a line clearly meant for a run: an attached plain line, `>>`, or an addressed verb."""
+    text = prompt.strip()
+    if not text or text.startswith("\\"):
+        return False
+    if text.startswith(">>"):
+        return True
+    m = cloud_hook._SLASH.match(text)
+    if m:
+        return m.group(1) in _ADDR_VERBS
+    return bool(cloud_hook._attach_state()) and (not text.startswith("/") or text in ("/cancel", "/approve"))
+
+
+def _timeout() -> float:
+    try:
+        return max(0.1, float(os.environ.get("SUPERLITE_HOOK_TIMEOUT", "30")))
+    except ValueError:
+        return 30.0
+
+
+def _guarded_main(prompt: str) -> dict | None:
+    """route(prompt); an exception or a hang on a run-meant line is a block (type name only), else fails open."""
+    box: dict = {}
+
+    def thread_main():
+        try:
+            box["res"] = route(prompt)
+        except BaseException as e:  # noqa: BLE001 - SystemExit from a plugin included
+            box["err"] = type(e).__name__
+
+    t = threading.Thread(target=thread_main, daemon=True)
+    t.start()
+    t.join(_timeout())
+    why = "timed out" if t.is_alive() else box.get("err")
+    if not why:
+        return box.get("res")
+    try:
+        meant = run_meant(prompt)
+    except Exception:
+        meant = True
+    return _block(f"not sent: hook failed ({why}); the line did not reach the run") if meant else None
 
 
 def main(argv: list[str] | None = None) -> int:
     try:
         data = json.loads(sys.stdin.read() or "{}")
-        res = route(str(data.get("prompt", "")))
+        res = _guarded_main(str(data.get("prompt", "")))
         out = cloud_hook.render(res, cloud_hook._is_cursor(data)) if res else None
         if out:
             print(json.dumps(out))
     except Exception:
         return 0
+    if threading.active_count() > 1:  # a hung plugin thread must not hold the process open
+        sys.stdout.flush()
+        os._exit(0)
     return 0
 
 

@@ -9,7 +9,7 @@
 # One JSON object comes out: Claude Code gets hookSpecificOutput.additionalContext, or nothing; Cursor
 # (beforeSubmitPrompt) always gets {"continue":true} plus additional_context when there is text.
 # SUPERLITE_NO_SESSION_HUD=1 silences the HUD, SUPERLITE_NO_COST_REPORT=1 the cost line.
-# Exit 0 always (fail open). Bash builtins plus the Python helpers.
+# Exit 0 always. Bash builtins plus the Python helpers.
 
 here="${BASH_SOURCE[0]//\\//}"
 case "$here" in */*) here="${here%/*}" ;; *) here="." ;; esac
@@ -28,17 +28,31 @@ if [ -z "$py" ]; then
 fi
 
 # Live cloud runs: one bash prefix check per prompt; Python starts only for a cloud prefix or while attached.
-# The hook's own output (a block, or a backslash pass-through) is printed as is. Any failure lets the line through.
+# The hook's own output (a block, or a backslash pass-through) is printed as is. A hook failure blocks a line meant for
+# a run (`>>`, an addressed verb, an attached plain line) and lets any other line through.
 # A blocked line never reaches the local agent, so it is not recorded as a human reply (record_reply runs after).
 jstr prompt; cloud_line="$REPLY"
 cloud_hit=0
-case "$cloud_line" in
+trimmed="${cloud_line#"${cloud_line%%[![:space:]]*}"}"  # the Python hook strips the line, so the prefix check does too
+case "$trimmed" in
   ">>"*|"/superlite:attach"*|"/superlite:detach"*|"/superlite:runs"*|"/superlite:watch"*|"/superlite:give"*) cloud_hit=1 ;;
   "/superlite-attach-"*|"/superlite-watch-"*) cloud_hit=1 ;;
 esac
 [ -f "${SUPERLITE_HOME:-$HOME/.superlite}/attach.json" ] && cloud_hit=1
 if [ "$cloud_hit" = 1 ] && [ -f "$root/skills/swarm/scripts/superlite-cli" ]; then
-  cloud_out="$(printf '%s' "$input" | bash "$root/skills/swarm/scripts/superlite-cli" cloud hook 2>/dev/null)" || cloud_out=""
+  cloud_rc=0
+  cloud_out="$(printf '%s' "$input" | bash "$root/skills/swarm/scripts/superlite-cli" cloud hook 2>/dev/null)" || cloud_rc=$?
+  # A crash, a non-JSON answer or a timeout on a line meant for a run blocks it: it must not reach the local agent.
+  if [ "$cloud_rc" != 0 ] || { [ -n "$cloud_out" ] && [ "${cloud_out:0:1}" != "{" ]; }; then
+    cloud_out=""
+    re_run='^(>>|/superlite[:-](attach|watch|give)([[:space:]-]|$)|/cancel$|/approve$)'
+    if [[ $trimmed =~ $re_run ]] || { [ -f "${SUPERLITE_HOME:-$HOME/.superlite}/attach.json" ] && [ -n "$trimmed" ] \
+         && [[ $trimmed != "/"* ]] && [[ $trimmed != "\\"* ]]; }; then
+      why="not sent: cloud hook failed; the line did not reach the run"
+      if [ "$is_cursor" = 1 ]; then cloud_out="{\"continue\":false,\"user_message\":\"$why\"}"
+      else cloud_out="{\"decision\":\"block\",\"reason\":\"$why\"}"; fi
+    fi
+  fi
   if [ -n "$cloud_out" ]; then
     re_blocked='"(decision"[[:space:]]*:[[:space:]]*"block"|continue"[[:space:]]*:[[:space:]]*false)'
     [[ $cloud_out =~ $re_blocked ]] || record_reply   # a backslash pass-through still goes to the local agent

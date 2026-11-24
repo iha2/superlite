@@ -79,11 +79,28 @@ def test_block_output_passes_through(env):
     assert r.stdout.strip() == out
 
 
-def test_fail_open(env):
+def test_fail_open_for_unrelated_lines(env):
     e, log, home, proj = env
-    r = call(e, proj, ">> hi", SHIM_RC="1")
-    assert r.returncode == 0
-    assert "block" not in r.stdout
+    r = call(e, proj, "/superlite:runs", SHIM_RC="1")
+    assert r.returncode == 0 and "block" not in r.stdout
+    (home / "attach.json").write_text('{"run":"login_fix"}')
+    for line in ("/some-other-command", "\\literal"):
+        r = call(e, proj, line, SHIM_RC="1")
+        assert r.returncode == 0 and "block" not in r.stdout, line
+
+
+@pytest.mark.parametrize("extra", [{"SHIM_RC": "1"}, {"SHIM_OUT": "Traceback (most recent call last)"}])
+def test_hook_failure_blocks_lines_meant_for_a_run(env, extra):
+    e, log, home, proj = env
+    for line in (">> hi", "  >>hi", "/superlite:attach r", "/superlite-watch-lab-1234", "/superlite:give r a@b.co"):
+        r = call(e, proj, line, **extra)
+        assert r.returncode == 0 and json.loads(r.stdout)["decision"] == "block", line
+    (home / "attach.json").write_text('{"run":"login_fix"}')
+    for line in ("also add a test", "/cancel", "/approve"):
+        r = call(e, proj, line, **extra)
+        assert json.loads(r.stdout)["decision"] == "block", line
+    r = call(e, proj, ">> hi", **extra, CURSOR_AGENT="1")
+    assert json.loads(r.stdout)["continue"] is False
 
 
 def _reply_env(env, proj):

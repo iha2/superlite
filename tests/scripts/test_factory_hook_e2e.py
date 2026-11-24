@@ -1,6 +1,7 @@
 """Hook routing across factories, e2e: subprocess `superlite-cli factory_hook` against cloud_fake and memkind `lab`."""
 import json
 import os
+import shutil
 import sys
 import types
 from pathlib import Path
@@ -289,3 +290,86 @@ def test_plugin_watch_hands_off_without_blocking(world):
     assert "factory watch lab:%s" % R8 in text and "tmux split-window -h" in text
     assert "mem-secret-token-value" not in text
     assert w.cstop.requests == [] and mem_reqs(w) == []
+
+
+def _fault_plugin(w, tmp_path, body):
+    """A copy of memkind whose nudge runs `body` (a statement), pointed at by SUPERLITE_FACTORY_PATH."""
+    dst = Path(tmp_path) / "faultkind"
+    shutil.copytree(e2e.MEMKIND, dst)
+    mod = dst / "factory" / "memkind.py"
+    mod.write_text(mod.read_text(encoding="utf-8") + "\n_n = MemProvider.nudge\n\n\ndef _bad(self, ref, text):\n    "
+                   + body + "\n\n\nMemProvider.nudge = _bad\n", encoding="utf-8")
+    w.env["SUPERLITE_FACTORY_PATH"] = str(dst)
+
+
+def test_cloud_entry_named_like_factory_prefix_stays_cloud(world, tmp_path):
+    """A cloud run `lab-fix` has the entry /superlite-attach-lab-fix: it is not run `fix` of factory `lab`."""
+    w = world(routes={("GET", "/api/runs/lab-fix/attach"): {"run": "lab-fix", "id": "c1", "status": "running"},
+                      ("GET", "/api/tasks/c1"): {"status": "running", "name": "lab-fix"}})
+    d = Path(w.env["CLAUDE_HOME"]) / "skills" / "superlite-attach-lab-fix"
+    d.mkdir(parents=True)
+    (d / ".superlite-entry").write_text("")
+    out = e2e.hook("/superlite-attach-lab-fix", w.env)
+    assert "lab-fix" in out["reason"] and "(mem)" not in out["reason"]
+    assert ("GET", "/api/runs/lab-fix/attach", None) in w.cstop.requests
+    assert att(w) == {"run": "lab-fix", "id": "c1"}
+
+
+def test_bare_dashed_cloud_entry_ignores_attached_factory(world):
+    """A cloud entry carries no factory prefix: while attached to `lab` it still addresses superlite-cloud."""
+    w = world(routes={("GET", "/api/runs/fix1/attach"): {"run": "fix1", "id": "c1", "status": "running"},
+                      ("GET", "/api/tasks/c1"): {"status": "running", "name": "fix1"}})
+    put_att(w, run=R8, id=RID, factory="lab")
+    out = e2e.hook("/superlite-attach-fix1", w.env)
+    assert ("GET", "/api/runs/fix1/attach", None) in w.cstop.requests
+    assert mem_reqs(w) == []
+    assert att(w) == {"run": "fix1", "id": "c1"} and "(mem)" not in out["reason"]
+
+
+def test_uncaught_plugin_error_blocks_attached_line(world, tmp_path):
+    w = world()
+    _fault_plugin(w, tmp_path, "raise StopIteration")
+    put_att(w, run=R8, id=RID, factory="lab")
+    out = e2e.hook("also add a test", w.env)
+    assert out["decision"] == "block" and "did not reach the run" in out["reason"]
+    assert w.cstop.requests == []
+    out = e2e.hook(">> hi there", w.env)
+    assert out["decision"] == "block"
+    assert e2e.hook("/some-other-command", w.env) is None  # unrelated: fails open, not a run line
+
+
+def test_hung_plugin_blocks_attached_line(world, tmp_path):
+    w = world()
+    _fault_plugin(w, tmp_path, "import time; time.sleep(60)")
+    w.env["SUPERLITE_HOOK_TIMEOUT"] = "2"
+    put_att(w, run=R8, id=RID, factory="lab")
+    out = e2e.hook("hello", w.env)
+    assert out["decision"] == "block" and "timed out" in out["reason"]
+    assert w.cstop.requests == []
+
+
+def test_failed_send_after_rename_keeps_factory_key(world, tmp_path):
+    """refresh_attached rewrites attach.json without `factory`; a failing send must not leave it unkeyed."""
+    w = world()
+    _fault_plugin(w, tmp_path, "raise StopIteration")
+    put_att(w, run="old-name", id=RID, factory="lab")
+    e2e.hook("hello", w.env)
+    assert att(w)["factory"] == "lab"
+
+
+def test_attached_cloud_not_logged_in_blocks_plain_line(world):
+    w = world(cloud=False, store=False)
+    put_att(w, run="r", id="r")
+    out = e2e.hook("a plain line", w.env)
+    assert out["decision"] == "block" and "not logged in" in out["reason"]
+    assert e2e.hook("/some-other-command", w.env) is None
+    assert e2e.hook("\\x", w.env) is None
+
+
+def test_gone_factory_blocks_attached_line(world):
+    w = world(store=False)
+    put_att(w, run="x", id="x", factory="vanished")
+    out = e2e.hook("hello", w.env)
+    assert out["decision"] == "block" and "vanished" in out["reason"]
+    assert w.cstop.requests == []
+    assert e2e.hook("/superlite:detach", w.env)["reason"] == "detached"
