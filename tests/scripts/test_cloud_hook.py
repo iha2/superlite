@@ -361,3 +361,17 @@ def test_give_on_another_factory_keeps_an_attachment_with_the_same_id(fc, tmp_pa
     assert (tmp_path / "attach.json").exists()
     cloud_hook.detach_if_given("gift", {"id": "t_1"}, "lab")
     assert not (tmp_path / "attach.json").exists()
+
+
+def test_rename_refresh_keeps_the_factory_key_before_any_send(fc, tmp_path):
+    (tmp_path / "attach.json").write_text(json.dumps({"run": "old", "id": "t_1", "factory": "lab"}), encoding="utf-8")
+    fc.runs_data = [{"id": "t_1", "name": "new", "status": "running"}]
+    assert cloud_hook.refresh_attached(fc)["run"] == "new"
+    assert json.loads((tmp_path / "attach.json").read_text()) == {"run": "new", "id": "t_1", "factory": "lab"}
+
+
+def test_rename_refresh_on_a_cloud_attachment_adds_no_factory_key(fc, tmp_path):
+    (tmp_path / "attach.json").write_text(json.dumps({"run": "old", "id": "t_1"}), encoding="utf-8")
+    fc.runs_data = [{"id": "t_1", "name": "new", "status": "running"}]
+    cloud_hook.refresh_attached(fc)
+    assert json.loads((tmp_path / "attach.json").read_text()) == {"run": "new", "id": "t_1"}

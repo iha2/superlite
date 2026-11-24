@@ -120,3 +120,21 @@ def test_other_tools_are_untouched():
 ])
 def test_quote_aware_split_still_finds_a_real_watch(cmd):
     assert run(cmd).returncode == 2
+
+
+@pytest.mark.parametrize("cmd", [
+    'echo "a\\"; superlite-cli cloud watch r"',          # an escaped quote does not close the double quote
+    'echo "a\\\\"; echo "b; superlite-cli cloud watch r"',  # an escaped backslash does not escape the closing quote
+])
+def test_backslash_escapes_keep_text_quoted(cmd):
+    r = run(cmd)
+    assert (r.returncode, r.stdout, r.stderr) == (0, "", "")
+
+
+@pytest.mark.parametrize("cmd", [
+    'echo "a\\\\"; superlite-cli cloud watch r',           # `\\` then a real closing quote: the watch is live
+    'echo "a\\"b"; superlite-cli cloud watch r',           # escaped quote, then the real close, then a live watch
+    "echo \\'x; superlite-cli cloud watch r",              # escaped quote outside quotes: the `;` still splits
+])
+def test_backslash_escapes_do_not_hide_a_real_watch(cmd):
+    assert run(cmd).returncode == 2

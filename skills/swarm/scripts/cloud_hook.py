@@ -92,8 +92,11 @@ def refresh_attached(client) -> dict | None:
         name = t.get("name")
         if name and name != bare:
             out["run"] = f"{owner}{sep}{name}"
+            kept = {"run": out["run"], "id": out["id"]}
+            if st.get("factory"):  # the attachment's factory survives the rename, even if the hook dies before a send
+                kept["factory"] = st["factory"]
             try:
-                (_home() / "attach.json").write_text(json.dumps({"run": out["run"], "id": out["id"]}), encoding="utf-8")
+                (_home() / "attach.json").write_text(json.dumps(kept), encoding="utf-8")
             except OSError:
                 pass
     return out

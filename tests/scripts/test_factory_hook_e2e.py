@@ -356,6 +356,7 @@ def test_hung_plugin_blocks_attached_line(world, tmp_path):
     put_att(w, run=R8, id=RID, factory="lab")
     out = e2e.hook("hello", w.env)
     assert out["decision"] == "block" and "timed out" in out["reason"]
+    assert "delivery not confirmed" in out["reason"] and "did not reach" not in out["reason"]
     assert w.cstop.requests == []
 
 
@@ -366,6 +367,28 @@ def test_failed_send_after_rename_keeps_factory_key(world, tmp_path):
     put_att(w, run="old-name", id=RID, factory="lab")
     e2e.hook("hello", w.env)
     assert att(w)["factory"] == "lab"
+
+
+def test_registry_failure_with_a_plugin_attachment_never_guesses_cloud(world):
+    w = world()
+    put_att(w, run=R8, id=RID, factory="lab")
+    (w.home / "factories.json").write_text("{not json", encoding="utf-8")
+    for line in ("hello there", ">> hi", "/cancel"):
+        out = e2e.hook(line, w.env)
+        assert out["decision"] == "block" and "lab: unavailable" in out["reason"], line
+    assert w.cstop.requests == [] and att(w)["factory"] == "lab"
+    assert e2e.hook("\\add a test myself", w.env)["hookSpecificOutput"]["additionalContext"].endswith("myself")
+    assert att(w)["factory"] == "lab"
+    assert e2e.hook("/superlite:detach", w.env)["reason"] == "detached" and att(w) is None
+
+
+def test_registry_failure_with_a_cloud_attachment_keeps_the_cloud_path(world):
+    w = world(routes={("GET", "/api/tasks/" + RID): {"status": "running", "name": R8},
+                      ("POST", "/api/runs/" + RID + "/nudge"): {"ok": True}})
+    put_att(w, run=R8, id=RID)
+    (w.home / "factories.json").write_text("{not json", encoding="utf-8")
+    e2e.hook("hello there", w.env)
+    assert any(r[1].startswith("/api/") and "nudge" in r[1] or r[1] == "/api/tasks/" + RID for r in w.cstop.requests)
 
 
 def test_attached_cloud_not_logged_in_blocks_plain_line(world):

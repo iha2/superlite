@@ -298,6 +298,15 @@ def _names_plugin(reg, text: str) -> bool:
     return tok.partition(":")[0] in plugins or any(tok.startswith(n + "-") for n in plugins)
 
 
+def _registry_failed(prompt: str, err: BaseException) -> dict | None:
+    """The registry raised. A plugin attachment (read from attach.json, no registry) must not guess a provider: a
+    run-meant line is blocked, while local detach and `\\...` lines still work. Else the cloud fallback."""
+    af = attached_factory()
+    if af and af != CLOUD and run_meant(prompt):
+        return _block(f"not sent: {af}: unavailable ({type(err).__name__})")
+    return cloud_hook.route_main(prompt)
+
+
 def route(prompt: str) -> dict | None:
     try:
         reg = _reg()
@@ -305,8 +314,8 @@ def route(prompt: str) -> dict | None:
         af = attached_factory()
         cloud_only = (set(logged) <= {CLOUD} and af in (None, CLOUD) and reg.active() == CLOUD
                       and not _names_plugin(reg, prompt.strip()))
-    except PLUGIN_ERRORS:
-        return cloud_hook.route_main(prompt)
+    except PLUGIN_ERRORS as e:
+        return _registry_failed(prompt, e)
     if cloud_only:
         if CLOUD in logged and _explicit_cloud(prompt.strip()):  # the address names the run, not the literal text
             return _route_multi(reg, prompt, af, False)
@@ -357,7 +366,11 @@ def _guarded_main(prompt: str) -> dict | None:
         meant = run_meant(prompt)
     except Exception:
         meant = True
-    return _block(f"not sent: hook failed ({why}); the line did not reach the run") if meant else None
+    if not meant:
+        return None
+    if t.is_alive():
+        return _block("not sent: hook timed out; delivery not confirmed, check the run before resending")
+    return _block(f"not sent: hook failed ({why}); the line did not reach the run")
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -19,10 +19,11 @@ mask_quoted() {
     if [ -z "$q" ]; then
       case "$c" in
         "'"|'"') q="$c" ;;
-        '\\') case "${s:i+1:1}" in "'"|'"') out="$out$c"; i=$((i+1)); c="${s:i:1}" ;; esac ;;
+        '\') case "${s:i+1:1}" in "'"|'"'|'\') out="$out$c"; i=$((i+1)); c="${s:i:1}" ;; esac ;;
       esac
     elif [ "$c" = "$q" ]; then q=""
-    elif [ "$q" = '"' ] && [ "$c" = '\\' ] && [ "${s:i+1:1}" = '"' ]; then out="$out$c"; i=$((i+1)); c='"'
+    elif [ "$q" = '"' ] && [ "$c" = '\' ]; then  # an escaped quote or backslash is text, not a delimiter
+      case "${s:i+1:1}" in '"'|'\') out="$out$c"; i=$((i+1)); c="${s:i:1}" ;; esac
     else
       case "$c" in ';') c=$'\x04' ;; '&') c=$'\x05' ;; '|') c=$'\x06' ;; "$nl") c=$'\x07' ;; esac
     fi
