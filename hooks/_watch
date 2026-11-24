@@ -31,6 +31,16 @@ mask_quoted() {
   printf -v "$1" '%s' "$out"
 }
 
+# unmask_amp STR: print STR with \x05 turned back into &. Done by splitting around each \x05 (no & in a ${//}
+# replacement: bash 3.2 keeps the quotes of "&" literally, bash 5.2 treats an unquoted & as the matched text).
+unmask_amp() {
+  local rest="$1" out="" a=$'\x05'
+  while case "$rest" in *"$a"*) true ;; *) false ;; esac; do
+    out="$out${rest%%"$a"*}&"; rest="${rest#*"$a"}"
+  done
+  printf '%s' "$out$rest"
+}
+
 # split_segments STR [DEPTH]: append the shell segments of STR (quote-aware) to WSEGS. A segment that is
 # `bash -c 'script'` also adds the script's own segments (once; deeper nesting is left alone).
 split_segments() {
@@ -42,7 +52,7 @@ split_segments() {
     WSEGS[${#WSEGS[@]}]="$seg"
     if [ "${2:-0}" = 0 ] && [[ $seg =~ $re_sh ]]; then
       inner="${BASH_REMATCH[4]}"
-      inner="${inner//$'\x04'/;}"; inner="${inner//$'\x05'/"&"}"; inner="${inner//$'\x06'/|}"; inner="${inner//$'\x07'/$nl}"
+      inner="${inner//$'\x04'/;}"; inner="$(unmask_amp "$inner")"; inner="${inner//$'\x06'/|}"; inner="${inner//$'\x07'/$nl}"
       case "$inner" in "'"*"'"|'"'*'"') inner="${inner#?}"; inner="${inner%?}" ;; esac
       split_segments "$inner" 1
     fi
