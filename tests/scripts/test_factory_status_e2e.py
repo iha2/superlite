@@ -193,7 +193,9 @@ def test_entry_description_is_valid_yaml(tmp_path):
         json.dumps({"runs": [{"id": RID, "status": "running", "title": "Fix: flaky test"}]}))
     e2e.status_line(env)
     text = (_skills(env) / "superlite-attach-lab-1a2b3c4d" / "SKILL.md").read_text()
-    assert 'description: "running Fix: flaky test"' in text
+    front = text.split("---")[1].splitlines()
+    value = next(ln for ln in front if ln.startswith("description:")).split(":", 1)[1].strip()
+    assert json.loads(value) == "running Fix: flaky test"  # a double-quoted YAML scalar, so the colon cannot split the key
 
 
 def test_entries_removed_after_last_plugin_logout(tmp_path):
