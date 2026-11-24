@@ -134,7 +134,7 @@ Opt out: `SUPERLITE_NO_SESSION_HUD=1` (independent of `SUPERLITE_NO_COST_REPORT`
 
 ## Feature flow
 
-Prototypes are sandbox folders, `.superlite/sandboxes/<session>/<topic>/` (no worktree, no branch); feature integration worktrees are `.claude/worktrees/<topic>`, branches `superlite/...`. `session close` discards an open sandbox, and `proto discard` does too. `ExitWorktree` never removes superlite-cut worktrees: `session close` does. Harness-made worktrees end with `ExitWorktree` or the app's cleanup. See [Feature flow](feature-flow.md).
+Prototypes are sandbox folders, `.superlite/sandboxes/<session>/<topic>/` (no worktree, no branch); feature integration runs in place only when the flow's session has its own dedicated worktree and its recorded slug or topic matches `<topic>` or a collision-adjusted form. After prototype finish, reopen that session with `session ensure --slug <s> --branch <that session's branch>` and renew suspension with `orchestrator set <mode>` using the current mode, human or ai; human mode requires normal plan approval again. Otherwise return to the main checkout first (`ExitWorktree` with `action: "keep"` under Claude Code, else `cd`), then run `session create --slug <topic>-int --worktree --base <the branch the user was on when the feature started>` and follow its worktree entry and rerun instructions. It cuts under `.claude/worktrees/`, branches `superlite/...`. `session close` discards an open sandbox, and `proto discard` does too. On a keep with uncommitted work, skip close and removal and report the worktree path. Otherwise, `ExitWorktree` never removes superlite-cut worktrees: `session close` does. Harness-made worktrees end with `ExitWorktree` or the app's cleanup. See [Feature flow](feature-flow.md).
 
 ## Tests
 
