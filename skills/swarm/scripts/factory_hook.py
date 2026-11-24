@@ -6,7 +6,6 @@ cloud_hook.route_main. Fails open: main prints nothing and exits 0 on any except
 from __future__ import annotations
 
 import json
-import os
 import re
 import shlex
 import sys
@@ -114,13 +113,8 @@ def _kind(reg, fac: str) -> str:
 def _watch(reg, fac: str, ref: str) -> dict:
     cli = Path(cloud_hook._HERE) / "superlite-cli"
     cmd = f"bash {shlex.quote(str(cli))} factory watch {shlex.quote(fac + ':' + ref)}"
-    if os.environ.get("HERDR_ENV") == "1":
-        pane = cloud_hook._sh(["herdr", "pane", "split", "--current", "--direction", "right", "--no-focus"])
-        pid = (pane.stdout or "").strip()
-        if pid:
-            cloud_hook._sh(["herdr", "pane", "run", pid, cmd])
-            return _block(f"watching {fac}:{ref} in a pane on the right")
-    return _block(f"run this in another terminal: {cmd}")
+    from factory_api import watch_handoff
+    return {"context": watch_handoff(cmd, f"{fac}:{ref}")}
 
 
 def _unverified(prov, ref: str) -> str | None:

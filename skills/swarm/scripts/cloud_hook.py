@@ -8,7 +8,6 @@ import json
 import os
 import re
 import shlex
-import subprocess
 import sys
 from pathlib import Path
 
@@ -45,10 +44,6 @@ def _client():
     if not cfg or not cfg.get("url") or not cfg.get("token"):
         return None
     return cloud_client.Client(cfg["url"], cfg["token"])
-
-
-def _sh(cmd: list[str]):
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=10)
 
 
 def _attach_state() -> dict:
@@ -231,13 +226,8 @@ def _slash(client, verb: str, arg: str) -> dict:
     if verb == "watch":
         cli = Path(_HERE) / "superlite-cli"
         cmd = f"bash {shlex.quote(str(cli))} cloud watch {shlex.quote(arg)}"
-        if os.environ.get("HERDR_ENV") == "1":
-            pane = _sh(["herdr", "pane", "split", "--current", "--direction", "right", "--no-focus"])
-            pid = (pane.stdout or "").strip()
-            if pid:
-                _sh(["herdr", "pane", "run", pid, cmd])
-                return _block(f"watching {arg} in a pane on the right")
-        return _block(f"run this in another terminal: {cmd}")
+        from factory_api import watch_handoff
+        return {"context": watch_handoff(cmd, arg)}
     info = client.attach(arg)
     name = info.get("run") or arg.split("/")[-1]
     if "/" in arg:  # keep the owner: a bare name would address the caller's own same-named run

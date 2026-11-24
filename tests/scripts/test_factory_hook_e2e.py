@@ -277,3 +277,15 @@ def test_cloud_only_explicit_address_nudge(world):
     assert out["reason"] == "→ run2"
     assert w.cstop.requests[-1] == ("POST", "/api/runs/run2/nudge", {"text": "hello"})
     assert att(w) == {"run": "run1", "id": "run1"}
+
+
+def test_plugin_watch_hands_off_without_blocking(world):
+    w = world()
+    env = {**w.env, "TMUX": "/tmp/tmux-1/default,1,0"}
+    env.pop("HERDR_ENV", None)
+    out = e2e.hook("/superlite:watch lab:%s" % R8, env)
+    assert "decision" not in out
+    text = out["hookSpecificOutput"]["additionalContext"]
+    assert "factory watch lab:%s" % R8 in text and "tmux split-window -h" in text
+    assert "mem-secret-token-value" not in text
+    assert w.cstop.requests == [] and mem_reqs(w) == []

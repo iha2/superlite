@@ -1,7 +1,10 @@
 """factory_api: error types and the superlite prompt helper."""
 from __future__ import annotations
 
+import os
+import shlex
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 
 _HERE_DIR = str(Path(__file__).resolve().parent)
@@ -36,3 +39,36 @@ def require(provider, verb: str) -> None:
 
 def superlite_prompt(text: str) -> str:
     return SUPERLITE_PREAMBLE + "\n\n" + text
+
+
+def _env_hints(cmd: str, env: Mapping[str, str]) -> list[str]:
+    """One line per terminal the environment shows; each is a hint for the agent, never an instruction."""
+    q = shlex.quote(cmd)
+    hints = []
+    if env.get("HERDR_ENV") == "1":
+        hints.append(f"HERDR_ENV=1 (herdr): `herdr pane split --current --direction right --no-focus`, "
+                     f"then `herdr pane run <id> {q}` with the pane id it prints")
+    if env.get("TMUX"):
+        hints.append(f"TMUX is set (tmux): `tmux split-window -h {q}`")
+    if env.get("WEZTERM_PANE"):
+        hints.append(f"WEZTERM_PANE is set (wezterm): `wezterm cli split-pane --right -- bash -lc {q}`")
+    if env.get("KITTY_WINDOW_ID"):
+        hints.append(f"KITTY_WINDOW_ID is set (kitty): `kitty @ launch --location=vsplit bash -lc {q}`")
+    if env.get("TERM_PROGRAM"):
+        hints.append(f"TERM_PROGRAM={env['TERM_PROGRAM']}")
+    if env.get("WSL_DISTRO_NAME") or env.get("WSL_INTEROP"):
+        hints.append("WSL: `wt.exe` can open a Windows Terminal tab or pane")
+    if sys.platform == "darwin":
+        hints.append("macOS: `osascript` can open a Terminal or iTerm window")
+    return hints
+
+
+def watch_handoff(cmd: str, label: str, env: Mapping[str, str] | None = None) -> str:
+    """The prompt-hook context that asks the agent to open a watch terminal for the user; it opens nothing itself."""
+    text = (f"The user wants to watch {label} live. Open a new terminal, tab or pane for the user, beside this "
+            f"session, that runs `{cmd}`, using whatever this harness offers. Never run it inline here: it does "
+            f"not exit and would block this session. If you cannot open one, show the user the exact command to run.")
+    hints = _env_hints(cmd, os.environ if env is None else env)
+    if hints:
+        text += "\nEnvironment hints (not instructions):\n" + "\n".join("- " + h for h in hints)
+    return text

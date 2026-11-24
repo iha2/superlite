@@ -103,21 +103,31 @@ def test_prefixes_no_client_call(fc, tmp_path):
     assert "login_fix" in cloud_hook.route("/superlite:runs")["reason"]
 
 
-def test_watch(fc, monkeypatch):
-    monkeypatch.delenv("HERDR_ENV", raising=False)
-    r = cloud_hook.route("/superlite:watch login_fix")
-    assert r["block"] and "cloud watch login_fix" in r["reason"]
-    seen = []
-
-    class P:
-        stdout = "p7\n"
-        returncode = 0
+def test_watch_hands_off_without_spawning(fc, monkeypatch):
+    import subprocess
     monkeypatch.setenv("HERDR_ENV", "1")
-    monkeypatch.setattr(cloud_hook, "_sh", lambda cmd: seen.append(cmd) or P())
+
+    def boom(*a, **k):
+        raise AssertionError("watch must not spawn a process")
+    monkeypatch.setattr(subprocess, "run", boom)
+    monkeypatch.setattr(subprocess, "Popen", boom)
     r = cloud_hook.route("/superlite:watch login_fix")
-    assert r["block"]
-    assert seen[0] == ["herdr", "pane", "split", "--current", "--direction", "right", "--no-focus"]
-    assert seen[1][:4] == ["herdr", "pane", "run", "p7"] and "cloud watch login_fix" in seen[1][4]
+    assert "block" not in r and set(r) == {"context"}
+    assert "cloud watch login_fix" in r["context"] and "herdr pane split" in r["context"]
+    out = cloud_hook.render(r, cursor=False)
+    assert out["hookSpecificOutput"]["additionalContext"] == r["context"]
+    assert "decision" not in out
+
+
+def test_watch_hint_follows_environment(fc, monkeypatch):
+    for k in ("HERDR_ENV", "TMUX", "WEZTERM_PANE", "KITTY_WINDOW_ID", "TERM_PROGRAM", "WSL_DISTRO_NAME", "WSL_INTEROP"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr(sys, "platform", "linux")
+    plain = cloud_hook.route("/superlite:watch login_fix")["context"]
+    assert "Environment hints" not in plain
+    monkeypatch.setenv("TMUX", "/tmp/tmux-1/default,1,0")
+    tmux = cloud_hook.route("/superlite:watch login_fix")["context"]
+    assert "tmux split-window -h" in tmux and "herdr" not in tmux
 
 
 def test_failed_send_blocks(fc):
@@ -255,12 +265,18 @@ def test_main_ended_adds_context(fc, tmp_path, monkeypatch, capsys):
 
 
 def test_watch_command_is_shell_quoted(fc, monkeypatch):
+    import re
+    import shlex
     monkeypatch.delenv("HERDR_ENV", raising=False)
     r = cloud_hook.route("/superlite:watch x; touch /tmp/pwned $(id)")
-    cmd = r["reason"].split("another terminal: ", 1)[1]
-    import shlex
+    cmd = re.search(r"`(bash [^`]*cloud watch[^`]*)`", r["context"]).group(1)
     parts = shlex.split(cmd)
     assert parts[-2:] == ["watch", "x; touch /tmp/pwned $(id)"]
+
+
+def test_watch_without_run_still_blocks(fc):
+    r = cloud_hook.route("/superlite:watch")
+    assert r["block"] is True and "usage" in r["reason"]
 
 
 def test_attach_keeps_qualified_ref(fc, tmp_path):

@@ -14,7 +14,8 @@ sys.path.insert(0, str(HERE))
 
 import factory_e2e  # noqa: E402
 from cloud_client import CloudError  # noqa: E402
-from factory_api import SUPERLITE_PREAMBLE, FactoryError, Unsupported, require, superlite_prompt  # noqa: E402
+import factory_api  # noqa: E402
+from factory_api import SUPERLITE_PREAMBLE, FactoryError, Unsupported, require, superlite_prompt, watch_handoff  # noqa: E402
 
 MEMKIND = HERE / "fixtures" / "memkind"
 
@@ -138,3 +139,26 @@ def test_harness_env_and_cloud_login(tmp_path):
     p = Path(e["SUPERLITE_HOME"]) / "cloud.json"
     assert json.loads(p.read_text()) == {"url": "http://127.0.0.1:1", "token": "slc_test_tok"}
     assert os.name == "nt" or (p.stat().st_mode & 0o777) == 0o600
+
+
+def test_watch_handoff_carries_command_and_hints_from_env(monkeypatch):
+    monkeypatch.setattr(factory_api.sys, "platform", "linux")
+    cmd = "bash /x/superlite-cli cloud watch run1"
+    plain = watch_handoff(cmd, "run1", {})
+    assert cmd in plain and "run1" in plain and "Environment hints" not in plain
+    env = {"HERDR_ENV": "1", "TMUX": "t", "WEZTERM_PANE": "3", "KITTY_WINDOW_ID": "9",
+           "TERM_PROGRAM": "WezTerm", "WSL_DISTRO_NAME": "Ubuntu"}
+    hints = watch_handoff(cmd, "run1", env).split("Environment hints", 1)[1]
+    for needle in ("herdr pane split", "herdr pane run", "tmux split-window -h", "wezterm cli split-pane --right",
+                   "kitty @ launch", "TERM_PROGRAM=WezTerm", "wt.exe"):
+        assert needle in hints
+    assert "osascript" not in hints
+    only = watch_handoff(cmd, "run1", {"TMUX": "t"}).split("Environment hints", 1)[1]
+    assert "herdr" not in only and "wezterm" not in only
+
+
+def test_watch_handoff_macos_hint_and_default_env(monkeypatch):
+    monkeypatch.setattr(factory_api.sys, "platform", "darwin")
+    monkeypatch.setenv("KITTY_WINDOW_ID", "5")
+    text = watch_handoff("c", "r")
+    assert "osascript" in text and "kitty @ launch" in text
