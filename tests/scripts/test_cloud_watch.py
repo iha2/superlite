@@ -5,8 +5,15 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "skills" / "swarm" / "scripts"))
 import cloud_watch  # noqa: E402
+import pytest  # noqa: E402
 
 R = cloud_watch.render
+
+
+@pytest.fixture(autouse=True)
+def _stream_inline(monkeypatch):
+    """These tests run watch under pytest, which may sit inside an agent harness: let it stream."""
+    monkeypatch.setenv("SUPERLITE_WATCH_INLINE", "1")
 
 
 def test_render_examples():
@@ -102,3 +109,63 @@ def test_done_then_result_printed_then_exits(capsys):
                     _ev(3, "nudge", text="never shown")], capsys)
     assert rc == 0
     assert "result: late" in out and "never shown" not in out
+
+
+_EVENTS = [{"id": 1, "kind": "status", "data": {"run": "login_fix", "to": "done", "result": "PR opened"}}]
+
+
+class _Tty(io.StringIO):
+    def isatty(self):
+        return True
+
+
+def _main(monkeypatch, argv, tty=False, **env):
+    for k in ("CLAUDECODE", "CURSOR_AGENT", "COPILOT_CLI", "CODEX_SANDBOX", "CODEX_THREAD_ID", "CODEX_CI",
+              "SUPERLITE_WATCH_INLINE"):
+        monkeypatch.delenv(k, raising=False)
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    out = _Tty() if tty else io.StringIO()
+    cfg = {"url": "http://x", "token": "tok"}
+    with mock.patch.object(cloud_watch.cloud_config, "load", return_value=cfg), \
+         mock.patch.object(cloud_watch.cloud_stream, "events", return_value=iter(_EVENTS)) as ev, \
+         mock.patch("sys.stdin", io.StringIO("")), mock.patch("sys.stdout", out):
+        rc = cloud_watch.main(argv)
+    return rc, out.getvalue(), ev.called
+
+
+def test_agent_without_tty_gets_the_handoff_and_no_stream(monkeypatch):
+    rc, out, streamed = _main(monkeypatch, ["login_fix"], CLAUDECODE="1")
+    assert rc == 0 and not streamed
+    assert "cloud watch login_fix" in out and "login_fix done" not in out
+
+
+@pytest.mark.parametrize("marker", ["CURSOR_AGENT", "COPILOT_CLI", "CODEX_SANDBOX", "CODEX_THREAD_ID"])
+def test_other_harness_markers_hand_off(monkeypatch, marker):
+    rc, out, streamed = _main(monkeypatch, ["login_fix"], **{marker: "1"})
+    assert rc == 0 and not streamed and "cloud watch login_fix" in out
+
+
+@pytest.mark.parametrize("argv,env", [(["login_fix", "--follow"], {"CLAUDECODE": "1"}),
+                                      (["login_fix"], {"CLAUDECODE": "1", "SUPERLITE_WATCH_INLINE": "1"})])
+def test_follow_and_inline_env_still_stream(monkeypatch, argv, env):
+    rc, out, streamed = _main(monkeypatch, argv, **env)
+    assert rc == 0 and streamed and out == "login_fix done: PR opened\n"
+
+
+def test_a_terminal_streams_even_under_an_agent(monkeypatch):
+    rc, out, streamed = _main(monkeypatch, ["login_fix"], tty=True, CLAUDECODE="1")
+    assert rc == 0 and streamed and out == "login_fix done: PR opened\n"
+
+
+def test_no_marker_streams_without_a_tty(monkeypatch):
+    rc, out, streamed = _main(monkeypatch, ["login_fix"])
+    assert rc == 0 and streamed and out == "login_fix done: PR opened\n"
+
+
+def test_handoff_keeps_the_after_cursor(monkeypatch):
+    rc, out, streamed = _main(monkeypatch, ["login_fix", "--after", "50"], CLAUDECODE="1")
+    assert rc == 0 and not streamed
+    assert "cloud watch login_fix --after 50" in out
+    _rc, plain, _s = _main(monkeypatch, ["login_fix"], CLAUDECODE="1")
+    assert "--after" not in plain

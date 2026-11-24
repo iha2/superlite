@@ -1,0 +1,115 @@
+# Sourced by hooks/pre-tool: deny a live watch run inline. `superlite-cli cloud watch REF`, `superlite-cli factory
+# watch REF` (any path form, with bash or python before it) and the scripts cloud_watch.py, factory.py watch and
+# cloud.py watch stream until the run ends, so run in the foreground they would block the agent session. The
+# command must be the program a segment starts with (after env assignments, options and a bash/python/env/nohup
+# style launcher), so `grep watch notes`, `echo "... cloud watch"` and `herdr pane run 1 'bash ... cloud watch r'` pass.
+# A tool call with run_in_background true passes. Main session and subagents alike. The denial text is built by
+# `superlite-cli factory_api handoff` from factory_api.watch_handoff (a static line if that cannot run).
+# Separators inside quotes do not split (`echo 'a; superlite-cli cloud watch r'` is an echo), but `bash -c '...'` is
+# split again inside its quotes. A background run needs --follow to stream; the denial text says so.
+# Best effort: a long command or anything unclear is allowed. Exit 2 blocks (message on stderr); returning allows.
+
+# mask_quoted VAR: in VAR, a ; & | or newline inside single or double quotes becomes \x04 \x05 \x06 \x07, so the
+# split on separators leaves quoted text whole. An unclosed quote masks the rest (the command is then allowed).
+mask_quoted() {
+  local s="${!1}" out="" c q="" i=0 n
+  n=${#s}
+  while [ "$i" -lt "$n" ]; do
+    c="${s:i:1}"
+    if [ -z "$q" ]; then
+      case "$c" in
+        "'"|'"') q="$c" ;;
+        '\') case "${s:i+1:1}" in "'"|'"'|'\') out="$out$c"; i=$((i+1)); c="${s:i:1}" ;; esac ;;
+      esac
+    elif [ "$c" = "$q" ]; then q=""
+    elif [ "$q" = '"' ] && [ "$c" = '\' ]; then  # an escaped quote or backslash is text, not a delimiter
+      case "${s:i+1:1}" in '"'|'\') out="$out$c"; i=$((i+1)); c="${s:i:1}" ;; esac
+    else
+      case "$c" in ';') c=$'\x04' ;; '&') c=$'\x05' ;; '|') c=$'\x06' ;; "$nl") c=$'\x07' ;; esac
+    fi
+    out="$out$c"; i=$((i+1))
+  done
+  printf -v "$1" '%s' "$out"
+}
+
+# unmask_amp STR: print STR with \x05 turned back into &. Done by splitting around each \x05 (no & in a ${//}
+# replacement: bash 3.2 keeps the quotes of "&" literally, bash 5.2 treats an unquoted & as the matched text).
+unmask_amp() {
+  local rest="$1" out="" a=$'\x05'
+  while case "$rest" in *"$a"*) true ;; *) false ;; esac; do
+    out="$out${rest%%"$a"*}&"; rest="${rest#*"$a"}"
+  done
+  printf '%s' "$out$rest"
+}
+
+# split_segments STR [DEPTH]: append the shell segments of STR (quote-aware) to WSEGS. A segment that is
+# `bash -c 'script'` also adds the script's own segments (once; deeper nesting is left alone).
+split_segments() {
+  local str="$1" seg inner IFS found
+  local re_sh='^[[:space:]]*([A-Za-z_][A-Za-z_0-9]*=[^[:space:]]*[[:space:]]+)*([^[:space:]]*/)?(bash|sh|zsh)[[:space:]]+-[A-Za-z]*c[[:space:]]+(.*)$'
+  mask_quoted str
+  IFS=$';&|\n'; set -f; found=( $str ); set +f
+  for seg in "${found[@]}"; do
+    WSEGS[${#WSEGS[@]}]="$seg"
+    if [ "${2:-0}" = 0 ] && [[ $seg =~ $re_sh ]]; then
+      inner="${BASH_REMATCH[4]}"
+      inner="${inner//$'\x04'/;}"; inner="$(unmask_amp "$inner")"; inner="${inner//$'\x06'/|}"; inner="${inner//$'\x07'/$nl}"
+      case "$inner" in "'"*"'"|'"'*'"') inner="${inner#?}"; inner="${inner%?}" ;; esac
+      split_segments "$inner" 1
+    fi
+  done
+}
+
+guard_watch() {
+  local re_tool='"tool_name"[[:space:]]*:[[:space:]]*"(Bash|PowerShell|Shell)"'
+  local re_bg='"run_in_background"[[:space:]]*:[[:space:]]*true'
+  local cmd seg w i n kind args msg cli words IFS WSEGS=()
+  [[ $input =~ $re_tool ]] || return 0
+  [[ $input =~ $re_bg ]] && return 0
+  jstr command; cmd="$REPLY"
+  case "$cmd" in *watch*) ;; *) return 0 ;; esac
+  [ "${#cmd}" -lt "$BIG" ] || return 0
+  jdecode cmd edits
+  join_continuations cmd
+  amp_placeholders cmd
+  split_segments "$cmd"
+  for seg in "${WSEGS[@]}"; do
+    IFS=$' \t'; set -f; set -- $seg; set +f
+    words=(); n=0
+    for w in "$@"; do
+      w="${w//\\//}"; w="${w//\"/}"; w="${w//\'/}"
+      while :; do case "$w" in '('*|'{'*|'`'*|'!'*|'$'*) w="${w#?}" ;; *) break ;; esac; done
+      [ -n "$w" ] || continue
+      words[n]="$w"; n=$((n+1))
+    done
+    i=0
+    while [ "$i" -lt "$n" ]; do
+      case "${words[i]}" in
+        [A-Za-z_]*=*|-*|[0-9]*|bash|sh|zsh|python|python3|python3.*|py|env|nohup|exec|time|command|sudo|uv|run|timeout) i=$((i+1)) ;;
+        *) break ;;
+      esac
+    done
+    [ "$i" -lt "$n" ] || continue
+    kind=""
+    case "${words[i]##*/}" in
+      superlite-cli)
+        case "${words[i+1]:-}" in cloud|factory) [ "${words[i+2]:-}" = watch ] && { kind="${words[i+1]}"; i=$((i+3)); } ;; esac ;;
+      cloud_watch.py) kind=cloud; i=$((i+1)) ;;
+      factory.py) [ "${words[i+1]:-}" = watch ] && { kind=factory; i=$((i+2)); } ;;
+      cloud.py) [ "${words[i+1]:-}" = watch ] && { kind=cloud; i=$((i+2)); } ;;
+    esac
+    [ -n "$kind" ] || continue
+
+    args=()
+    while [ "$i" -lt "$n" ] && [ "${#args[@]}" -lt 8 ]; do
+      case "${words[i]}" in [0-9]\>*|\>*|\<*|*$'\x02'*|*$'\x03'*|*$'\x04'*|*$'\x05'*|*$'\x06'*|*$'\x07'*) ;; *) args[${#args[@]}]="${words[i]}" ;; esac
+      i=$((i+1))
+    done
+    cli="$root/skills/swarm/scripts/superlite-cli"
+    msg=""
+    [ -f "$cli" ] && msg="$(bash "$cli" factory_api handoff "$kind" ${args[@]+"${args[@]}"} 2>/dev/null)"
+    [ -n "$msg" ] || msg="Open a new terminal, tab or pane for the user that runs this watch, or run it with run_in_background true and --follow. Never run it inline here."
+    printf 'Blocked: a live watch streams until the run ends, so run inline it would block this session.\n%s\nOr run it with run_in_background true and --follow (a background watch without --follow only prints this hand-off).\n' "$msg" >&2
+    exit 2
+  done
+}

@@ -17,6 +17,7 @@ Thumbs.db
 *.swp
 venv/
 .pytest_cache/
+.hypothesis/
 .mypy_cache/
 .ruff_cache/
 *.egg-info/

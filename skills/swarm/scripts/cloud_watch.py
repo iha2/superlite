@@ -13,6 +13,7 @@ if _HERE not in sys.path:
 
 import cloud_client  # noqa: E402
 import cloud_config  # noqa: E402
+import factory_api  # noqa: E402
 import cloud_stream  # noqa: E402
 
 TERMINAL = {"done", "failed", "cancelled"}
@@ -97,7 +98,12 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="cloud watch")
     p.add_argument("ref")
     p.add_argument("--after", type=int, default=0)
+    p.add_argument("--follow", action="store_true", help="stream even when an agent runs this without a terminal")
     a = p.parse_args(argv)
+    if not a.follow and factory_api.agent_without_tty():
+        args = [a.ref, *(["--after", str(a.after)] if a.after else [])]  # keep the cursor: the terminal must skip too
+        print(factory_api.watch_handoff(factory_api.watch_command("cloud", args), a.ref))
+        return 0
     cfg = cloud_config.load()
     if not cfg or not cfg.get("url") or not cfg.get("token"):
         print("not logged in: run superlite-cli cloud login", file=sys.stderr)

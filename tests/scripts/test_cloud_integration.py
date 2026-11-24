@@ -47,7 +47,8 @@ def world(tmp_path):
     for d in (home, claude, proj):
         d.mkdir()
     env = dict(os.environ, SUPERLITE_HOME=str(home), CLAUDE_HOME=str(claude), HOME=str(tmp_path),
-               CLAUDE_PLUGIN_ROOT=str(ROOT), SUPERLITE_NO_SESSION_HUD="1", SUPERLITE_NO_COST_REPORT="1")
+               CLAUDE_PLUGIN_ROOT=str(ROOT), SUPERLITE_NO_SESSION_HUD="1", SUPERLITE_NO_COST_REPORT="1",
+               SUPERLITE_WATCH_INLINE="1")
     for k in ("SUPERLITE_CLOUD_URL", "SUPERLITE_CLOUD_TOKEN"):
         env.pop(k, None)
     stops = []

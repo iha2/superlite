@@ -156,14 +156,13 @@ def test_cloud_error_hides_token(capsys, monkeypatch):
 
 def test_delegates(env, monkeypatch):
     seen = []
-    for name in ("cloud_watch", "cloud_hook"):
+    for name in ("cloud_watch", "factory_hook", "factory_status"):
         monkeypatch.setitem(sys.modules, name, types.SimpleNamespace(
             main=lambda argv, n=name: seen.append((n, argv)) or 0))
     assert cloud.main(["watch", "login_fix"]) == 0
     assert cloud.main(["hook", "x"]) == 0
     assert cloud.main(["statusline"]) == 0
-    assert seen == [("cloud_watch", ["login_fix"]), ("cloud_hook", ["x"])]
-    assert ("status_main", []) in env.log
+    assert seen == [("cloud_watch", ["login_fix"]), ("factory_hook", ["x"]), ("factory_status", [])]
 
 
 def test_unknown_and_usage(capsys):

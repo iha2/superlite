@@ -12,7 +12,7 @@ if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
 NOT_LOGGED_IN = "not logged in: run superlite-cli cloud login"
-_DELEGATES = {"watch": "cloud_watch", "statusline": "cloud_status", "hook": "cloud_hook"}
+_DELEGATES = {"watch": "cloud_watch", "statusline": "factory_status", "hook": "factory_hook"}
 
 
 def _claude_home() -> Path:

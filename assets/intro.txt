@@ -39,8 +39,9 @@
    /superlite:resume   pick up again          /superlite:finish  merge or PR,
    /superlite:agents   the agent map                             never pushes
    /superlite:tail     live feed (no mod)
-  SETUP
-   /superlite:setup    first-run check
+  SETUP                                     FACTORIES
+   /superlite:setup    first-run check        /superlite:send <text>
+                                              /superlite:factory list
  ------------------------------------------------------------------------------
   Or just say it: "build X", "I will approve the plan", "fix this bug".
   This screen again: /superlite:intro      Every detail: /superlite:help
