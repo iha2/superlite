@@ -1,124 +1,154 @@
 ---
 title: Concepts
-description: The map of superlite's vocabulary, with one line per idea and a link to where it is explained.
+description: How a superlite run works underneath, from the session and the plan to the task graph, tiers, gates, checkpoints and reviews, traced through one real plan.
 sidebar:
   order: 2
 ---
 
-import { Steps, FileTree } from "@astrojs/starlight/components";
+import { Steps } from "@astrojs/starlight/components";
 
 :::tip[TL;DR]
-You pick a flow. superlite opens a session for it and writes a plan. An orchestrator, you or the AI, approves it. Agents build, reviewers check, and a report closes the run. Each idea below links to its full page.
+A run lives in a session. Its plan is a task graph whose tasks declare what they produce, with exact examples. Lint makes tasks stable, a gate holds the build until approval, and agents on cheap or strong models build in parallel. Each task is checkpointed, reviewed, then fixed by tier. A report closes the run.
 :::
 
 ```mermaid
 flowchart LR
-  Y(["You"]) -->|"say what you want"| F["Flow"]
-  F -->|"opens"| S["Session: branch or worktree"]
-  F -->|"writes"| P["Plan"]
-  O{"Orchestrator: you or AI"} -->|"approves or decides"| P
-  P -->|"dispatches"| A["Agents build in parallel"]
-  S -.->|"holds the work"| A
-  A --> R["Review and fix"]
-  R --> RP(["Report"])
-  RP -->|"time and cost"| Y
+  F["Flow"] --> S["Session: branch, worktree or sandbox"]
+  S --> G{"Gate: approval"}
+  G --> P["Plan: tasks, Produces / Consumes, e.g."]
+  P --> L{"Lint: STABLE or FIX"}
+  L -->|"FIX"| P
+  L -->|"STABLE"| D["Dispatch by tier: Haiku or Sonnet"]
+  D --> C["Checkpoint: hidden ref"]
+  C --> R["Package and final review"]
+  R -->|"findings"| X["Fixers, tier 1 to 3"]
+  X --> C
+  R -->|"clean"| RP(["finish: report"])
 ```
 
 ## How it works
 
-Read the diagram left to right. Your request chooses a flow, the flow opens a session, and the plan is the contract between you and the build. The orchestrator is the one who says yes to the plan. The agents do the work inside the session. The report is how you find out what happened.
+A run has three layers. **Where the work lives:** every flow opens a session, a branch plus run state in `.superlite/`. A worktree is used when the work needs its own folder, and a sandbox when a feature needs a throwaway prototype. **Who decides:** the orchestrator, you or the AI. Hooks enforce the decisions as gates, so a build cannot start, and a coordinator cannot edit code, just because a model says so. **How it is built:** the plan is a task graph. Lint checks every task before any agent starts. Agents build stable tasks in parallel, and each result is checkpointed, tested in the background and reviewed.
 
-For example, a request to change existing code picks the Feature flow, which opens a session, writes a plan, and so on down the table. This page is the map. It does not explain each idea in full, so every row links to the one page that does.
+The plan carries most of the weight. Each task owns its files, names the interfaces it consumes, and states what it produces with `e.g.` examples. Those examples let a task build against another's contract before that code exists, which is why most of a graph starts at once.
 
 ## The pieces
 
-| Concept | In one line | Read more |
+**Where the work lives**
+
+| Concept | What it is | Read more |
 |---|---|---|
-| Flow | The path a request follows: MVP, Feature, Debug, Research, Small, Review or Regular. | [Pick a flow](/superlite/flows/choose/) |
-| Session | One piece of work on its own branch, `superlite/sessions/<topic>`. Every run opens one. | [Sessions](/superlite/sessions/sessions/) |
-| Worktree | A second folder with its own copy of the project, used when another run is open. | [Worktrees](/superlite/sessions/worktrees/) |
-| Sandbox | A throwaway folder inside `.superlite/` where a feature prototype is built. | [Sandbox](/superlite/sessions/sandbox/) |
-| Session lifecycle | How a session starts, runs, finishes and closes after the merge. | [Lifecycle](/superlite/sessions/lifecycle/) |
-| Orchestrator | Who approves the plan and decides open choices: you (human) or the AI. | [Orchestrators](/superlite/run/orchestrators/) |
-| Plan | What will be built, in plain words, with a rough time and cost. | [Plan and approval](/superlite/run/plan-and-approval/) |
-| Agents | Workers on cheaper or stronger models, run side by side in waves. | [Parallel build](/superlite/run/parallel-build/) |
-| Review and fixes | Reviewers check the work, fixers repair findings by tier. | [Reviews and fixes](/superlite/run/reviews-and-fixes/) |
-| Report | Time and cost, projected against actual, and what changed from the plan. | [Report](/superlite/run/report/) |
+| Flow | The path a request takes: Regular, MVP, Feature, Debug, Small, Review or Research. Each fixes the steps and the plan format. | [Pick a flow](/superlite/flows/choose/) |
+| Session | One piece of work: branch `superlite/sessions/<slug>` plus its run state. Two chats never share one. | [Sessions](/superlite/sessions/sessions/) |
+| Worktree | A second checkout on its own branch, sharing one git history. Cut when two pieces of work would collide, and for a feature's integration build. | [Worktrees](/superlite/sessions/worktrees/) |
+| Sandbox | A plain folder, `.superlite/sandboxes/<session>/<topic>/`, with no branch. It imports your real code in place and never edits tracked files. | [Sandbox](/superlite/sessions/sandbox/) |
+| Lifecycle | Create, enter, finish, close. `session close` removes the worktree and keeps the branch for the PR. | [Lifecycle](/superlite/sessions/lifecycle/) |
 
-## Example: a feature, from request to branch
+**Who decides**
 
-Say your social network lives in `~/social` and you want to suggest "People you may know" from friends of friends. It changes existing code, so it uses the Feature flow. Each step names the concept at work.
+| Concept | What it is | Read more |
+|---|---|---|
+| Orchestrator | Human (you approve a review plan) or AI (it decides and records why). Neither pushes, merges or deletes on its own. | [Orchestrators](/superlite/run/orchestrators/) |
+| Gate | A hook that blocks a tool call until a condition holds: approval newer than the plan, no code edits by the coordinator, tests only through `superlite-cli run_tests`. | [Gates](/superlite/reference/gates/) |
+| Ruling | One line per decision made without you: `Ruling: [topic] choice - why - cost if wrong`. Listed in the closing message. | [Orchestrators](/superlite/run/orchestrators/) |
+| FROZEN | An interface or test file the plan pins. No task may change it. | [Plan and approval](/superlite/run/plan-and-approval/) |
+| Budget | A cost cap per run. `superlite-cli budget` warns at 70%. | [Gates](/superlite/reference/gates/) |
+
+**How it is built**
+
+| Concept | What it is | Read more |
+|---|---|---|
+| Review plan, machine plan | The short plan you approve, then the task graph agents run. | [Plan and approval](/superlite/run/plan-and-approval/) |
+| Task | One agent's job: **Owns** (files), **Consumes**, **Produces** with `e.g.` lines, **Kind**, **Review Focus**. | [Plan and approval](/superlite/run/plan-and-approval/) |
+| Task graph | Edge `Tn --> Tm` only when Tm's tests run Tn's code. An edge whose interfaces all have `e.g.` examples is not waited on. | [Parallel build](/superlite/run/parallel-build/) |
+| Wave 0 | Manifest, inits, test config and a stub for every consumed interface, built first by `implementer-haiku`. | [Parallel build](/superlite/run/parallel-build/) |
+| Lint | `superlite-cli plan_tools lint --stable` sorts tasks into STABLE and FIX, forecasts time and cost from history, and prints TIERS and DISPATCH NOW. | [Parallel build](/superlite/run/parallel-build/) |
+| Tier | The model a task gets. `implementer` (Sonnet) by default, `implementer-haiku` only for `Kind: mechanical` tasks off the critical path. | [Agents](/superlite/reference/agents/) |
+| Checkpoint | `superlite-cli checkpoint Tn` saves a task's own files under `refs/superlite/*`. Nothing is committed during a run. | [Parallel build](/superlite/run/parallel-build/) |
+| Review and fixes | `package-reviewer` at checkpoint, one fresh `final-reviewer` on a review packet, then fixers from tier 1 (`fixer-sonnet`) to tier 3 (`fixer-opus`). | [Reviews and fixes](/superlite/run/reviews-and-fixes/) |
+| Report | Projected against actual time and cost, the Rulings, and a history row that sharpens the next forecast. | [Report](/superlite/run/report/) |
+
+## Example: one plan, traced through the concepts
+
+Take the integration build from the [Feature flow example](/superlite/flows/feature/): idempotency keys on `POST /v1/payments` in `~/payments-api`, a FastAPI service on Postgres. The prototype is done and approved. Six tasks port it into `src/payments/`.
 
 <Steps>
 
-1. **You ask for a change to existing code.**
+1. **Session and worktree.** The port gets its own folder and branch, so the sandbox and `main` stay untouched:
 
-   ```text frame="terminal" title="Claude Code · ~/social" ins={1}
-   ❯ /superlite:feature Suggest "People you may know" from friends of friends
+   ```bash title="~/payments-api"
+   superlite-cli session create --slug idempotency-keys-int --worktree --base main
    ```
 
-   The command picks the [flow](/superlite/flows/choose/) and opens a [session](/superlite/sessions/sessions/), a branch `superlite/sessions/<topic>`, before anything is touched.
+   The branch is `superlite/sessions/idempotency-keys-int`. The prototype's sandbox stays where it was, as a plain folder.
 
-2. **Researchers read the code and the field.**
+2. **The gate.** In human mode nothing is linted, dispatched or sent to an agent until you approve the review plan. Until then the hook refuses:
 
-   <FileTree>
-   - docs/plans/
-     - 2026-11-12-people-you-may-know.research.md
-     - 2026-11-12-people-you-may-know.findings.md
-     - 2026-11-12-people-you-may-know.contradictions.md
-     - 2026-11-12-people-you-may-know.sources.md
-   </FileTree>
-
-   Agents run side by side and fill a sourced ledger, because each question is independent. They are the "agents" on the map.
-
-3. **You validate the feature plan.** **You decide:** approve it or change it.
-
-   ```md title="docs/plans/2026-11-12-people-you-may-know.feature.md" mark={4}
-   # People you may know: feature plan
-
-   ## Goal
-   **Suggest people a member may know, based on friends of friends.**
+   ```text frame="terminal" title="Claude Code · ~/payments-api"
+   BLOCKED: no human approval reply since the review plan was written; show the plan, ask the human to reply approve, end your turn
    ```
 
-   The plan is the contract: the prototype and the build are judged against its acceptance checks. The one who says yes is the [orchestrator](/superlite/run/orchestrators/), here you.
+   You reply `approve`, and only then is the machine plan written. With the AI orchestrator, it decides and writes a `Ruling:` line instead.
 
-4. **A prototype appears in a sandbox, and you try it.** **You decide:** does it work?
+3. **Tasks and contracts.** Each task declares what it produces, with examples another task can code against. T3 consumes T1's model and T2's fingerprint:
 
-   ```md title="docs/plans/2026-11-12-people-you-may-know.feature.md"
-   ## Prototype scope
-   - **New in the sandbox:** a suggestion query, a "People you may know" card on the feed, a Dismiss button, and a stub for the friends database.
+   ```md title="docs/plans/2026-11-25-idempotency-keys.md"
+   ### T3 key store · Complexity 3 · Est. context 25k
+   **Owns:** src/payments/idempotency/store.py, tests/idempotency/test_store.py
+   **Kind:** design
+   **Consumes:** models.IdempotencyKey(...) (T1) · fingerprint.of(method: str, path: str, body: bytes) -> str (T2)
+   **Produces:** store.claim(s: AsyncSession, merchant_id: str, key: str, fp: str) -> Claim
+     e.g. claim(s, "m_1", "k1", fp) on an empty table -> Claim.NEW
+     e.g. claim(s, "m_1", "k1", other_fp) -> Claim.MISMATCH
+   **Review Focus:** state: two `claim` calls on separate connections via `asyncio.gather` -> exactly one NEW, one IN_PROGRESS
    ```
 
-   The [sandbox](/superlite/sessions/sandbox/) is a hidden folder in your checkout, not a second worktree, so there is no extra branch to clean up.
+   `Global constraints` pin `PaymentService.create` and `GatewayClient.charge` as FROZEN, so no task can change them to make its own tests pass.
 
-5. **The build ports the prototype.**
+4. **Task graph.** On paper the graph is a chain:
 
-   ```md title="docs/plans/2026-11-12-people-you-may-know.feature.md"
-   Dedicated worktree `people-you-may-know-int` off `main`. One task per module.
-   The prototype's acceptance tests are the target; code is ported task by task, and stubs stay behind.
+   ```text title="%% taskgraph"
+   T1 --> T3
+   T2 --> T3
+   T3 --> T4
+   T4 --> T5
+   T5 --> T6
    ```
 
-   The prototype's acceptance tests become unit tests in the real code. One task per module means agents work on separate files and do not collide.
+   A chain of six would take six rounds. Lint reads the contracts and drops the waits:
 
-6. **You read the report.**
-
-   ```text frame="terminal" title="Claude Code · build report" mark={2}
-                            Projected    Actual
-   wall-clock (min)               8.0       9.5
-   agent cost (USD, +rework)      1.42      1.65
+   ```text frame="terminal" title="Claude Code · ~/payments-api"
+   EDGE: T3 does not wait for T1: every interface it takes from T1 has an e.g. example, so the edge is not waited on
+   EDGE: T4 does not wait for T3: every interface it takes from T3 has an e.g. example, so the edge is not waited on
+   EDGE: T6 does not wait for T5: every interface it takes from T5 has an e.g. example, so the edge is not waited on
    ```
 
-   The report puts forecast and actual side by side. See [Report](/superlite/run/report/).
+5. **Lint, tiers and dispatch.** `superlite-cli plan_tools lint --stable` gives the verdict:
+
+   ```text frame="terminal" title="Claude Code · ~/payments-api" mark={1,4,5}
+   STABLE: T1 T2 T3 T4 T5 T6
+   FIX:
+   stats: n=83; predicted: 19.6 min, $0.47 (history-backed)
+   TIERS: T1=sonnet T2=haiku T3=sonnet T4=sonnet T5=sonnet T6=sonnet
+   DISPATCH NOW: T1 T2 T3 T4 T5 T6
+   ```
+
+   T2 is the only `Kind: mechanical` task, a pure function with exact inputs and outputs, so it goes to Haiku. The rest are design tasks on Sonnet. The forecast is drawn from history (`n=83`), not guessed.
+
+6. **Checkpoints and review.** As each agent reports DONE, `superlite-cli checkpoint T3` saves only T3's own files to a hidden ref. A task that touched a file it does not own fails its checkpoint and goes back. T3's Review Focus names a race, so `package-reviewer` reviews it at checkpoint. T6, the seam check, reruns the five acceptance tests against the real `PaymentService` and Postgres. At the end, one `final-reviewer` reads `.superlite/review-packet.md` and returns tiered findings. Each finding goes to a fixer at the cheapest tier that fits.
+
+7. **The report.** `superlite-cli finish --plan docs/plans/2026-11-25-idempotency-keys.md` archives the run and compares the 19.6-minute, $0.47 forecast with what happened. The actuals join the history the next forecast is drawn from. Then it asks you how to ship.
 
 </Steps>
 
-**What you end up with:** the branch `superlite/sessions/people-you-may-know-int`, with the app's full suite green. What is left for you: open the pull request, review it and merge it yourself.
+**What you end up with:** branch `superlite/sessions/idempotency-keys-int` with six checkpointed tasks, the 34 existing tests unchanged and green, a report, and no commits until you choose them at shipping.
 
 ## Good to know
 
-- You do not create sessions or worktrees by hand. superlite opens them and picks the branch name.
-- With the human orchestrator you see the plan first, which suits a first run. The AI orchestrator suits runs where you are away.
-- A checkpoint is a hidden save of one finished task. Nothing is committed during a run.
+- You do not create sessions, worktrees or sandboxes by hand. Flows open them; the command in step 1 is what the Feature flow runs for you.
+- A task without `e.g.` examples on what it consumes really does wait. Examples are the cheapest way to make a plan faster.
+- Gates are hooks, not instructions. A model cannot talk its way past one; the block message says what would unblock it.
+- `/superlite:resume` restarts from the last checkpointed, tested wave, because checkpoints live outside your branch.
 
 ## Next
 
