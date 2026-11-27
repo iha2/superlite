@@ -100,7 +100,8 @@ def test_no_network_nudge(world):
     env, home, claude, proj, start = world
     url, stop = start()
     login(env, proj, url)
-    (home / "attach.json").write_text(json.dumps({"run": "login_fix", "id": "t_1"}))
+    (home / "attach").mkdir(parents=True, exist_ok=True)
+    (home / "attach" / "s1.json").write_text(json.dumps({"run": "login_fix", "id": "t_1"}))
     stop()
     out = hook(env, proj, ">> hi")
     assert out.returncode == 0
@@ -122,7 +123,7 @@ def test_watch_replay(world):
     lines = r.stdout.splitlines()
     assert "login_fix running" in lines[0]
     assert "nudge from sam: run the tests first" in lines[1]
-    assert lines[-1] == "login_fix done: PR opened"
+    assert lines[-1] == "✓ login_fix done: PR opened"
     assert TOKEN not in r.stdout + r.stderr
 
 

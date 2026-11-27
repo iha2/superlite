@@ -17,7 +17,7 @@ def _stream_inline(monkeypatch):
 
 
 def test_render_examples():
-    assert R({"id": 4, "kind": "nudge", "data": {"text": "nudge from chris", "run": "login_fix"}}) == "nudge from chris"
+    assert R({"id": 4, "kind": "nudge", "data": {"text": "nudge from chris", "run": "login_fix"}}) == "\u00bb nudge: nudge from chris"
     assert R({"id": 9, "kind": "rename", "data": {"from": "login_fix", "to": "login_fix_3", "why": "branch taken on origin"}}) == "renamed login_fix to login_fix_3: branch taken on origin"
     assert R({"id": 12, "kind": "given", "data": {"from": "chris", "to": "pat", "name": "login_fix"}}) == "login_fix given to pat"
     assert R({"kind": "given", "data": {"to": "pat", "name": "x", "to_email": "p@e.com"}}) == "x given to pat (p@e.com)"
@@ -65,7 +65,7 @@ def test_result_shown(capsys):
         {"id": 3, "kind": "nudge", "data": {"by": "x", "text": "never shown"}},
     ], capsys)
     assert rc == 0
-    assert "login_fix done: PR opened" in out
+    assert "\u2713 login_fix done: PR opened" in out
     assert "never shown" not in out
     assert "tok" not in out
 
@@ -77,13 +77,13 @@ def test_not_logged_in(capsys):
 
 
 def test_result_event_rendered():
-    assert cloud_watch.render({"kind": "result", "data": {"text": "PR opened"}}) == "result: PR opened"
+    assert cloud_watch.render({"kind": "result", "data": {"text": "PR opened"}}) == "\u2713 result: PR opened"
     assert cloud_watch.render({"kind": "result", "data": {}}) is None
 
 
 def test_nudge_renders_sender():
-    assert R({"kind": "nudge", "data": {"by": "chris", "text": "run the tests"}}) == "nudge from chris: run the tests"
-    assert R({"kind": "nudge", "data": {"text": "run the tests"}}) == "run the tests"
+    assert R({"kind": "nudge", "data": {"by": "chris", "text": "run the tests"}}) == "\u00bb nudge from chris: run the tests"
+    assert R({"kind": "nudge", "data": {"text": "run the tests"}}) == "\u00bb nudge: run the tests"
 
 
 def _ev(i, kind, **d):
@@ -94,7 +94,7 @@ def test_result_then_waiting_keeps_watching(capsys):
     rc, out = _run([_ev(1, "result", text="the plan"), _ev(2, "status", run="login_fix", to="waiting"),
                     _ev(3, "nudge", by="chris", text="still here")], capsys)
     assert rc == 0
-    assert "result: the plan" in out and "login_fix waiting" in out and "still here" in out
+    assert "result: the plan" in out and "\u00b7 login_fix waiting" in out and "still here" in out
 
 
 def test_result_then_done_exits_after_done(capsys):
@@ -150,17 +150,17 @@ def test_other_harness_markers_hand_off(monkeypatch, marker):
                                       (["login_fix"], {"CLAUDECODE": "1", "SUPERLITE_WATCH_INLINE": "1"})])
 def test_follow_and_inline_env_still_stream(monkeypatch, argv, env):
     rc, out, streamed = _main(monkeypatch, argv, **env)
-    assert rc == 0 and streamed and out == "login_fix done: PR opened\n"
+    assert rc == 0 and streamed and out == "\u2713 login_fix done: PR opened\n"
 
 
 def test_a_terminal_streams_even_under_an_agent(monkeypatch):
-    rc, out, streamed = _main(monkeypatch, ["login_fix"], tty=True, CLAUDECODE="1")
-    assert rc == 0 and streamed and out == "login_fix done: PR opened\n"
+    rc, out, streamed = _main(monkeypatch, ["login_fix"], tty=True, CLAUDECODE="1", NO_COLOR="1")
+    assert rc == 0 and streamed and out == "\u2713 login_fix done: PR opened\n"
 
 
 def test_no_marker_streams_without_a_tty(monkeypatch):
     rc, out, streamed = _main(monkeypatch, ["login_fix"])
-    assert rc == 0 and streamed and out == "login_fix done: PR opened\n"
+    assert rc == 0 and streamed and out == "\u2713 login_fix done: PR opened\n"
 
 
 def test_handoff_keeps_the_after_cursor(monkeypatch):
@@ -169,3 +169,52 @@ def test_handoff_keeps_the_after_cursor(monkeypatch):
     assert "cloud watch login_fix --after 50" in out
     _rc, plain, _s = _main(monkeypatch, ["login_fix"], CLAUDECODE="1")
     assert "--after" not in plain
+
+
+def test_text_multiline_indented():
+    assert R({"kind": "text", "data": {"text": "hello\nworld\n  x"}}, color=False) == "\u23fa hello\n  world\n    x"
+    assert R({"kind": "text", "data": {"text": ""}}, color=False) is None
+
+
+def test_thinking_tool_file_plain():
+    assert R({"kind": "thinking", "data": {"text": "a\nb"}}, color=False) == "\u273b Thinking\u2026\n  a\n  b"
+    assert R({"kind": "tool", "data": {"tool": "Bash", "target": "ls"}}, color=False) == "\u23fa Bash(ls)"
+    assert R({"kind": "tool", "data": {"tool": "Read"}}, color=False) == "\u23fa Read"
+    assert R({"kind": "file", "data": {"path": "a/b.py"}}, color=False) == "  \u23bf  a/b.py"
+
+
+def test_status_variants_plain():
+    assert R(_ev(1, "status", run="r", to="running"), color=False) == "\u00b7 r running"
+    assert R(_ev(1, "status", run="r", to="failed", result="boom"), color=False) == "\u2717 r failed: boom"
+    assert R(_ev(1, "status", run="r", to="cancelled"), color=False) == "\u2717 r cancelled"
+    assert R(_ev(1, "status", run="r", to="done"), color=False) == "\u2713 r done"
+
+
+def test_color_on_and_off():
+    plain = [R(_ev(1, k, text="x", tool="T", target="t", path="p", run="r", to="done"), color=False)
+             for k in ("text", "thinking", "tool", "file", "status", "nudge", "result")]
+    assert all(p and "\x1b" not in p for p in plain)
+    assert "\x1b[1mBash\x1b[0m" in R(_ev(1, "tool", tool="Bash", target="ls"), color=True)
+    assert "\x1b[32m" in R(_ev(1, "status", run="r", to="done"), color=True)
+    assert "\x1b[31m" in R(_ev(1, "status", run="r", to="failed"), color=True)
+    assert "\x1b[2;3m" in R(_ev(1, "thinking", text="hm"), color=True)
+    assert "\x1b[2m" in R(_ev(1, "file", path="p"), color=True)
+
+
+def test_escape_stripped_with_color_on():
+    import re
+    evs = [_ev(1, "text", text="a\x1b[31mred\x1b]0;t\x07\nb\x9b"), _ev(2, "thinking", text="\x1b[2Jx"),
+           _ev(3, "tool", tool="B\x1bash", target="\x1b[0mt\n"), _ev(4, "file", path="\x1bp"),
+           _ev(5, "nudge", by="\x1bb", text="\x1bt"), _ev(6, "status", run="\x1br", to="done", result="\x1bz")]
+    for e in evs:
+        out = R(e, color=True)
+        stripped = re.sub(r"\x1b\[[0-9;]*m", "", out)  # only our own SGR codes may remain
+        assert "\x1b" not in stripped and "\x07" not in stripped and "\x9b" not in stripped
+
+
+def test_use_color_respects_tty_and_no_color(monkeypatch):
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    assert cloud_watch.use_color(_Tty()) is True
+    assert cloud_watch.use_color(io.StringIO()) is False
+    monkeypatch.setenv("NO_COLOR", "1")
+    assert cloud_watch.use_color(_Tty()) is False

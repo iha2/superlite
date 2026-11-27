@@ -30,7 +30,7 @@ def env(tmp_path, cloud_url: str | None = None) -> dict:
     _git(cwd, "init", "-q")
     _git(cwd, "remote", "add", "origin", "git@github.com:acme/app.git")
     e.update(HOME=str(home), USERPROFILE=str(home), SUPERLITE_HOME=str(home / "sl"),
-             CLAUDE_HOME=str(home / "claude"), SUPERLITE_FACTORY_PATH=str(MEMKIND),
+             CLAUDE_HOME=str(home / "claude"), CLAUDE_CODE_SESSION_ID="test-session", SUPERLITE_FACTORY_PATH=str(MEMKIND),
              PYTHONDONTWRITEBYTECODE="1", SUPERLITE_WATCH_INLINE="1", PYTHONUTF8="1", PYTHONIOENCODING="utf-8", _cwd=str(cwd))
     if cloud_url:
         e["SUPERLITE_CLOUD_URL"] = cloud_url
@@ -55,7 +55,7 @@ def hook(prompt: str, env: dict, via: str = "factory"):
 
 def status_line(env: dict, via: str = "factory") -> str:
     args = ["cloud", "statusline"] if via == "cloud" else ["factory_status"]
-    return _run(args, env).stdout.replace("\r", "").strip()
+    return _run(args, env, json.dumps({"session_id": "test-session"})).stdout.replace("\r", "").strip()
 
 
 def cloud_login(env: dict, url: str, token: str = "slc_test_tok") -> None:

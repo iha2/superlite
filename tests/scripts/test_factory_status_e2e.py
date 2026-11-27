@@ -57,7 +57,8 @@ def _state(env, status="running", name="lab"):
 
 
 def _attach(env, factory="lab"):
-    (Path(env["SUPERLITE_HOME"]) / "attach.json").write_text(
+    (Path(env["SUPERLITE_HOME"]) / "attach").mkdir(parents=True, exist_ok=True)
+    (Path(env["SUPERLITE_HOME"]) / "attach" / "test-session.json").write_text(
         json.dumps({"run": "1a2b3c4d", "id": RID, "factory": factory}))
 
 
@@ -115,7 +116,7 @@ def test_plugin_segment(tmp_path):
     try:
         assert e2e.status_line(env) == \
             "login_fix running · step 14 · editing api.py · ATTACHED lab(mem) 1a2b3c4d"
-        (Path(env["SUPERLITE_HOME"]) / "attach.json").unlink()
+        (Path(env["SUPERLITE_HOME"]) / "attach" / "test-session.json").unlink()
         assert e2e.status_line(env).endswith(" · lab(mem) 1a2b3c4d running")
     finally:
         stop()
@@ -162,11 +163,11 @@ def test_ended_detaches(tmp_path):
     _state(env, "done")
     _attach(env)
     e2e.status_line(env)
-    assert not (Path(env["SUPERLITE_HOME"]) / "attach.json").exists()
+    assert not (Path(env["SUPERLITE_HOME"]) / "attach" / "test-session.json").exists()
     _attach(env)
     (Path(env["SUPERLITE_HOME"]) / "memkind-lab.json").write_text(json.dumps({"runs": []}))
     assert e2e.status_line(env) == ""
-    assert not (Path(env["SUPERLITE_HOME"]) / "attach.json").exists()
+    assert not (Path(env["SUPERLITE_HOME"]) / "attach" / "test-session.json").exists()
 
 
 def test_entries_created_and_removed(tmp_path):

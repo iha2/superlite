@@ -81,8 +81,10 @@ def _fake_client(monkeypatch, status=None, fail=False):
     return calls
 
 
-def _run_main(monkeypatch, capsys):
-    monkeypatch.setattr(sys, "stdin", types.SimpleNamespace(isatty=lambda: False, read=lambda: "{}"))
+def _run_main(monkeypatch, capsys, stdin=None):
+    """The status line's stdin names its session; attachment is per session (`test-session` unless told)."""
+    text = json.dumps({"session_id": "test-session"}) if stdin is None else stdin
+    monkeypatch.setattr(sys, "stdin", types.SimpleNamespace(isatty=lambda: False, read=lambda: text))
     assert cloud_status.main([]) == 0
     return capsys.readouterr().out.strip()
 
@@ -179,7 +181,8 @@ def test_admin_sync_skipped(env, monkeypatch, capsys):
 def test_attached_lost_run_detaches(env, monkeypatch, capsys):
     from cloud_client import CloudError
     (env / "sl").mkdir()
-    (env / "sl" / "attach.json").write_text(json.dumps({"run": "login_fix", "id": "t_9"}))
+    (env / "sl" / "attach").mkdir(parents=True, exist_ok=True)
+    (env / "sl" / "attach" / "test-session.json").write_text(json.dumps({"run": "login_fix", "id": "t_9"}))
 
     class C:
         def status(self):
@@ -195,7 +198,7 @@ def test_attached_lost_run_detaches(env, monkeypatch, capsys):
     _fake_client(monkeypatch, {"runs": [], "notices": []})
     monkeypatch.setattr(cloud_status, "_make_client", lambda: C())
     assert _run_main(monkeypatch, capsys) == ""
-    assert not (env / "sl" / "attach.json").exists()
+    assert not (env / "sl" / "attach" / "test-session.json").exists()
 
 
 def test_attached_shows_new_notice():
@@ -225,19 +228,21 @@ def _attached_client(monkeypatch, task):
 
 def test_attached_name_follows_rename(env, monkeypatch, capsys):
     (env / "sl").mkdir()
-    (env / "sl" / "attach.json").write_text(json.dumps({"run": "login_fix", "id": "t_9"}))
+    (env / "sl" / "attach").mkdir(parents=True, exist_ok=True)
+    (env / "sl" / "attach" / "test-session.json").write_text(json.dumps({"run": "login_fix", "id": "t_9"}))
     seen = _attached_client(monkeypatch, {"id": "t_9", "name": "login_fix_2", "status": "running"})
     assert _run_main(monkeypatch, capsys) == "ATTACHED login_fix_2"
     assert seen == ["t_9"]
-    assert json.loads((env / "sl" / "attach.json").read_text())["run"] == "login_fix_2"
+    assert json.loads((env / "sl" / "attach" / "test-session.json").read_text())["run"] == "login_fix_2"
 
 
 def test_attached_ended_falls_back_and_detaches(env, monkeypatch, capsys):
     (env / "sl").mkdir()
-    (env / "sl" / "attach.json").write_text(json.dumps({"run": "login_fix", "id": "t_9"}))
+    (env / "sl" / "attach").mkdir(parents=True, exist_ok=True)
+    (env / "sl" / "attach" / "test-session.json").write_text(json.dumps({"run": "login_fix", "id": "t_9"}))
     _attached_client(monkeypatch, {"id": "t_9", "name": "login_fix", "status": "failed"})
     assert _run_main(monkeypatch, capsys) == ""
-    assert not (env / "sl" / "attach.json").exists()
+    assert not (env / "sl" / "attach" / "test-session.json").exists()
 
 
 def test_upgrade_after_user_edit_then_upgrade_again_keeps_original_prev(env):
@@ -256,3 +261,18 @@ def test_upgrade_after_user_edit_then_upgrade_again_keeps_original_prev(env):
     cloud_status.restore(s)
     d = json.loads(s.read_text())
     assert d["other"] == 2 and d["statusLine"]["command"] == "echo hi"
+
+
+def test_status_line_shows_only_its_own_sessions_attachment(env, monkeypatch, capsys):
+    (env / "sl" / "attach").mkdir(parents=True, exist_ok=True)
+    (env / "sl" / "attach" / "sess-a.json").write_text(json.dumps({"run": "login_fix", "id": "t_9"}))
+    (env / "sl" / "attach.json").write_text(json.dumps({"run": "legacy", "id": "t_8"}))
+    _attached_client(monkeypatch, {"id": "t_9", "name": "login_fix", "status": "running"})
+    assert _run_main(monkeypatch, capsys, json.dumps({"session_id": "sess-a"})) == "ATTACHED login_fix"
+    assert _run_main(monkeypatch, capsys, json.dumps({"session_id": "sess-b"})) == ""  # B shows none, A's file stays
+    assert (env / "sl" / "attach" / "sess-a.json").exists()
+    # no session id on stdin: none, even though the env var names a session with an attachment
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "sess-a")
+    assert _run_main(monkeypatch, capsys, "{}") == ""
+    assert _run_main(monkeypatch, capsys, "not json") == ""
+    assert (env / "sl" / "attach" / "sess-a.json").exists()

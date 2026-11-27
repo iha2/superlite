@@ -170,6 +170,16 @@ def _prev_output(stdin_text: str) -> str:
         return ""
 
 
+def _set_session(stdin_text: str) -> None:
+    """The status line shows only its own session's attachment: the session_id its stdin carries, else none."""
+    import cloud_hook
+    try:
+        data = json.loads(stdin_text or "{}")
+    except ValueError:
+        data = {}
+    cloud_hook.set_session(cloud_hook.session_from(data), env_fallback=False)
+
+
 def _maybe_sync(client, now=time.time, status: dict | None = None) -> None:
     stamp = _home() / "entries-sync"
     try:
@@ -205,6 +215,7 @@ def main(argv: list[str] | None = None) -> int:
         stdin_text = ""
     prev = _prev_output(stdin_text)
     seg = ""
+    _set_session(stdin_text)
     try:
         client = _make_client()
         if client is not None:

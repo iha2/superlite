@@ -38,7 +38,29 @@ case "$trimmed" in
   ">>"*|"/superlite:attach"*|"/superlite:detach"*|"/superlite:runs"*|"/superlite:watch"*|"/superlite:give"*) cloud_hit=1 ;;
   "/superlite-attach-"*|"/superlite-watch-"*) cloud_hit=1 ;;
 esac
-[ -f "${SUPERLITE_HOME:-$HOME/.superlite}/attach.json" ] && cloud_hit=1
+# Attachment is per session: <home>/attach/<session>.json, the key sanitised as cloud_hook.clean_key does. No session id,
+# no attachment: another chat's attached run never captures this chat's prompts.
+jstr session_id; att_key="$REPLY"
+[ -n "$att_key" ] || { jstr conversation_id; att_key="$REPLY"; }
+[ -n "$att_key" ] || att_key="${CLAUDE_CODE_SESSION_ID:-}"
+# jstr leaves JSON escapes in place; decode them as clean_key sees the real string (one "_" per \uXXXX, a pair counts once).
+if [[ $att_key == *\\* ]]; then
+  att_key="${att_key//\\\\/$'\x01'}"
+  att_key="${att_key//\\[nrtf]/ }"; att_key="${att_key//\\b/$'\x02'}"; att_key="${att_key//\\\"/\"}"; att_key="${att_key//\\\//\/}"
+  re_pair='\\u[dD][89abAB][0-9a-fA-F]{2}\\u[dD][c-fC-F][0-9a-fA-F]{2}'
+  while [[ $att_key =~ $re_pair ]]; do att_key="${att_key/"${BASH_REMATCH[0]}"/$'\x02'}"; done
+  re_u='\\u[0-9a-fA-F]{4}'
+  while [[ $att_key =~ $re_u ]]; do att_key="${att_key/"${BASH_REMATCH[0]}"/$'\x02'}"; done
+  att_key="${att_key//$'\x01'/\\}"
+fi
+att_key="${att_key#"${att_key%%[![:space:]]*}"}"; att_key="${att_key%"${att_key##*[![:space:]]}"}"  # clean_key strips first
+att_file=""
+if [ -n "$att_key" ]; then
+  # Explicit letters, not A-Za-z: a UTF-8 collation lets "é" into the range.
+  att_key="${att_key//[^abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-]/_}"
+  att_file="${SUPERLITE_HOME:-$HOME/.superlite}/attach/$att_key.json"
+fi
+[ -n "$att_file" ] && [ -f "$att_file" ] && cloud_hit=1
 if [ "$cloud_hit" = 1 ] && [ -f "$root/skills/swarm/scripts/superlite-cli" ]; then
   cloud_rc=0
   cloud_out="$(printf '%s' "$input" | bash "$root/skills/swarm/scripts/superlite-cli" cloud hook 2>/dev/null)" || cloud_rc=$?
@@ -46,7 +68,7 @@ if [ "$cloud_hit" = 1 ] && [ -f "$root/skills/swarm/scripts/superlite-cli" ]; th
   if [ "$cloud_rc" != 0 ] || { [ -n "$cloud_out" ] && [ "${cloud_out:0:1}" != "{" ]; }; then
     cloud_out=""
     re_run='^(>>|/superlite[:-](attach|watch|give)([[:space:]-]|$)|/cancel$|/approve$)'
-    if [[ $trimmed =~ $re_run ]] || { [ -f "${SUPERLITE_HOME:-$HOME/.superlite}/attach.json" ] && [ -n "$trimmed" ] \
+    if [[ $trimmed =~ $re_run ]] || { [ -n "$att_file" ] && [ -f "$att_file" ] && [ -n "$trimmed" ] \
          && [[ $trimmed != "/"* ]] && [[ $trimmed != "\\"* ]]; }; then
       why="not sent: cloud hook failed; the line did not reach the run"
       if [ "$is_cursor" = 1 ]; then cloud_out="{\"continue\":false,\"user_message\":\"$why\"}"

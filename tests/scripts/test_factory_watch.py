@@ -38,7 +38,7 @@ def test_render_matches_cloud_watch():
     assert r({"kind": "tool", "data": {"tool": "run_command", "target": "pytest tests/test_x.py"}}) == \
         "tool: run_command pytest tests/test_x.py"
     ev = {"kind": "nudge", "data": {"text": "hi", "by": "bo"}}
-    assert r(ev) == cloud_watch.render(ev) == "nudge from bo: hi"
+    assert r(ev) == cloud_watch.render(ev) == "» nudge from bo: hi"
     assert r({"kind": "mystery", "data": {}}) is None
 
 

@@ -28,23 +28,14 @@ SAFE = re.compile(r"^[A-Za-z0-9_-]+$")
 ENDED = ("done", "failed", "cancelled")
 
 
-def _attach_path() -> Path:
-    return cloud_status._home() / "attach.json"
-
-
 def _attach_state() -> dict:
-    try:
-        d = json.loads(_attach_path().read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return d if isinstance(d, dict) and d.get("run") else {}
+    import cloud_hook
+    return cloud_hook._attach_state()  # this session's attachment; {} without a session id
 
 
 def _clear_attach() -> None:
-    try:
-        _attach_path().unlink()
-    except OSError:
-        pass
+    import cloud_hook
+    cloud_hook.clear_attach()
 
 
 def _attached_factory() -> str | None:
@@ -233,6 +224,7 @@ def main(argv: list[str] | None = None) -> int:
     except Exception:
         prev = ""
     seg = ""
+    cloud_status._set_session(stdin_text)
     try:
         seg, statuses, cloud_st = _compute()
         if cloud_st is not None:

@@ -44,8 +44,10 @@ def attached_factory() -> str | None:
 
 
 def _set_factory(fac: str | None) -> None:
-    """Write the factory key into attach.json (absent = superlite-cloud); leave other keys alone."""
-    p = cloud_hook._home() / "attach.json"
+    """Write the factory key into this session's attachment (absent = superlite-cloud); leave other keys alone."""
+    p = cloud_hook.attach_path()
+    if p is None:
+        return
     try:
         d = json.loads(p.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -376,6 +378,7 @@ def _guarded_main(prompt: str) -> dict | None:
 def main(argv: list[str] | None = None) -> int:
     try:
         data = json.loads(sys.stdin.read() or "{}")
+        cloud_hook.set_session(cloud_hook.session_from(data))
         res = _guarded_main(str(data.get("prompt", "")))
         out = cloud_hook.render(res, cloud_hook._is_cursor(data)) if res else None
         if out:

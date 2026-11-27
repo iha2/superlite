@@ -47,12 +47,13 @@ def world(tmp_path):
 
 
 def att(w):
-    p = w.home / "attach.json"
+    p = w.home / "attach" / "test-session.json"
     return json.loads(p.read_text()) if p.exists() else None
 
 
 def put_att(w, **d):
-    (w.home / "attach.json").write_text(json.dumps(d), encoding="utf-8")
+    (w.home / "attach").mkdir(parents=True, exist_ok=True)
+    (w.home / "attach" / "test-session.json").write_text(json.dumps(d), encoding="utf-8")
 
 
 def mem_reqs(w):
