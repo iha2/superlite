@@ -49,9 +49,18 @@ if [ "$cloud_hit" = 1 ] && [ -f "$root/skills/swarm/scripts/superlite-cli" ]; th
   # A crash, a non-JSON answer or a timeout on a line meant for a run blocks it: it must not reach the local agent.
   if [ "$cloud_rc" != 0 ] || { [ -n "$cloud_out" ] && [ "${cloud_out:0:1}" != "{" ]; }; then
     cloud_out=""
-    re_run='^(>>|/superlite[:-](attach|watch|give)([[:space:]-]|$)|/cancel$|/approve$)'
-    if [[ $trimmed =~ $re_run ]] || { [ "$attached" = 1 ] && [ -n "$trimmed" ] \
-         && [[ $trimmed != "/"* ]] && [[ $trimmed != "\\"* ]]; }; then
+    jstr session_id; att_key="$REPLY"
+    [ -n "$att_key" ] || { jstr conversation_id; att_key="$REPLY"; }
+    [ -n "$att_key" ] || att_key="${CLAUDE_CODE_SESSION_ID:-}"
+    mine=0
+    case "$att_key" in
+      "") ;;
+      *[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-]*) mine="$attached" ;;
+      *) [ -f "${SUPERLITE_HOME:-$HOME/.superlite}/attach/$att_key.json" ] && mine=1 ;;
+    esac
+    re_run='^(>>|/superlite[:-](attach|watch|give)([[:space:]-]|$))'
+    if [[ $trimmed =~ $re_run ]] || { [ "$mine" = 1 ] && { [[ $trimmed == "/cancel" || $trimmed == "/approve" ]] \
+         || { [ -n "$trimmed" ] && [[ $trimmed != "/"* ]] && [[ $trimmed != "\\"* ]]; }; }; }; then
       why="not sent: cloud hook failed; the line did not reach the run"
       if [ "$is_cursor" = 1 ]; then cloud_out="{\"continue\":false,\"user_message\":\"$why\"}"
       else cloud_out="{\"decision\":\"block\",\"reason\":\"$why\"}"; fi

@@ -143,8 +143,8 @@ def test_backslash_passthrough_and_plain_prompts_are_recorded(env):
     assert replies.exists()
 
 
-def _sid_call(e, proj, sid, prompt="hello"):
-    data = json.dumps({"prompt": prompt, "cwd": str(proj), "session_id": sid})
+def _sid_call(e, proj, sid, prompt="hello", **fields):
+    data = json.dumps({"prompt": prompt, "cwd": str(proj), "session_id": sid, **fields})
     return subprocess.run([BASH, str(HOOK)], input=data, capture_output=True, text=True, encoding="utf-8", env=e,
                           cwd=proj, timeout=60)
 
@@ -173,6 +173,40 @@ def test_fastpath_routes_only_the_attached_session(env):
                                  ("POST", "/api/runs/login_fix/nudge", {"text": "hello"})]
     finally:
         stop()
+
+
+@pytest.mark.parametrize("sid,prompt,blocked", [
+    ("A", "hello", True), ("A", "/cancel", True), ("A", "/approve", True),
+    ("B", "hello", False), ("B", "/cancel", False), ("B", "/approve", False),
+    ("B", ">> hi", True), (None, "hello", False), ("a b", "hello", True),
+    ("é", "hello", True), ("a\\b", "hello", True),
+])
+def test_failed_hook_uses_current_session_attachment(env, sid, prompt, blocked):
+    e, log, home, proj = env
+    e.update(SHIM_RC="1", CLAUDE_CODE_SESSION_ID="")
+    (home / "attach").mkdir()
+    (home / "attach" / "A.json").write_text('{"run":"login_fix"}')
+    r = _sid_call(e, proj, sid, prompt)
+    assert r.returncode == 0 and len(hook_calls(log)) == 1
+    if blocked:
+        assert json.loads(r.stdout)["reason"] == "not sent: cloud hook failed; the line did not reach the run"
+    else:
+        assert r.stdout == ""
+
+
+@pytest.mark.parametrize("sid,conversation,env_sid,blocked", [
+    ("B", "A", "A", False), ("A", "B", "B", True),
+    ("", "A", "B", True), (None, "B", "A", False),
+    (None, "", "A", True), (None, None, "B", False),
+])
+def test_failed_hook_session_fallbacks(env, sid, conversation, env_sid, blocked):
+    e, log, home, proj = env
+    e.update(SHIM_RC="1", CLAUDE_CODE_SESSION_ID=env_sid)
+    (home / "attach").mkdir()
+    (home / "attach" / "A.json").write_text('{"run":"login_fix"}')
+    r = _sid_call(e, proj, sid, conversation_id=conversation)
+    assert r.returncode == 0 and len(hook_calls(log)) == 1
+    assert ("cloud hook failed" in r.stdout) is blocked
 
 
 def test_fastpath_ignores_legacy_attach_json(env):
