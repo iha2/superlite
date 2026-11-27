@@ -35,7 +35,7 @@ def use_color(stream=None) -> bool:
     stream = stream if stream is not None else sys.stdout
     try:
         tty = bool(stream.isatty())
-    except Exception:
+    except (AttributeError, ValueError):
         tty = False
     return tty and not os.environ.get("NO_COLOR")
 

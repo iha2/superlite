@@ -143,6 +143,8 @@ def _hook_verb(verb: str, ref: str = "") -> int:
         _err(f"error: {e}", cfg["token"] if cfg else None)
         return 1
     print(res["reason"])
+    if verb == "attach" and res["reason"] == f"not attached: {cloud_hook.NO_SESSION}":
+        return 1
     return 0
 
 

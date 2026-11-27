@@ -274,7 +274,7 @@ def test_cli_attach_without_session_id_refuses(monkeypatch, env, capsys):
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
     login()
     capsys.readouterr()
-    cloud.main(["attach", "login_fix"])
+    assert cloud.main(["attach", "login_fix"]) != 0
     out = capsys.readouterr().out.strip()
     assert out.startswith("not attached: no session id") and "\n" not in out
     assert _att_files(env) == [] and not (env.sh / "attach.json").exists()

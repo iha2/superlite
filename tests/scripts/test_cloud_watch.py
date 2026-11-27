@@ -218,3 +218,10 @@ def test_use_color_respects_tty_and_no_color(monkeypatch):
     assert cloud_watch.use_color(io.StringIO()) is False
     monkeypatch.setenv("NO_COLOR", "1")
     assert cloud_watch.use_color(_Tty()) is False
+
+
+def test_use_color_handles_unavailable_tty():
+    assert cloud_watch.use_color(object()) is False
+    stream = io.StringIO()
+    stream.close()
+    assert cloud_watch.use_color(stream) is False

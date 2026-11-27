@@ -5,9 +5,12 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
+
+import cloud_fake
 
 _GIT_BASH = r"C:\Program Files\Git\bin\bash.exe"
 # A bare "bash" on Windows finds System32\bash.exe (WSL) first, so ask Git Bash by path.
@@ -50,6 +53,8 @@ def hook_calls(log):
 
 def test_bash_fastpath(env):
     e, log, home, proj = env
+    (home / "attach").mkdir()
+    (home / "attach" / "not-a-file.json").mkdir()
     r = call(e, proj, "hello")
     assert r.returncode == 0
     assert hook_calls(log) == []
@@ -138,33 +143,6 @@ def test_backslash_passthrough_and_plain_prompts_are_recorded(env):
     assert replies.exists()
 
 
-def test_other_session_is_not_captured_by_an_attachment(env):
-    e, log, home, proj = env
-    (home / "attach").mkdir(parents=True, exist_ok=True)
-    (home / "attach" / "sess-a.json").write_text('{"run":"login_fix"}')
-    (home / "attach.json").write_text('{"run":"login_fix"}')  # the legacy shared file routes nothing
-    data = lambda sid: json.dumps({"prompt": "hello", "cwd": str(proj), **({"session_id": sid} if sid else {})})
-    run = lambda sid, **x: subprocess.run([BASH, str(HOOK)], input=data(sid), capture_output=True, text=True,
-                                          encoding="utf-8", env=dict(e, **x), cwd=proj, timeout=60)
-    assert run("sess-b").returncode == 0 and hook_calls(log) == []
-    assert run(None, CLAUDE_CODE_SESSION_ID="").returncode == 0 and hook_calls(log) == []
-    run("sess-a")
-    assert len(hook_calls(log)) == 1
-    log.unlink()
-    run(None, CLAUDE_CODE_SESSION_ID="sess-a")  # no id in the input: the env var names the session
-    assert len(hook_calls(log)) == 1
-
-
-def test_attached_session_key_is_sanitized_like_python(env):
-    e, log, home, proj = env
-    (home / "attach").mkdir(parents=True, exist_ok=True)
-    (home / "attach" / "a_b_c.json").write_text('{"run":"login_fix"}')
-    data = json.dumps({"prompt": "hello", "cwd": str(proj), "session_id": "a/b c"})
-    subprocess.run([BASH, str(HOOK)], input=data, capture_output=True, text=True, encoding="utf-8", env=e,
-                   cwd=proj, timeout=60)
-    assert len(hook_calls(log)) == 1
-
-
 def _sid_call(e, proj, sid, prompt="hello"):
     data = json.dumps({"prompt": prompt, "cwd": str(proj), "session_id": sid})
     return subprocess.run([BASH, str(HOOK)], input=data, capture_output=True, text=True, encoding="utf-8", env=e,
@@ -173,12 +151,28 @@ def _sid_call(e, proj, sid, prompt="hello"):
 
 def test_fastpath_routes_only_the_attached_session(env):
     e, log, home, proj = env
+    url, stop = cloud_fake.serve({
+        ("GET", "/api/tasks"): [{"name": "login_fix", "status": "running"}],
+        ("POST", "/api/runs/login_fix/nudge"): (202, {"id": 1}),
+    })
     (home / "attach").mkdir(parents=True, exist_ok=True)
     (home / "attach" / "A.json").write_text('{"run":"login_fix"}')
-    assert _sid_call(e, proj, "B").returncode == 0
-    assert hook_calls(log) == []
-    _sid_call(e, proj, "A")
-    assert len(hook_calls(log)) == 1
+    (home / "cloud.json").write_text(json.dumps({"url": url, "token": "test-token"}))
+    Path(e["SUPERLITE_PYTHON"]).write_text(
+        f'#!/usr/bin/env bash\necho "$@" >> "{log}"\nexec "$REAL_PYTHON" "$@"\n')
+    e["REAL_PYTHON"] = sys.executable
+    e["CLAUDE_CODE_SESSION_ID"] = ""
+    try:
+        b = _sid_call(e, proj, "B")
+        assert b.returncode == 0 and b.stdout == ""
+        assert len(hook_calls(log)) == 1 and stop.requests == []
+        a = _sid_call(e, proj, "A")
+        assert a.returncode == 0 and json.loads(a.stdout)["reason"] == "→ login_fix"
+        assert len(hook_calls(log)) == 2
+        assert stop.requests == [("GET", "/api/tasks", None),
+                                 ("POST", "/api/runs/login_fix/nudge", {"text": "hello"})]
+    finally:
+        stop()
 
 
 def test_fastpath_ignores_legacy_attach_json(env):
@@ -187,39 +181,3 @@ def test_fastpath_ignores_legacy_attach_json(env):
     for sid in ("A", "s1", "x y"):
         assert _sid_call(e, proj, sid).returncode == 0
     assert hook_calls(log) == []
-
-
-@pytest.mark.parametrize("sid", ["  A  ", "a/b c", "\tA.b\n", " é x ", "a-b_c"])
-def test_fastpath_key_matches_clean_key(env, sid):
-    import sys
-    scripts = str(ROOT / "skills" / "swarm" / "scripts")
-    sys.path.insert(0, scripts)
-    try:
-        import cloud_hook
-        e, log, home, proj = env
-        old = os.environ.get("SUPERLITE_HOME")
-        os.environ["SUPERLITE_HOME"] = e["SUPERLITE_HOME"]
-        try:
-            cloud_hook.set_session(sid)
-            p = cloud_hook.attach_path()
-            assert p is not None
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text('{"run":"login_fix"}')
-        finally:
-            cloud_hook.set_session(None)
-            if old is None:
-                os.environ.pop("SUPERLITE_HOME", None)
-            else:
-                os.environ["SUPERLITE_HOME"] = old
-    finally:
-        sys.path.remove(scripts)
-    _sid_call(e, proj, sid)
-    assert len(hook_calls(log)) == 1
-
-
-def test_fastpath_key_astral_char_is_one_underscore(env):
-    e, log, home, proj = env
-    (home / "attach").mkdir(parents=True, exist_ok=True)
-    (home / "attach" / "a_b.json").write_text('{"run":"login_fix"}')
-    _sid_call(e, proj, "a\U0001F600b")  # json.dumps emits a surrogate pair
-    assert len(hook_calls(log)) == 1
