@@ -67,7 +67,7 @@ def world(tmp_path):
 
 
 def cli(env, proj, *args, stdin=None):
-    return subprocess.run([BASH, str(CLI), "cloud", *args], capture_output=True, text=True, env=env,
+    return subprocess.run([BASH, str(CLI), "cloud", *args], capture_output=True, text=True, encoding="utf-8", env=env,
                           cwd=proj, timeout=30, input=stdin if stdin is not None else "")
 
 
@@ -79,7 +79,7 @@ def login(env, proj, url):
 
 def hook(env, proj, prompt):
     data = json.dumps({"prompt": prompt, "cwd": str(proj), "session_id": "s1"})
-    return subprocess.run([BASH, str(HOOK)], input=data, capture_output=True, text=True, env=env,
+    return subprocess.run([BASH, str(HOOK)], input=data, capture_output=True, text=True, encoding="utf-8", env=env,
                           cwd=proj, timeout=30)
 
 
