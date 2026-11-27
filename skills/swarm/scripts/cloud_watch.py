@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 import threading
@@ -21,8 +22,33 @@ _WS = re.compile(r"[\r\n\t]+")
 _CTRL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 
 
-def clean(v) -> str:
-    return _CTRL.sub("", _WS.sub(" ", str(v if v is not None else "")))
+def clean(v, keep_newlines: bool = False) -> str:
+    """Strip control chars from server data. keep_newlines keeps \n (multi-line messages); everything else is stripped."""
+    s = str(v if v is not None else "")
+    if keep_newlines:
+        s = re.sub(r"\r\n|\r", "\n", s).replace("\t", " ")
+        return "\n".join(_CTRL.sub("", ln) for ln in s.split("\n"))
+    return _CTRL.sub("", _WS.sub(" ", s))
+
+
+def use_color(stream=None) -> bool:
+    stream = stream if stream is not None else sys.stdout
+    try:
+        tty = bool(stream.isatty())
+    except (AttributeError, ValueError):
+        tty = False
+    return tty and not os.environ.get("NO_COLOR")
+
+
+_STYLES = {"dim": "2", "bold": "1", "green": "32", "red": "31", "yellow": "33", "dim_italic": "2;3"}
+
+
+def _sty(text: str, style: str, color: bool) -> str:
+    """Wrap already-cleaned text in ANSI, per line so multi-line output stays styled."""
+    if not color or not text:
+        return text
+    code = _STYLES[style]
+    return "\n".join(f"\x1b[{code}m{ln}\x1b[0m" if ln else ln for ln in text.split("\n"))
 
 
 def _status_line(d: dict) -> str:
@@ -32,18 +58,45 @@ def _status_line(d: dict) -> str:
     return line
 
 
-def render(event: dict) -> str | None:
+def _block(text: str) -> list[str]:
+    return text.split("\n")
+
+
+def render(event: dict, color: bool | None = None) -> str | None:
     if not isinstance(event, dict):
         return None
+    color = use_color() if color is None else color
     d = event.get("data")
     d = d if isinstance(d, dict) else {}
     kind = event.get("kind")
+    if kind == "text":
+        text = clean(d.get("text"), keep_newlines=True).strip("\n")
+        if not text.strip():
+            return None
+        lines = _block(text)
+        return "\n".join([f"\u23fa {lines[0]}"] + [f"  {ln}" for ln in lines[1:]])
+    if kind == "thinking":
+        text = clean(d.get("text"), keep_newlines=True).strip("\n")
+        head = _sty("\u273b Thinking\u2026", "dim_italic", color)
+        if not text.strip():
+            return head
+        return head + "\n" + _sty("\n".join(f"  {ln}" for ln in _block(text)), "dim_italic", color)
+    if kind == "tool":
+        tool = clean(d.get("tool"))
+        if not tool:
+            return None
+        target = clean(d.get("target"))
+        tail = f"({target})" if target else ""
+        return "\u23fa " + _sty(tool, "bold", color) + tail
+    if kind == "file":
+        path = clean(d.get("path"))
+        return _sty(f"  \u23bf  {path}", "dim", color) if path else None
     if kind == "nudge":
         text = clean(d.get("text"))
         if not text:
             return None
         by = clean(d.get("by")) if d.get("by") else ""
-        return f"nudge from {by}: {text}" if by else text
+        return _sty(f"\u00bb nudge from {by}: {text}" if by else f"\u00bb nudge: {text}", "yellow", color)
     if kind == "rename":
         return f"renamed {clean(d.get('from'))} to {clean(d.get('to'))}: {clean(d.get('why'))}"
     if kind == "given":
@@ -53,10 +106,16 @@ def render(event: dict) -> str | None:
             line += f" ({clean(email)})"
         return line
     if kind == "status":
-        return _status_line(d)
+        line = _status_line(d)
+        to = d.get("to")
+        if to == "done":
+            return _sty(f"\u2713 {line}", "green", color)
+        if to in TERMINAL:
+            return _sty(f"\u2717 {line}", "red", color)
+        return _sty(f"\u00b7 {line}", "dim", color)
     if kind == "result":
         txt = d.get("result") or d.get("text")
-        return f"result: {clean(txt)}" if txt else None
+        return _sty(f"\u2713 result: {clean(txt)}", "green", color) if txt else None
     return None
 
 

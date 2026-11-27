@@ -125,7 +125,7 @@ def test_attach_detach_nudge_cancel(tmp_path):
     name = e2e.cli(["send", "x"], env).stdout.split()[0]
     r = e2e.cli(["attach", "lab:" + name], env)
     assert r.returncode == 0, r.stderr
-    att = json.loads((Path(env["SUPERLITE_HOME"]) / "attach.json").read_text())
+    att = json.loads((Path(env["SUPERLITE_HOME"]) / "attach" / "test-session.json").read_text())
     assert att["run"] == name and att["factory"] == "lab"
     r = e2e.cli(["nudge", name, "please", "hurry"], env)
     assert r.returncode == 0 and r.stdout.strip() == f"{name} follow-up sent"
@@ -133,7 +133,7 @@ def test_attach_detach_nudge_cancel(tmp_path):
     assert e2e.cli(["cancel", name], env).returncode == 0
     assert _mem_state(env)["runs"][0]["status"] == "cancelled"
     assert e2e.cli(["detach"], env).returncode == 0
-    assert not (Path(env["SUPERLITE_HOME"]) / "attach.json").exists()
+    assert not (Path(env["SUPERLITE_HOME"]) / "attach" / "test-session.json").exists()
 
 
 def test_no_token_leak(tmp_path):
@@ -372,7 +372,7 @@ def test_plugin_login_installs_wrapper_and_logout_restores(tmp_path):
     assert e2e.cli(["attach", "lab:" + name], env).returncode == 0
     assert e2e.cli(["logout", "lab"], env).returncode == 0
     assert not _settings(env).exists()
-    assert not (Path(env["SUPERLITE_HOME"]) / "attach.json").exists()
+    assert not (Path(env["SUPERLITE_HOME"]) / "attach" / "test-session.json").exists()
 
 
 def test_last_logout_removes_generated_entries_with_the_wrapper(tmp_path):
@@ -396,7 +396,7 @@ def test_cloud_logout_keeps_plugin_attachment_and_wrapper(tmp_path):
     e2e.cloud_login(env, "http://127.0.0.1:9")
     r = e2e.cli(["logout", "superlite-cloud"], env)
     assert r.returncode == 0, r.stderr
-    att = json.loads((Path(env["SUPERLITE_HOME"]) / "attach.json").read_text())
+    att = json.loads((Path(env["SUPERLITE_HOME"]) / "attach" / "test-session.json").read_text())
     assert att["run"] == name and att["factory"] == "lab"
     assert "cloud statusline" in _settings(env).read_text()
 
@@ -409,7 +409,7 @@ def test_cloud_attach_missing_run_leaves_nothing(tmp_path):
         r = e2e.cli(["attach", "superlite-cloud:sl_run"], env)
         assert r.returncode == 1 and "not attached: sl_run: not found" in r.stderr
         assert "attached sl_run" not in r.stdout
-        assert not (Path(env["SUPERLITE_HOME"]) / "attach.json").exists()
+        assert not (Path(env["SUPERLITE_HOME"]) / "attach" / "test-session.json").exists()
     finally:
         stop()
 
@@ -421,7 +421,7 @@ def test_cloud_attach_known_run(tmp_path):
         env = _cloud_env(tmp_path, url)
         r = e2e.cli(["attach", "superlite-cloud:login_fix"], env)
         assert (r.returncode, r.stdout.strip()) == (0, "attached login_fix"), r.stderr
-        assert json.loads((Path(env["SUPERLITE_HOME"]) / "attach.json").read_text())["id"] == "t1"
+        assert json.loads((Path(env["SUPERLITE_HOME"]) / "attach" / "test-session.json").read_text())["id"] == "t1"
     finally:
         stop()
 
@@ -465,4 +465,4 @@ def test_attach_refuses_an_ended_run(tmp_path):
     assert e2e.cli(["cancel", name], env).returncode == 0
     r = e2e.cli(["attach", "lab:" + name], env)
     assert (r.returncode, r.stderr.strip()) == (1, f"lab: {name} has ended")
-    assert not (Path(env["SUPERLITE_HOME"]) / "attach.json").exists()
+    assert not (Path(env["SUPERLITE_HOME"]) / "attach" / "test-session.json").exists()

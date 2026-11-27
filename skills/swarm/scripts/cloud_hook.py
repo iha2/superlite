@@ -46,9 +46,71 @@ def _client():
     return cloud_client.Client(cfg["url"], cfg["token"])
 
 
-def _attach_state() -> dict:
+_KEY_BAD = re.compile(r"[^A-Za-z0-9_-]")
+_SESSION: str | None = None  # set by a hook/status-line main from its stdin
+_ENV_SESSION = True          # False: the env var is not a fallback (the status line shows only its stdin's session)
+SESSION_ENV = "CLAUDE_CODE_SESSION_ID"
+NO_SESSION = f"no session id ({SESSION_ENV} unset): attach works only inside a Claude Code or Cursor session"
+
+
+def clean_key(raw) -> str | None:
+    """A session id as a file name: anything outside [A-Za-z0-9_-] becomes `_`; None when empty."""
+    if not isinstance(raw, str):
+        return None
+    return _KEY_BAD.sub("_", raw.strip()) or None
+
+
+def set_session(raw, env_fallback: bool = True) -> None:
+    """Name the session this process serves (hook stdin session_id / conversation_id)."""
+    global _SESSION, _ENV_SESSION
+    _SESSION = clean_key(raw)
+    _ENV_SESSION = env_fallback
+
+
+def session_from(data) -> str | None:
+    """The session id in a hook or status-line stdin: Claude Code `session_id`, else Cursor `conversation_id`."""
+    if not isinstance(data, dict):
+        return None
+    return clean_key(data.get("session_id")) or clean_key(data.get("conversation_id"))
+
+
+def session_key() -> str | None:
+    return _SESSION or (clean_key(os.environ.get(SESSION_ENV)) if _ENV_SESSION else None)
+
+
+def attach_dir() -> Path:
+    return _home() / "attach"
+
+
+def attach_path() -> Path | None:
+    """This session's attachment file; None without a session id (never a shared file)."""
+    key = session_key()
+    return attach_dir() / f"{key}.json" if key else None
+
+
+def attach_files() -> list[tuple[Path, dict]]:
+    """Every session's attachment: (file, state) for each readable per-session file."""
+    out = []
     try:
-        d = json.loads((_home() / "attach.json").read_text(encoding="utf-8"))
+        files = sorted(attach_dir().glob("*.json"))
+    except OSError:
+        return out
+    for f in files:
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(d, dict) and d.get("run"):
+            out.append((f, d))
+    return out
+
+
+def _attach_state() -> dict:
+    p = attach_path()
+    if p is None:
+        return {}
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
     return d if isinstance(d, dict) and d.get("run") else {}
@@ -59,10 +121,27 @@ def _attached() -> str | None:
 
 
 def clear_attach() -> None:
+    """Drop this session's attachment only."""
+    p = attach_path()
+    if p is None:
+        return
     try:
-        (_home() / "attach.json").unlink()
+        p.unlink()
     except OSError:
         pass
+
+
+def clear_all_attach() -> None:
+    """Drop every session's attachment and the legacy global attach.json (logout)."""
+    try:
+        files = list(attach_dir().glob("*.json"))
+    except OSError:
+        files = []
+    for f in files + [_home() / "attach.json"]:
+        try:
+            f.unlink()
+        except OSError:
+            pass
 
 
 def refresh_attached(client) -> dict | None:
@@ -96,8 +175,8 @@ def refresh_attached(client) -> dict | None:
             if st.get("factory"):  # the attachment's factory survives the rename, even if the hook dies before a send
                 kept["factory"] = st["factory"]
             try:
-                (_home() / "attach.json").write_text(json.dumps(kept), encoding="utf-8")
-            except OSError:
+                attach_path().write_text(json.dumps(kept), encoding="utf-8")
+            except (OSError, AttributeError):
                 pass
     return out
 
@@ -204,6 +283,8 @@ def _nudge_prefix(client, rest: str, current: str | None, label: str | None = No
 def _slash(client, verb: str, arg: str, factory: str | None = None) -> dict:
     arg = (arg or "").strip()
     if verb == "detach":
+        if session_key() is None:
+            return _block("no session id: nothing to detach")
         clear_attach()
         return _block("detached")
     if verb == "runs":
@@ -234,15 +315,17 @@ def _slash(client, verb: str, arg: str, factory: str | None = None) -> dict:
         cmd = f"bash {shlex.quote(str(cli))} cloud watch {shlex.quote(arg)}"
         from factory_api import watch_handoff
         return {"context": watch_handoff(cmd, arg)}
+    path = attach_path()
+    if path is None:
+        return _block(f"not attached: {NO_SESSION}")
     info = client.attach(arg)
     name = info.get("run") or arg.split("/")[-1]
     if "/" in arg:  # keep the owner: a bare name would address the caller's own same-named run
         name = f"{arg.rpartition('/')[0]}/{name.split('/')[-1]}"
     if info.get("status") in ENDED:
         return _block(f"{name} has ended")
-    home = _home()
-    home.mkdir(parents=True, exist_ok=True)
-    (home / "attach.json").write_text(json.dumps({"run": name, "id": info.get("id")}), encoding="utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"run": name, "id": info.get("id")}), encoding="utf-8")
     return _block(f"attached {name}")
 
 
@@ -328,6 +411,7 @@ def render(res: dict, cursor: bool) -> dict | None:
 def main(argv: list[str] | None = None) -> int:
     try:
         data = json.loads(sys.stdin.read() or "{}")
+        set_session(session_from(data))
         res = route(str(data.get("prompt", "")))
         out = render(res, _is_cursor(data)) if res else None
         if out:

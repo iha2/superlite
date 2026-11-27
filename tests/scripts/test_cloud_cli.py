@@ -188,10 +188,10 @@ def test_attach_writes_state_and_detach_clears(monkeypatch, env, capsys):
     assert cloud.main(["attach", "chris/login_fix"]) == 0
     out = capsys.readouterr()
     assert "attached chris/login_fix" in out.out and TOKEN not in out.out + out.err
-    assert (env.sh / "attach.json").exists()
+    assert (env.sh / "attach" / "test-session.json").exists()
     assert cloud.main(["detach"]) == 0
     assert "detached" in capsys.readouterr().out
-    assert not (env.sh / "attach.json").exists()
+    assert not (env.sh / "attach" / "test-session.json").exists()
 
 
 def test_attach_cloud_error_exits_1(monkeypatch, env, capsys):
@@ -218,9 +218,10 @@ def test_help_lists_delegated_and_new_subcommands(capsys):
 
 def test_logout_clears_attachment(env, capsys):
     login()
-    (env.sh / "attach.json").write_text('{"run": "login_fix", "id": "t_1"}')
+    (env.sh / "attach").mkdir(parents=True, exist_ok=True)
+    (env.sh / "attach" / "test-session.json").write_text('{"run": "login_fix", "id": "t_1"}')
     assert cloud.main(["logout"]) == 0
-    assert not (env.sh / "attach.json").exists()
+    assert not (env.sh / "attach" / "test-session.json").exists()
 
 
 def test_runs_reads_notices_before_listing(capsys, monkeypatch):
@@ -236,9 +237,54 @@ def test_runs_reads_notices_before_listing(capsys, monkeypatch):
 
 def test_give_detaches_given_run(capsys, env):
     login()
-    (env.sh / "attach.json").write_text('{"run": "login_fix", "id": "t_1"}')
+    (env.sh / "attach").mkdir(parents=True, exist_ok=True)
+    (env.sh / "attach" / "test-session.json").write_text('{"run": "login_fix", "id": "t_1"}')
     assert cloud.main(["give", "login_fix", "pat@example.com"]) == 0
-    assert not (env.sh / "attach.json").exists()
-    (env.sh / "attach.json").write_text('{"run": "other", "id": "t_7"}')
+    assert not (env.sh / "attach" / "test-session.json").exists()
+    (env.sh / "attach").mkdir(parents=True, exist_ok=True)
+    (env.sh / "attach" / "test-session.json").write_text('{"run": "other", "id": "t_7"}')
     cloud.main(["give", "login_fix", "pat@example.com"])
-    assert (env.sh / "attach.json").exists()
+    assert (env.sh / "attach" / "test-session.json").exists()
+
+
+def _att_files(env):
+    d = env.sh / "attach"
+    return sorted(p.name for p in d.iterdir()) if d.exists() else []
+
+
+def test_cli_attach_uses_claude_code_session_id(monkeypatch, env, capsys):
+    monkeypatch.setattr(FakeClient, "attach", lambda self, ref: {"run": "login_fix", "id": "t_1", "status": "running"},
+                        raising=False)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "sess-cli")
+    login()
+    capsys.readouterr()
+    assert cloud.main(["attach", "login_fix"]) == 0
+    assert _att_files(env) == ["sess-cli.json"] and not (env.sh / "attach.json").exists()
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "other-chat")  # another chat's detach leaves it alone
+    assert cloud.main(["detach"]) == 0
+    assert _att_files(env) == ["sess-cli.json"]
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "sess-cli")
+    assert cloud.main(["detach"]) == 0
+    assert _att_files(env) == []
+
+
+def test_cli_attach_without_session_id_refuses(monkeypatch, env, capsys):
+    monkeypatch.setattr(FakeClient, "attach", lambda self, ref: {"run": "login_fix", "id": "t_1", "status": "running"},
+                        raising=False)
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
+    login()
+    capsys.readouterr()
+    assert cloud.main(["attach", "login_fix"]) != 0
+    out = capsys.readouterr().out.strip()
+    assert out.startswith("not attached: no session id") and "\n" not in out
+    assert _att_files(env) == [] and not (env.sh / "attach.json").exists()
+
+
+def test_logout_clears_every_session_and_the_legacy_file(env):
+    login()
+    (env.sh / "attach").mkdir(parents=True, exist_ok=True)
+    for key in ("sess-a", "sess-b"):
+        (env.sh / "attach" / f"{key}.json").write_text('{"run": "login_fix", "id": "t_1"}')
+    (env.sh / "attach.json").write_text('{"run": "login_fix", "id": "t_1"}')
+    assert cloud.main(["logout"]) == 0
+    assert _att_files(env) == [] and not (env.sh / "attach.json").exists()

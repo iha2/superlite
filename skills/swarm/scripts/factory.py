@@ -42,11 +42,7 @@ def _hook():
 
 
 def _attach_state() -> dict:
-    try:
-        d = json.loads((_home() / "attach.json").read_text(encoding="utf-8"))
-        return d if isinstance(d, dict) else {}
-    except (OSError, ValueError):
-        return {}
+    return _hook()._attach_state()  # this session's attachment; {} without a session id
 
 
 def _attached_factory() -> str | None:
@@ -234,8 +230,7 @@ def cmd_logout(a) -> int:
     inst.pop("token", None)
     reg.save_store(store)
     if a.name not in reg.logged_in():  # still logged in through the manifest's token_env: keep everything
-        if _attached_factory() == a.name:
-            _cloud_main(["detach"])
+        _drop_attachments_of(a.name)
         if not reg.logged_in():
             _clear_entries(reg)  # before the wrapper goes: nothing else runs factory_status to clean them
             _wrapper(False)
@@ -252,14 +247,33 @@ def _clear_entries(reg) -> None:
         pass
 
 
+def _plugin_attach_files(name: str | None = None) -> list[Path]:
+    """The attachment files of plugin factories (of `name` only, when given), one per attached session."""
+    return [f for f, d in _hook().attach_files()
+            if d.get("factory") and d["factory"] != CLOUD and name in (None, d["factory"])]
+
+
+def _drop_attachments_of(name: str) -> None:
+    """A factory logout: every session attached to it loses the (now dead) attachment."""
+    for f in _plugin_attach_files(name):
+        try:
+            f.unlink()
+        except OSError:
+            pass
+
+
 def _cloud_logout(reg) -> int:
-    """Cloud logout restores the status line and drops the attachment; neither may take a plugin's with it."""
-    plugin_attach = _attached_factory() not in (None, CLOUD)
-    path = _home() / "attach.json"
-    kept = path.read_bytes() if plugin_attach and path.exists() else None
+    """Cloud logout restores the status line and drops the attachments; neither may take a plugin's with it."""
+    kept = {}
+    for f in _plugin_attach_files():
+        try:
+            kept[f] = f.read_bytes()
+        except OSError:
+            pass
     rc = _cloud_main(["logout"])
-    if kept is not None:
-        path.write_bytes(kept)
+    for f, data in kept.items():
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_bytes(data)
     if any(n != CLOUD for n in reg.logged_in()):
         _wrapper(True)
     return rc
@@ -371,16 +385,18 @@ def cmd_attach(a) -> int:
     info = p.attach(ref)
     if info.get("status") in _hook().ENDED:  # no dead attachment: the cloud hook refuses the same way
         raise _api().FactoryError(f"{info.get('run') or ref} has ended")
-    h = _home()
-    h.mkdir(parents=True, exist_ok=True)
-    (h / "attach.json").write_text(
+    path = _hook().attach_path()
+    if path is None:
+        raise _api().FactoryError(f"not attached: {_hook().NO_SESSION}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
         json.dumps({"run": info.get("run") or ref, "id": info.get("id"), "factory": name}), encoding="utf-8")
     print(f"attached {info.get('run') or ref}")
     return 0
 
 
 def cmd_detach(_a) -> int:
-    return _cloud_main(["detach"])  # only clears attach.json: valid for every factory
+    return _cloud_main(["detach"])  # only clears this session's attachment: valid for every factory
 
 
 def cmd_watch(a) -> int:

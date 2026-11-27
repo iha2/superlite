@@ -68,7 +68,7 @@ def _logout(_args) -> int:
     import cloud_hook
     cloud_status.restore(_claude_home() / "settings.json")
     cloud_entries.remove_all(_claude_home() / "skills")
-    cloud_hook.clear_attach()  # an old attachment must not revive on the next login
+    cloud_hook.clear_all_attach()  # an old attachment (any session, or the legacy attach.json) must not revive on the next login
     cloud_config.clear()
     print("logged out")
     return 0
@@ -130,7 +130,7 @@ def _give(args) -> int:
 
 
 def _hook_verb(verb: str, ref: str = "") -> int:
-    """attach/detach reuse cloud_hook's logic (attach.json state file); prints its one line."""
+    """attach/detach reuse cloud_hook's logic (per-session attach/<session>.json state file); prints its one line."""
     import cloud_client
     import cloud_hook
     client, cfg = (None, None) if verb == "detach" else _client()
@@ -143,6 +143,8 @@ def _hook_verb(verb: str, ref: str = "") -> int:
         _err(f"error: {e}", cfg["token"] if cfg else None)
         return 1
     print(res["reason"])
+    if verb == "attach" and res["reason"] == f"not attached: {cloud_hook.NO_SESSION}":
+        return 1
     return 0
 
 
