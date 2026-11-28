@@ -466,3 +466,29 @@ def test_attach_refuses_an_ended_run(tmp_path):
     r = e2e.cli(["attach", "lab:" + name], env)
     assert (r.returncode, r.stderr.strip()) == (1, f"lab: {name} has ended")
     assert not (Path(env["SUPERLITE_HOME"]) / "attach" / "test-session.json").exists()
+
+
+def test_use_orchestrator_and_list(tmp_path):
+    env = _lab(tmp_path, superlite=True)
+    r = e2e.cli(["use", "lab", "--orchestrator", "human"], env)
+    assert r.returncode == 0 and "orchestrator human" in r.stdout, r.stderr
+    assert "[human]" in e2e.cli(["list"], env).stdout
+    e2e.cli(["use", "lab", "--orchestrator", "ai"], env)
+    assert "[human]" not in e2e.cli(["list"], env).stdout
+
+
+def test_send_flag_beats_default(tmp_path):
+    env = _lab(tmp_path, superlite=True)
+    e2e.cli(["use", "lab", "--orchestrator", "human"], env)
+    r = e2e.cli(["send", "--superlite", "Fix"], env)  # plugin ignores the flag, preamble follows the default
+    assert r.returncode == 0, r.stderr
+    assert _mem_state(env)["requests"][-1]["prompt"] == factory_api.superlite_prompt("Fix", "human")
+    r = e2e.cli(["send", "--superlite", "--orchestrator", "ai", "Fix"], env)
+    assert r.returncode == 0, r.stderr
+    assert _mem_state(env)["requests"][-1]["prompt"] == factory_api.superlite_prompt("Fix")
+
+
+def test_bad_orchestrator_value(tmp_path):
+    env = _lab(tmp_path)
+    r = e2e.cli(["send", "--orchestrator", "robot", "Fix"], env)
+    assert r.returncode == 2 and "robot" in r.stderr and "Traceback" not in r.stderr

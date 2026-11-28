@@ -67,6 +67,11 @@ After the approval the run decides on its own, like the AI orchestrator. The hum
 one is recorded as `Ruling: [scope] <decision> - <why> - <cost if wrong>`, and `superlite-cli finish` lists them under "Changed from the approved
 plan". Destructive, outward and security-sensitive actions still follow the SDD "Stop conditions".
 
+## Cloud Human runs
+`superlite-cli factory send --orchestrator human` (or a factory saved with `factory use <name> --orchestrator human`) starts a superlite-cloud
+run the human orchestrates; AI is the default. The run stops in `waiting` on a question (its last line is `Reply to answer`) and on the plan
+(`Reply approve to start`). Answer from `cloud watch` or `cloud attach`: a plain line answers a question, `/approve` approves the plan.
+
 ## Benchmarks
 Every prompt file under `bench/` (`prompt*.md`, `tasks/*/prompt*.md`) ends with `Orchestrator: AI, do not ask me to choose or to approve.`
 (a test checks this), so the decider is never asked. To test the human gate, run the session in human mode:

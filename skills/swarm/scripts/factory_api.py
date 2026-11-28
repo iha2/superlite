@@ -41,8 +41,16 @@ def require(provider, verb: str) -> None:
         raise Unsupported(provider.name, verb)
 
 
-def superlite_prompt(text: str) -> str:
-    return SUPERLITE_PREAMBLE + "\n\n" + text
+_AI_SENTENCE = "the AI orchestrator yourself with `superlite-cli orchestrator set ai`"
+HUMAN_PREAMBLE = SUPERLITE_PREAMBLE.replace(
+    _AI_SENTENCE,
+    "the orchestrator yourself with `superlite-cli orchestrator set human`; a person answers your "
+    "questions, so ask them and wait")
+
+
+def superlite_prompt(text: str, orchestrator: str = "ai") -> str:
+    pre = HUMAN_PREAMBLE if orchestrator == "human" else SUPERLITE_PREAMBLE
+    return pre + "\n\n" + text
 
 
 def _env_hints(cmd: str, env: Mapping[str, str]) -> list[str]:

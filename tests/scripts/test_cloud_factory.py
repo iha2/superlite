@@ -146,3 +146,54 @@ def test_server_name_in_body():
     assert stop.requests[-1][2]["name"] == "sl_live_two"
     p.send("x", repo="a/b", title="!!")
     assert "name" not in stop.requests[-1][2]
+
+
+def test_body_ai_unchanged():
+    url, stop = cloud_fake.serve(_routes())
+    _login(url)
+    cloud_factory.create({"name": "superlite-cloud"}).send("x", repo="a/b", orchestrator="ai")
+    assert "orchestrator" not in stop.requests[-1][2]
+
+
+def test_body_human():
+    url, stop = cloud_fake.serve(_routes())
+    _login(url)
+    cloud_factory.create({"name": "superlite-cloud"}).send("x", repo="a/b", orchestrator="human")
+    assert stop.requests[-1][2]["orchestrator"] == "human"
+
+
+def test_old_server_warning(capsys):
+    url, stop = cloud_fake.serve(_routes())  # RUN has no "orchestrator"
+    _login(url)
+    p = cloud_factory.create({"name": "superlite-cloud"})
+    p.send("x", repo="a/b", orchestrator="human")
+    assert "server does not support human orchestration; run is AI" in capsys.readouterr().err
+    p.send("x", repo="a/b")
+    assert capsys.readouterr().err == ""
+    routes = _routes()
+    routes[("POST", "/api/tasks")] = (201, {**RUN, "orchestrator": "human"})
+    url2, _ = cloud_fake.serve(routes)
+    _login(url2)
+    cloud_factory.create({"name": "superlite-cloud"}).send("x", repo="a/b", orchestrator="human")
+    assert capsys.readouterr().err == ""
+
+
+def test_preamble_once_both_modes():
+    url, stop = cloud_fake.serve(_routes())
+    _login(url)
+    p = cloud_factory.create({"name": "superlite-cloud"})
+    p.send("Fix", repo="a/b", superlite=True, orchestrator="human")
+    p.send(factory_api.superlite_prompt("Fix", "human"), repo="a/b", superlite=True, orchestrator="human")
+    p.send(factory_api.superlite_prompt("Fix"), repo="a/b", superlite=True, orchestrator="human")
+    posts = [q[2]["prompt"] for q in stop.requests if q[0] == "POST" and q[1] == "/api/tasks"]
+    assert posts == [factory_api.superlite_prompt("Fix", "human")] * 2 + [factory_api.superlite_prompt("Fix")]
+
+
+def test_factory_send_human_reaches_cloud_send():
+    import factory
+    url, stop = cloud_fake.serve(_routes())
+    _login(url)
+    assert factory.main(["send", "--orchestrator", "human", "--repo", "a/b", "x"]) == 0
+    assert stop.requests[-1][2]["orchestrator"] == "human"
+    assert factory.main(["send", "--repo", "a/b", "x"]) == 0
+    assert "orchestrator" not in stop.requests[-1][2]

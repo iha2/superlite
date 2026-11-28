@@ -264,3 +264,19 @@ def test_plugin_defined_exception_subclass_is_reported_by_type(tmp_path, monkeyp
         with pytest.raises(FactoryError) as ei:
             fr.provider(name)
         assert typ in str(ei.value) and "sekret-tok" not in str(ei.value)
+
+
+def test_use_saves_orchestrator(plug):
+    assert fr.orchestrator_default("web") == "ai"
+    fr.add("web", "fake")
+    assert fr.orchestrator_default("web") == "ai"  # old entry without the key reads ai
+    fr.use("web", orchestrator="human")
+    assert fr.orchestrator_default("web") == "human"
+    fr.use("web", target="t3")  # an unrelated use keeps it
+    assert fr.orchestrator_default("web") == "human"
+    fr.use("web", orchestrator="ai")
+    assert fr.orchestrator_default("web") == "ai"
+    fr.use("superlite-cloud", orchestrator="human")
+    assert fr.orchestrator_default("superlite-cloud") == "human"
+    with pytest.raises(FactoryError, match="orchestrator"):
+        fr.use("web", orchestrator="robot")

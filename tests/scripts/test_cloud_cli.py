@@ -113,6 +113,27 @@ def test_runs_plain(capsys):
     assert ("runs", False) in FakeClient.calls
 
 
+def test_runs_human_tag(capsys, monkeypatch):
+    login()
+    capsys.readouterr()
+    monkeypatch.setattr(FakeClient, "runs_data", [
+        {"name": "login_fix", "status": "running", "orchestrator": "human"},
+        {"name": "other", "status": "running", "orchestrator": "ai"}])
+    cloud.main(["runs"])
+    assert capsys.readouterr().out.splitlines() == ["login_fix  running  [human]", "other  running"]
+
+
+def test_runs_waiting_on(capsys, monkeypatch):
+    login()
+    capsys.readouterr()
+    monkeypatch.setattr(FakeClient, "runs_data", [
+        {"name": "login_fix", "status": "running", "orchestrator": "human", "waiting_on": "question"},
+        {"name": "b", "status": "running", "orchestrator": "human", "waiting_on": "plan"}])
+    cloud.main(["runs"])
+    assert capsys.readouterr().out.splitlines() == [
+        "login_fix  running  [human]  waiting: question", "b  running  [human]  waiting: plan"]
+
+
 def test_runs_all_flag(capsys):
     login()
     cloud.main(["runs", "--all"])

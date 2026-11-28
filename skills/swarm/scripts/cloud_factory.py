@@ -13,7 +13,7 @@ if _HERE not in sys.path:
 import cloud_client  # noqa: E402
 import cloud_config  # noqa: E402
 import cloud_stream  # noqa: E402
-from factory_api import SUPERLITE_PREAMBLE, FactoryError, superlite_prompt  # noqa: E402
+from factory_api import HUMAN_PREAMBLE, SUPERLITE_PREAMBLE, FactoryError, superlite_prompt  # noqa: E402
 
 NAME = "superlite-cloud"
 
@@ -49,21 +49,25 @@ class CloudFactory(cloud_client.Client):
         return f"<CloudFactory {self.url}>"
 
     def send(self, prompt: str, title: str | None = None, repo: str | None = None, base: str | None = None,
-             superlite: bool = False) -> dict:
+             superlite: bool = False, orchestrator: str = "ai") -> dict:
         import os
         repo = repo or origin_repo(os.getcwd())
         if not repo:
             raise FactoryError(f"{NAME}: no origin repo")
-        if superlite and not prompt.startswith(SUPERLITE_PREAMBLE):
-            prompt = superlite_prompt(prompt)
+        if superlite and not prompt.startswith((SUPERLITE_PREAMBLE, HUMAN_PREAMBLE)):
+            prompt = superlite_prompt(prompt, orchestrator)
         body = {"repo": repo, "prompt": prompt, "agent": "claude"}
         if base:
             body["base"] = base
+        if orchestrator == "human":  # AI bodies carry no orchestrator key
+            body["orchestrator"] = "human"
         name = server_name(title)
         if name:
             body["name"] = name
         r = self._call("POST", "/api/tasks", body, expect=(200, 201, 202)) or {}
         r = r if isinstance(r, dict) else {}
+        if orchestrator == "human" and "orchestrator" not in r:  # an old server ignores the field
+            print("server does not support human orchestration; run is AI", file=sys.stderr)
         return {"id": r.get("id"), "name": r.get("name"), "status": r.get("status") or "queued",
                 "owner": r.get("owner"), "agent": r.get("agent") or "claude", "title": r.get("title") or title or "",
                 "url": r.get("url"), "created": r.get("created")}

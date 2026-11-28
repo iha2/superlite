@@ -49,6 +49,61 @@ def test_input_line():
     assert not (c2.nudge.called or c2.respond.called or c2.cancel.called)
 
 
+Q = "Which login page: web or mobile?"
+
+
+def _q():
+    return {"kind": "question", "data": {"run": "login_fix", "text": Q}}
+
+
+def _status(to):
+    return {"kind": "status", "data": {"run": "login_fix", "to": to}}
+
+
+def test_render_question():
+    assert R(_q()) == "? " + Q
+    assert R({"kind": "question", "data": {"text": "a\nb"}}) == "? a b"
+    assert R({"kind": "question", "data": {}}) is None
+
+
+def test_plain_line_answers_when_waiting_question():
+    c, s = mock.Mock(), cloud_watch.WatchState()
+    s.observe(_q())
+    s.observe(_status("waiting"))
+    assert s.waiting_on == "question"
+    cloud_watch.handle_input(c, "login_fix", "web\n", s)
+    c.respond.assert_called_once_with("login_fix", "web")
+    assert not c.nudge.called
+
+
+def test_plain_line_nudges_when_running():
+    c, s = mock.Mock(), cloud_watch.WatchState()
+    s.observe(_q())
+    s.observe(_status("queued"))
+    assert s.waiting_on is None
+    cloud_watch.handle_input(c, "login_fix", "web", s)
+    s.observe(_status("running"))
+    cloud_watch.handle_input(c, "login_fix", "also", s)
+    assert [x.args for x in c.nudge.call_args_list] == [("login_fix", "web"), ("login_fix", "also")]
+    assert not c.respond.called
+
+
+def test_approve_unchanged():
+    c, s = mock.Mock(), cloud_watch.WatchState()
+    s.observe({"kind": "result", "data": {"text": "Plan\nReply approve to start"}})
+    s.observe(_status("waiting"))
+    assert s.waiting_on == "plan"
+    cloud_watch.handle_input(c, "r", "tweak it", s)
+    c.nudge.assert_called_once_with("r", "tweak it")
+    s.observe(_q())
+    cloud_watch.handle_input(c, "r", "/approve", s)
+    c.respond.assert_called_once_with("r", "approve")
+    cloud_watch.handle_input(c, "r", "/cancel", s)
+    c.cancel.assert_called_once_with("r")
+    cloud_watch.handle_input(c, "r", "   ", s)
+    assert c.respond.call_count == 1 and c.nudge.call_count == 1
+
+
 def _run(evts, capsys):
     cfg = {"url": "http://x", "token": "tok"}
     with mock.patch.object(cloud_watch.cloud_config, "load", return_value=cfg), \
