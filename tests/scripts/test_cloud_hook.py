@@ -168,6 +168,13 @@ def test_attached_lines(fc, tmp_path):
     assert cloud_hook.route("/other-command") is None
 
 
+def test_attached_plain_line_answers_question(fc, tmp_path):
+    attach_state(tmp_path)
+    fc.runs_data[0].update(status="waiting", orchestrator="human", waiting_on="question")
+    cloud_hook.route("web")
+    assert fc.calls[-1] == ("respond", "login_fix", "web")
+
+
 def test_ended_run(fc, tmp_path):
     r = cloud_hook.route("/superlite:attach old_one")
     assert r == {"block": True, "reason": "old_one has ended"}

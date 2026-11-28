@@ -24,6 +24,8 @@ CORE_ERRORS = (CloudError, ArithmeticError, AssertionError, AttributeError, EOFE
 
 BUILTIN = "superlite-cloud"
 BUILTIN_SUPERLITE_KEY = "builtin_superlite"  # top-level, so the factories table stays plugin-only
+BUILTIN_ORCH_KEY = "builtin_orchestrator"
+ORCHESTRATORS = ("ai", "human")
 MANIFEST = "superlite-factory.json"
 _NAME = re.compile(r"[a-z0-9-]+")
 _ADDR = re.compile(r"([a-z0-9-]+):(.*)", re.S)
@@ -171,12 +173,17 @@ def add(name: str, kind: str, target: str | None = None, superlite: bool = False
     return {"name": name, **inst}
 
 
-def use(name: str, target: str | None = None, superlite: bool | None = None) -> dict:
+def use(name: str, target: str | None = None, superlite: bool | None = None,
+        orchestrator: str | None = None) -> dict:
+    if orchestrator is not None and orchestrator not in ORCHESTRATORS:
+        raise FactoryError(f"invalid orchestrator: {orchestrator!r} (use human or ai)")
     store = load_store()
     if name == BUILTIN:
         store["active"] = name
         if superlite is not None:
             store[BUILTIN_SUPERLITE_KEY] = bool(superlite)
+        if orchestrator is not None:
+            store[BUILTIN_ORCH_KEY] = orchestrator
         save_store(store)
         return {"name": name, "kind": BUILTIN}
     if name not in store["factories"]:
@@ -189,6 +196,8 @@ def use(name: str, target: str | None = None, superlite: bool | None = None) -> 
         inst["target"] = target
     if superlite is not None:
         inst["superlite"] = bool(superlite)
+    if orchestrator is not None:
+        inst["orchestrator"] = orchestrator
     store["active"] = name
     save_store(store)
     return {"name": name, **inst}
@@ -199,6 +208,12 @@ def superlite_enabled(name: str) -> bool:
     if name == BUILTIN:
         return bool(store.get(BUILTIN_SUPERLITE_KEY))
     return bool((store["factories"].get(name) or {}).get("superlite"))
+
+
+def orchestrator_default(name: str) -> str:
+    store = load_store()
+    v = store.get(BUILTIN_ORCH_KEY) if name == BUILTIN else (store["factories"].get(name) or {}).get("orchestrator")
+    return v if v in ORCHESTRATORS else "ai"
 
 
 def active() -> str:

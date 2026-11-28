@@ -107,6 +107,10 @@ def cmd_runs(args) -> int:
         pass
     for r in runs:
         line = f"{r['name']}  {r['status']}"
+        if r.get("orchestrator") == "human":
+            line += "  [human]"
+            if r.get("waiting_on"):
+                line += f"  waiting: {r['waiting_on']}"
         mark = _mark(r, notices)
         print(f"{line}  {mark}" if mark else line)
     return 0

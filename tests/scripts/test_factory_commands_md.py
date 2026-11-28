@@ -61,6 +61,18 @@ def test_send_and_factory_commands():
         assert f"`{verb}" in read("commands/factory.md")
 
 
+def test_orchestrator_flag_documented_and_parsed():
+    hints = {c: frontmatter(c)["argument-hint"] for c in ("send", "factory")}
+    assert "--orchestrator human|ai" in hints["send"] and "--orchestrator human|ai" in hints["factory"]
+    assert "--orchestrator" in read("commands/send.md") and "Reply to answer" in read("commands/send.md")
+    assert "use <name> [--target T] [--superlite|--no-superlite] [--orchestrator human|ai]" in read("commands/factory.md")
+    assert "Cloud Human runs" in read("skills/swarm/orchestrator.md")
+    for sub in ("send", "use"):
+        r = subprocess.run([sys.executable, str(SCRIPTS / "factory.py"), sub, "--help"], capture_output=True,
+                           text=True, timeout=30)
+        assert r.returncode == 0 and "--orchestrator {human,ai}" in r.stdout, sub
+
+
 def test_run_commands_mention_factory_addresses():
     for cmd in ("attach", "runs", "watch", "give", "detach"):
         text = read(f"commands/{cmd}.md")

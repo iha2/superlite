@@ -162,3 +162,13 @@ def test_watch_handoff_macos_hint_and_default_env(monkeypatch):
     monkeypatch.setenv("KITTY_WINDOW_ID", "5")
     text = watch_handoff("c", "r")
     assert "osascript" in text and "kitty @ launch" in text
+
+
+def test_preamble_ai_unchanged():
+    assert superlite_prompt("x") == SUPERLITE_PREAMBLE + "\n\nx"
+    assert superlite_prompt("x", "ai") == superlite_prompt("x")
+
+
+def test_preamble_human():
+    p = superlite_prompt("x", "human")
+    assert "orchestrator set human" in p and "orchestrator set ai" not in p and p.endswith("\n\nx")

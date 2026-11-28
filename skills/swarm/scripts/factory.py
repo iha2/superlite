@@ -129,7 +129,8 @@ def cmd_list(_a) -> int:
         return m + " " if m else "  "
 
     cloud_in = CLOUD in reg.logged_in()
-    print(f"{mark(CLOUD)}{CLOUD} (built-in)  {'logged in' if cloud_in else 'logged out'}")
+    corch = "  [human]" if reg.orchestrator_default(CLOUD) == "human" else ""
+    print(f"{mark(CLOUD)}{CLOUD} (built-in)  {'logged in' if cloud_in else 'logged out'}{corch}")
     insts = store.get("factories") or {}
     used = {f.get("kind") for f in insts.values()}
     for d in reg.discover():
@@ -144,7 +145,8 @@ def cmd_list(_a) -> int:
         if name == CLOUD:
             continue
         state = "logged in" if name in logged else "logged out"
-        print(f"{mark(name)}{name}  {f.get('kind')}  {f.get('target_name') or '-'}  {state}")
+        orch = "  [human]" if reg.orchestrator_default(name) == "human" else ""
+        print(f"{mark(name)}{name}  {f.get('kind')}  {f.get('target_name') or '-'}  {state}{orch}")
     return 0
 
 
@@ -282,9 +284,11 @@ def _cloud_logout(reg) -> int:
 def cmd_use(a) -> int:
     api, reg = _api(), _reg()
     if a.name == CLOUD:
-        reg.use(a.name, superlite=True if a.superlite else (False if a.no_superlite else None))
+        reg.use(a.name, superlite=True if a.superlite else (False if a.no_superlite else None),
+                orchestrator=a.orchestrator)
         print(f"{a.name}: superlite on" if a.superlite else
-              f"{a.name}: superlite off" if a.no_superlite else f"{a.name}: active")
+              f"{a.name}: superlite off" if a.no_superlite else
+              f"{a.name}: orchestrator {a.orchestrator}" if a.orchestrator else f"{a.name}: active")
         return 0
     target = None
     tname = None
@@ -293,7 +297,8 @@ def cmd_use(a) -> int:
             raise api.FactoryError(f"{a.name}: not logged in")
         t = _provider(a.name).resolve_target(a.target)
         target, tname = t["uid"], t["name"]
-    reg.use(a.name, target=target, superlite=True if a.superlite else (False if a.no_superlite else None))
+    reg.use(a.name, target=target, superlite=True if a.superlite else (False if a.no_superlite else None),
+            orchestrator=a.orchestrator)
     if target:
         store = reg.load_store()
         store["factories"][a.name]["target_name"] = tname
@@ -303,6 +308,8 @@ def cmd_use(a) -> int:
         print(f"{a.name}: superlite on")
     elif a.no_superlite:
         print(f"{a.name}: superlite off")
+    elif a.orchestrator:
+        print(f"{a.name}: orchestrator {a.orchestrator}")
     else:
         print(f"{a.name}: active")
     return 0
@@ -322,13 +329,15 @@ def cmd_send(a) -> int:
         return 2
     p = _provider(name)
     api.require(p, "send")
+    orch = a.orchestrator or reg.orchestrator_default(name)
     if a.superlite:
-        text = api.superlite_prompt(text)
+        text = api.superlite_prompt(text, orch)
     title = a.title
     if title and name == CLOUD:
         import cloud_factory
         title = cloud_factory.server_name(title)
-    run = p.send(text, title=title, repo=a.repo, base=a.base, superlite=bool(a.superlite))
+    extra = {"orchestrator": orch} if name == CLOUD and orch == "human" else {}  # plugins ignore the flag
+    run = p.send(text, title=title, repo=a.repo, base=a.base, superlite=bool(a.superlite), **extra)
     print(" ".join(str(x) for x in (run.get("name"), run.get("status"), run.get("url")) if x))
     return 0
 
@@ -459,6 +468,7 @@ def _parser() -> argparse.ArgumentParser:
     s.add_argument("--target")
     s.add_argument("--superlite", action="store_true")
     s.add_argument("--no-superlite", action="store_true")
+    s.add_argument("--orchestrator", choices=["human", "ai"])
     s = sub.add_parser("send")
     s.add_argument("text", nargs="*")
     s.add_argument("--plan")
@@ -466,6 +476,7 @@ def _parser() -> argparse.ArgumentParser:
     s.add_argument("--title")
     s.add_argument("--repo")
     s.add_argument("--base")
+    s.add_argument("--orchestrator", choices=["human", "ai"])
     s = sub.add_parser("runs")
     s.add_argument("--all", action="store_true")
     s = sub.add_parser("give")
